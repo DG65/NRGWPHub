@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 14) — 10.08.2026
+
+- **Geräteliste lädt, A2W-Statusabruf repariert.** Nach der (in der offiziellen App bestätigten) Zustimmung liefert `device/group` die Wärmepumpe. Der anschließende Aquarea-Statusabruf über den Transfer-Proxy scheiterte aber mit „Missing required header parameter“ (Code 4000): Der Proxy verlangt im Body neben `apiName`/`requestMethod` eine `headerParam`-Liste. WPHub sendet sie jetzt exakt wie die offizielle App (Accept + Content-Type + Platzhalter) und hängt die Geräte-GUID roh an den `apiName`-Query.
+
 ## 0.1.0 (Build 13) — 10.08.2026
 
 - **Zustimmung: Status-GET direkt vor dem PUT** (wie die offizielle App). Der PUT meldet zwar Erfolg (`{"result":0}`), aber die Geräteliste blieb bei 4103 — die App liest unmittelbar vor dem PUT auf derselben Sitzung einmal den Zustimmungsstatus; genau das ergänzt WPHub jetzt. **Bekannte Einschränkung:** Sollte die programmatische Zustimmung weiterhin nicht greifen, genügt der zuverlässige Weg — einmal die offizielle Comfort-Cloud-App öffnen, dort die neuen Bedingungen bestätigen, danach in WPHub „Anmelden und Wärmepumpen suchen“. Die Zustimmung ist ohnehin eine seltene, einmalige Aktion pro Bedingungs-Aktualisierung.
