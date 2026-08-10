@@ -32,7 +32,8 @@ class WPHUB_ComfortCloudClient
     private $lastError = '';
     private $cookieFile = null;
     private $debug = null; // callable(string $topic, string $text)
-    private $versionRejected = false; // letzte API-Antwort war 4106 (App-Version zu alt)
+    private $versionRejected = false;   // letzte API-Antwort war 4106 (App-Version zu alt)
+    private $agreementRequired = false; // letzte API-Antwort war 4103 (Bedingungen aktualisiert)
 
     public function __construct(string $appVersion = '1.21.0', ?callable $debug = null)
     {
@@ -56,6 +57,48 @@ class WPHUB_ComfortCloudClient
     public function versionRejected(): bool
     {
         return $this->versionRejected;
+    }
+
+    /** Verlangt die Cloud eine erneute Zustimmung zu den Bedingungen (Code 4103)? */
+    public function agreementRequired(): bool
+    {
+        return $this->agreementRequired;
+    }
+
+    /**
+     * Zustimmungsstatus abfragen: 1 = Nutzungsbedingungen, 2 = Datenschutz-
+     * erklaerung (3 = Servicevertrag, nur Tuerkei). Rueckgabe: Status laut
+     * Cloud (1 = zugestimmt), null bei Fehler.
+     */
+    public function getAgreementStatus(array $bundle, int $typeId): ?int
+    {
+        $this->lastError = '';
+        $r = $this->apiRequest($bundle, 'GET', '/auth/agreement/status/' . $typeId);
+        $json = ($r !== null) ? json_decode($r['body'], true) : null;
+        if ($r === null || $r['status'] !== 200 || !is_array($json) || !isset($json['agreementStatus'])) {
+            $this->failApi('Zustimmungsstatus (agreement/status/' . $typeId . ')', $r);
+            return null;
+        }
+        return (int)$json['agreementStatus'];
+    }
+
+    /**
+     * Eine Bedingung im Namen des Kontos bestaetigen. Nur auf ausdrueckliche
+     * Nutzeraktion hin aufrufen (Schaltflaeche im Formular) -- das Modul
+     * stimmt nie stillschweigend selbst zu.
+     */
+    public function acceptAgreement(array $bundle, int $typeId): bool
+    {
+        $this->lastError = '';
+        $r = $this->apiRequest($bundle, 'PUT', '/auth/agreement/status/', [
+            'agreementStatus' => 1,
+            'type'            => $typeId,
+        ]);
+        if ($r === null || $r['status'] !== 200) {
+            $this->failApi('Zustimmung (agreement/status, Typ ' . $typeId . ')', $r);
+            return false;
+        }
+        return true;
     }
 
     public function getAppVersion(): string
@@ -336,6 +379,7 @@ class WPHUB_ComfortCloudClient
     private function apiRequest(array $bundle, string $method, string $path, ?array $jsonBody = null, bool $includeClientId = true): ?array
     {
         $this->versionRejected = false;
+        $this->agreementRequired = false;
         $headers = $this->apiHeaders($bundle, $includeClientId);
         $body = ($jsonBody !== null) ? json_encode($jsonBody) : null;
         return $this->request($method, self::ACC_BASE . $path, $headers, $body);
@@ -502,6 +546,9 @@ class WPHUB_ComfortCloudClient
         if ($r['status'] === 401 && strpos($body, '4106') !== false) {
             $this->versionRejected = true;
             $this->lastError = $what . ': Die verwendete App-Version (' . $this->appVersion . ') ist der Cloud zu alt (Code 4106). Sie wird normalerweise automatisch aktualisiert; schlaegt das fehl, im Formular die aktuelle Versionsnummer der Comfort-Cloud-App eintragen.';
+        } elseif ($r['status'] === 401 && strpos($body, '4103') !== false) {
+            $this->agreementRequired = true;
+            $this->lastError = $what . ': Panasonic hat Nutzungsbedingungen/Datenschutzerklaerung aktualisiert (Code 4103). Bestaetigung noetig — Schaltflaeche „Aktualisierte Bedingungen akzeptieren" im Formular oder einmal die offizielle Comfort-Cloud-App oeffnen.';
         } else {
             $this->lastError = $what . ' fehlgeschlagen (HTTP ' . $r['status'] . '): ' . $body;
         }

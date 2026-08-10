@@ -34,6 +34,10 @@ class WPHub extends IPSModule
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
 
+    // Zustimmungstypen der Comfort Cloud (Typ 3 = Servicevertrag nur Tuerkei).
+    const AGREEMENT_TERMS   = 1;
+    const AGREEMENT_PRIVACY = 2;
+
     public function Create()
     {
         parent::Create();
@@ -164,6 +168,11 @@ class WPHub extends IPSModule
 
         $devices = $this->refreshDevices($bundle, $client);
         if ($devices === null) {
+            if ($client->agreementRequired()) {
+                $this->SetStatus(202);
+                $say("✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen.\n📜 Panasonic hat aber Nutzungsbedingungen/Datenschutzerklärung aktualisiert und verlangt eine erneute Zustimmung Deines Kontos. Bitte unten „Aktualisierte Bedingungen akzeptieren“ klicken (oder einmal die offizielle Comfort-Cloud-App öffnen und dort bestätigen).");
+                return;
+            }
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Geräteliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
             return;
         }
@@ -172,6 +181,65 @@ class WPHub extends IPSModule
             return;
         }
         $lines = ['✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Gefundene Wärmepumpen:'];
+        foreach ($devices as $d) {
+            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
+        }
+        $say(implode("\n", $lines));
+    }
+
+    /**
+     * Bestaetigt Panasonics aktualisierte Nutzungsbedingungen/Datenschutz-
+     * erklaerung fuer das angemeldete Konto -- ausschliesslich auf Klick der
+     * Formular-Schaltflaeche, nie automatisch: Die Zustimmung ist eine
+     * Entscheidung des Kontoinhabers, nicht des Moduls.
+     */
+    public function AcceptAgreements()
+    {
+        $say = function (string $m) {
+            $this->UpdateFormField('CC_Result', 'caption', $m);
+            $this->UpdateFormField('CC_Result', 'visible', true);
+            trigger_error('WPHUB_AcceptAgreements #' . $this->InstanceID . ': ' . $m, E_USER_NOTICE);
+        };
+        $bundle = $this->ensureToken();
+        if ($bundle === null) {
+            $say('❌ Keine gültige Anmeldung — bitte zuerst anmelden.');
+            return;
+        }
+        $this->doAcceptAgreements($this->ccClient(), $bundle, $say);
+    }
+
+    /** Kern von AcceptAgreements, testbar mit injiziertem Client. */
+    private function doAcceptAgreements(WPHUB_ComfortCloudClient $client, array $bundle, callable $say): void
+    {
+        $names = [
+            self::AGREEMENT_TERMS   => 'Nutzungsbedingungen',
+            self::AGREEMENT_PRIVACY => 'Datenschutzerklärung',
+        ];
+        $accepted = [];
+        foreach ($names as $typeId => $label) {
+            $status = $client->getAgreementStatus($bundle, $typeId);
+            if ($status === 1) {
+                continue; // bereits zugestimmt
+            }
+            if (!$client->acceptAgreement($bundle, $typeId)) {
+                $say('❌ ' . $label . ' konnte nicht bestätigt werden: ' . $client->getLastError());
+                return;
+            }
+            $accepted[] = $label;
+        }
+
+        $devices = $this->refreshDevices($bundle, $client);
+        if ($devices === null) {
+            $say('⚠️ Zustimmung übermittelt (' . (count($accepted) ? implode(', ', $accepted) : 'nichts offen') . '), aber die Geräteliste lässt sich weiterhin nicht laden: ' . $client->getLastError());
+            return;
+        }
+        $this->SetStatus(102);
+        $lines = [count($accepted)
+            ? '✅ Bestätigt: ' . implode(', ', $accepted) . '. Gefundene Wärmepumpen:'
+            : '✅ Es war laut Cloud nichts mehr offen. Gefundene Wärmepumpen:'];
+        if (count($devices) === 0) {
+            $lines[] = '   (keine Aquarea-Wärmepumpe im Konto gefunden)';
+        }
         foreach ($devices as $d) {
             $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
         }
@@ -196,6 +264,14 @@ class WPHub extends IPSModule
             // Cloud nicht erreichbar: vorhandene Geraete als unerreichbar
             // markieren, Variablen/Historie bleiben unangetastet.
             $this->markAllUnreachable();
+            if ($client->agreementRequired()) {
+                // Nur beim Statuswechsel protokollieren, nicht in jedem Zyklus.
+                if ($this->GetStatus() !== 202) {
+                    $this->LogMessage('Panasonic verlangt eine erneute Zustimmung zu Nutzungsbedingungen/Datenschutzerklärung — im WPHub-Formular „Aktualisierte Bedingungen akzeptieren“ klicken oder einmal die offizielle App öffnen.', KL_WARNING);
+                }
+                $this->SetStatus(202);
+                return;
+            }
             $this->LogMessage('Aktualisierung fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
             return;
         }

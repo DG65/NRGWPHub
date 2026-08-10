@@ -84,6 +84,31 @@
                     "onClick": "WPHUB_Login($id);"
                 },
                 {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Button",
+                            "name": "CC_AgreementButton",
+                            "caption": "📜  Aktualisierte Bedingungen akzeptieren",
+                            "onClick": "WPHUB_AcceptAgreements($id);"
+                        },
+                        {
+                            "type": "PopupButton",
+                            "caption": "?",
+                            "width": "70px",
+                            "popup": {
+                                "caption": "Wann brauche ich das?",
+                                "items": [
+                                    {
+                                        "type": "Label",
+                                        "caption": "Panasonic verlangt nach Aktualisierungen von Nutzungsbedingungen oder Datenschutzerklaerung eine erneute Zustimmung des Kontos (Cloud-Fehlercode 4103, Instanzstatus \"Zustimmung erforderlich\") -- so wie beim naechsten Start der offiziellen App. Diese Schaltflaeche bestaetigt beides im Namen Deines Kontos; WPHub tut das bewusst NIE automatisch. Die Texte selbst gibt es in der offiziellen App bzw. auf panasonic.com. Alternativ: einmal die offizielle Comfort-Cloud-App oeffnen und dort bestaetigen."
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
                     "type": "Label",
                     "name": "CC_Result",
                     "caption": "",
@@ -121,6 +146,11 @@
             "code": 201,
             "icon": "error",
             "caption": "Anmeldung an der Comfort Cloud erforderlich -- im Formular anmelden"
+        },
+        {
+            "code": 202,
+            "icon": "error",
+            "caption": "Zustimmung erforderlich -- Panasonic hat die Bedingungen aktualisiert (Formular)"
         }
     ]
 }

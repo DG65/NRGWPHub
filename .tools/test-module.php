@@ -151,6 +151,10 @@ class IPSModule
     {
         $this->status = $status;
     }
+    protected function GetStatus(): int
+    {
+        return $this->status;
+    }
     protected function SendDebug(string $topic, string $text, int $format): void
     {
     }
@@ -228,6 +232,20 @@ class FakeCC extends WPHUB_ComfortCloudClient
     public function refreshAppVersion(): ?string
     {
         return $this->refreshedVersion;
+    }
+
+    public $agreementStatuses = [];  // typeId => Status laut Cloud
+    public $acceptCalls = [];        // aufgezeichnete acceptAgreement-Typen
+    public $acceptResult = true;
+
+    public function getAgreementStatus(array $bundle, int $typeId): ?int
+    {
+        return $this->agreementStatuses[$typeId] ?? null;
+    }
+    public function acceptAgreement(array $bundle, int $typeId): bool
+    {
+        $this->acceptCalls[] = $typeId;
+        return $this->acceptResult;
     }
 }
 
@@ -406,6 +424,40 @@ $fake3->refreshedVersion = null;
 $devices3 = $refresh->invoke($mod, ['accessToken' => 'x'], $fake3);
 check('Ermittlung fehlgeschlagen → Abruf liefert null', $devices3 === null);
 check('Kein zweiter getGroups-Versuch ohne neue Version', $fake3->groupCalls === 1, $fake3->groupCalls . ' Aufrufe');
+
+// ---------------------------------------------------------------------------
+echo "Block 4c: Zustimmung zu aktualisierten Bedingungen (4103)\n";
+// ---------------------------------------------------------------------------
+
+$sayMessages = [];
+$say = function (string $m) use (&$sayMessages) {
+    $sayMessages[] = $m;
+};
+$doAccept = new ReflectionMethod(WPHub::class, 'doAcceptAgreements');
+$doAccept->setAccessible(true);
+
+// Nutzungsbedingungen offen (Status 0), Datenschutz bereits bestaetigt (1):
+// genau Typ 1 wird akzeptiert, danach laedt die Geraeteliste, Status 102.
+$fake4 = new FakeCC();
+$fake4->groupsResult = $fake->groupsResult;
+$fake4->statusResult = $fake->statusResult;
+$fake4->agreementStatuses = [1 => 0, 2 => 1];
+$mod->status = 202;
+$doAccept->invoke($mod, $fake4, ['accessToken' => 'x'], $say);
+check('Nur die offene Bedingung (Typ 1) bestaetigt', $fake4->acceptCalls === [1], json_encode($fake4->acceptCalls));
+check('Danach Status 102', $mod->status === 102, 'Status ' . $mod->status);
+check('Erfolgsmeldung mit Geraeteliste', strpos(end($sayMessages), 'Aquarea Zuhause') !== false, end($sayMessages));
+
+// Ablehnung durch die Cloud: sauberer Abbruch mit Fehlermeldung, kein 102.
+$fake5 = new FakeCC();
+$fake5->agreementStatuses = [1 => 0, 2 => 0];
+$fake5->acceptResult = false;
+$mod->status = 202;
+$sayMessages = [];
+$doAccept->invoke($mod, $fake5, ['accessToken' => 'x'], $say);
+check('Fehlgeschlagene Zustimmung bricht ab', $fake5->acceptCalls === [1], json_encode($fake5->acceptCalls));
+check('Status bleibt 202', $mod->status === 202, 'Status ' . $mod->status);
+check('Fehlermeldung ausgegeben', strpos(end($sayMessages), '❌') === 0, end($sayMessages));
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";
