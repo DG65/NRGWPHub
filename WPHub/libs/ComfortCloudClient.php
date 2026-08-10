@@ -419,40 +419,6 @@ class WPHUB_ComfortCloudClient
     // und /deviceStatus/{guid} sind fuer A2W nicht freigegeben (400/403). Die
     // Auswertung passiert daher komplett im Modul aus getGroups().
 
-    // Diagnose: roher, signierter API-Aufruf. Liefert immer ['status','body'].
-    public function debugCall(array $bundle, string $method, string $path, ?array $jsonBody = null): array
-    {
-        $r = $this->apiRequest($bundle, $method, $path, $jsonBody);
-        if ($r === null) {
-            return ['status' => 0, 'body' => $this->lastError];
-        }
-        return ['status' => $r['status'], 'body' => (string)$r['body']];
-    }
-
-    // Diagnose: GET gegen eine beliebige (externe) URL. $mode 'acc' = normale
-    // accsmart-Header (inkl. x-cfc-api-key/x-client-id); 'aqua' = Bearer +
-    // Browser-/Referer-Header fuer aquarea-smart.panasonic.com. Liefert
-    // status/body/location (Location fuer Redirect-Erkennung, kein Folgen).
-    public function debugExternal(array $bundle, string $url, string $mode = 'acc'): array
-    {
-        if ($mode === 'acc') {
-            $headers = $this->apiHeaders($bundle, true);
-        } else {
-            $headers = [
-                'Authorization: Bearer ' . ($bundle['accessToken'] ?? ''),
-                'x-user-authorization-v2: Bearer ' . ($bundle['accessToken'] ?? ''),
-                'Accept: application/json, text/plain, */*',
-                'referer: https://aquarea-smart.panasonic.com/',
-                'user-agent: ' . self::UA_BROWSER,
-            ];
-        }
-        $r = $this->request('GET', $url, $headers);
-        if ($r === null) {
-            return ['status' => 0, 'body' => $this->lastError, 'location' => ''];
-        }
-        return ['status' => $r['status'], 'body' => (string)$r['body'], 'location' => $r['headers']['location'] ?? ''];
-    }
-
     // ------------------------------------------------------------------
     // Intern
     // ------------------------------------------------------------------

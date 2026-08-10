@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 21) — 11.08.2026
+
+- **Aufräumen nach Datenquellen-Analyse.** Untersuchung, ob sich die reichhaltige Aquarea-Telemetrie (Außentemperatur, Vor-/Rücklauf, COP, Energie) anbinden lässt: Der frühere Consumer-Host `aquarea-smart.panasonic.com` existiert nicht mehr (keine DNS-Auflösung), und der überlebende Dienst `ac.smartcloud.panasonic.com` nutzt ein eigenes Login (nicht Panasonic ID/Auth0) — mit dem Comfort-Cloud-Token nicht erreichbar. Ergebnis: Über den Comfort-Cloud-Zugang bleibt es bei den Basisdaten aus `device/group` (Build 17). Die temporären Diagnosefunktionen wurden wieder entfernt; das Modul ist im verifizierten, sauberen Stand.
+
 ## 0.1.0 (Build 17) — 11.08.2026
 
 - **Messwerte werden ausgelesen — direkt aus `device/group`.** Eine Diagnose (Zwischenstände Build 15/16) zeigte: Die A2W-Betriebsdaten liefert die Comfort Cloud bereits inline in der Geräteliste; der Transfer-Proxy (`/remote/v1/app/common/transfer`) und `/deviceStatus/{guid}` sind für Wärmepumpen gar nicht freigegeben (400/403). WPHub wertet die Werte jetzt direkt aus der Geräteantwort aus und legt je Wärmepumpe an: Erreichbar (aus `connectionStatus`), Betriebsart, Warmwasser Ist/Soll und -Betrieb (Speicher) sowie je Heizzone Solltemperatur und Betrieb. Werte bleiben als letzter bekannter Stand erhalten, wenn das Gerät offline ist. Der tote Transfer-Proxy-Code und die temporäre Diagnosefunktion wurden entfernt.
