@@ -32,6 +32,7 @@ class WPHUB_ComfortCloudClient
     private $lastError = '';
     private $cookieFile = null;
     private $debug = null; // callable(string $topic, string $text)
+    private $versionRejected = false; // letzte API-Antwort war 4106 (App-Version zu alt)
 
     public function __construct(string $appVersion = '1.21.0', ?callable $debug = null)
     {
@@ -49,6 +50,46 @@ class WPHUB_ComfortCloudClient
     public function getLastError(): string
     {
         return $this->lastError;
+    }
+
+    /** Hat der letzte API-Aufruf die App-Version abgelehnt (Code 4106)? */
+    public function versionRejected(): bool
+    {
+        return $this->versionRejected;
+    }
+
+    public function getAppVersion(): string
+    {
+        return $this->appVersion;
+    }
+
+    /**
+     * Aktuelle Versionsnummer der offiziellen Comfort-Cloud-App ermitteln
+     * (Play Store, Rueckfall AppBrain — gleiche Quellen wie die Referenz-
+     * bibliothek). Bei Erfolg wird sie sofort fuer weitere Aufrufe dieses
+     * Clients uebernommen und zurueckgegeben, sonst null.
+     */
+    public function refreshAppVersion(): ?string
+    {
+        $r = $this->request('GET', 'https://play.google.com/store/apps/details?id=com.panasonic.ACCsmart', [
+            'user-agent: ' . self::UA_BROWSER,
+        ]);
+        if ($r !== null && $r['status'] === 200 && preg_match('/\["(\d+\.\d+\.\d+)"\]/', $r['body'], $m)) {
+            $this->appVersion = $m[1];
+            $this->dbg('appversion', 'Play Store: ' . $m[1]);
+            return $m[1];
+        }
+        $r = $this->request('GET', 'https://www.appbrain.com/app/panasonic-comfort-cloud/com.panasonic.ACCsmart', [
+            'user-agent: ' . self::UA_BROWSER,
+        ]);
+        if ($r !== null && $r['status'] === 200 && preg_match('/itemprop="softwareVersion"\s+content="(\d+\.\d+(?:\.\d+)?)"/', $r['body'], $m)) {
+            $this->appVersion = $m[1];
+            $this->dbg('appversion', 'AppBrain: ' . $m[1]);
+            return $m[1];
+        }
+        $this->lastError = 'Aktuelle App-Version konnte nicht ermittelt werden (Play Store/AppBrain nicht erreichbar oder Seitenaufbau geaendert)';
+        $this->dbg('appversion', $this->lastError);
+        return null;
     }
 
     // Cookie-Behaelter verwerfen, damit ein neuer Login ohne Altlasten
@@ -294,6 +335,7 @@ class WPHUB_ComfortCloudClient
     // Signierter Aufruf der Geraete-API (accsmart).
     private function apiRequest(array $bundle, string $method, string $path, ?array $jsonBody = null, bool $includeClientId = true): ?array
     {
+        $this->versionRejected = false;
         $headers = $this->apiHeaders($bundle, $includeClientId);
         $body = ($jsonBody !== null) ? json_encode($jsonBody) : null;
         return $this->request($method, self::ACC_BASE . $path, $headers, $body);
@@ -458,7 +500,8 @@ class WPHUB_ComfortCloudClient
         }
         $body = substr((string)$r['body'], 0, 300);
         if ($r['status'] === 401 && strpos($body, '4106') !== false) {
-            $this->lastError = $what . ': Die hinterlegte App-Version (' . $this->appVersion . ') ist der Cloud zu alt (Code 4106). Im Formular die aktuelle Versionsnummer der Comfort-Cloud-App eintragen.';
+            $this->versionRejected = true;
+            $this->lastError = $what . ': Die verwendete App-Version (' . $this->appVersion . ') ist der Cloud zu alt (Code 4106). Sie wird normalerweise automatisch aktualisiert; schlaegt das fehl, im Formular die aktuelle Versionsnummer der Comfort-Cloud-App eintragen.';
         } else {
             $this->lastError = $what . ' fehlgeschlagen (HTTP ' . $r['status'] . '): ' . $body;
         }

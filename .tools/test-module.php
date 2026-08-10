@@ -31,6 +31,7 @@ const VARIABLETYPE_INTEGER = 1;
 const VARIABLETYPE_FLOAT   = 2;
 const VARIABLETYPE_STRING  = 3;
 const KL_WARNING = 10205;
+const KL_NOTIFY  = 10204;
 
 $GLOBALS['ips'] = [
     'profiles'   => [],
@@ -200,14 +201,33 @@ class FakeCC extends WPHUB_ComfortCloudClient
 {
     public $groupsResult;
     public $statusResult;
+    public $rejectFirstGroups = false;  // erste getGroups-Antwort: 4106
+    public $refreshedVersion = null;    // was refreshAppVersion liefern soll
+    public $groupCalls = 0;
+    private $fakeRejected = false;
 
     public function getGroups(array $bundle): ?array
     {
+        $this->groupCalls++;
+        if ($this->rejectFirstGroups) {
+            $this->rejectFirstGroups = false;
+            $this->fakeRejected = true;
+            return null;
+        }
+        $this->fakeRejected = false;
         return $this->groupsResult;
     }
     public function getAquareaStatus(array $bundle, string $gwid, bool $direct = true): ?array
     {
         return $this->statusResult;
+    }
+    public function versionRejected(): bool
+    {
+        return $this->fakeRejected;
+    }
+    public function refreshAppVersion(): ?string
+    {
+        return $this->refreshedVersion;
     }
 }
 
@@ -350,6 +370,42 @@ $absUrl->setAccessible(true);
 check('Relative Location mit Slash', $absUrl->invoke($client, '/login?x=1') === 'https://authglb.digital.panasonic.com/login?x=1');
 check('Relative Location ohne Slash', $absUrl->invoke($client, 'login?x=1') === 'https://authglb.digital.panasonic.com/login?x=1');
 check('Absolute Location unveraendert', $absUrl->invoke($client, 'https://example.org/a') === 'https://example.org/a');
+
+// ---------------------------------------------------------------------------
+echo "Block 4b: App-Version (4106) — automatische Erneuerung\n";
+// ---------------------------------------------------------------------------
+
+// Prioritaetskette der Version: Auto-Attribut > Formular-Notnagel > Standard.
+$ccClient = new ReflectionMethod(WPHub::class, 'ccClient');
+$ccClient->setAccessible(true);
+check('Standard-Version ohne alles: 4.4.0', $ccClient->invoke($mod)->getAppVersion() === '4.4.0');
+$GLOBALS['ips']['properties']['CC_AppVersion'] = '5.0.1';
+check('Formular-Notnagel greift', $ccClient->invoke($mod)->getAppVersion() === '5.0.1');
+$setAttr->invoke($mod, 'CC_AppVersionAuto', '6.0.0');
+check('Automatisch ermittelte Version hat Vorrang', $ccClient->invoke($mod)->getAppVersion() === '6.0.0');
+$GLOBALS['ips']['properties']['CC_AppVersion'] = '';
+
+// 4106 beim Geraeteabruf: einmal neu ermitteln, dann genau EIN Wiederholungsversuch.
+$fake2 = new FakeCC();
+$fake2->groupsResult = $fake->groupsResult;
+$fake2->statusResult = $fake->statusResult;
+$fake2->rejectFirstGroups = true;
+$fake2->refreshedVersion = '9.9.9';
+$devices2 = $refresh->invoke($mod, ['accessToken' => 'x'], $fake2);
+check('Nach 4106: Wiederholung erfolgreich', is_array($devices2) && count($devices2) === 1);
+check('Genau zwei getGroups-Aufrufe', $fake2->groupCalls === 2, $fake2->groupCalls . ' Aufrufe');
+$getAttr = new ReflectionMethod(WPHub::class, 'ReadAttributeString');
+$getAttr->setAccessible(true);
+check('Neue Version im Auto-Attribut gemerkt', $getAttr->invoke($mod, 'CC_AppVersionAuto') === '9.9.9');
+
+// 4106, aber Versionsermittlung schlaegt fehl: kein Endlos-Retry, sauberes null.
+$fake3 = new FakeCC();
+$fake3->groupsResult = $fake->groupsResult;
+$fake3->rejectFirstGroups = true;
+$fake3->refreshedVersion = null;
+$devices3 = $refresh->invoke($mod, ['accessToken' => 'x'], $fake3);
+check('Ermittlung fehlgeschlagen → Abruf liefert null', $devices3 === null);
+check('Kein zweiter getGroups-Versuch ohne neue Version', $fake3->groupCalls === 1, $fake3->groupCalls . ' Aufrufe');
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";

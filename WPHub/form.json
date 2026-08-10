@@ -95,7 +95,7 @@
                         {
                             "type": "ValidationTextBox",
                             "name": "CC_AppVersion",
-                            "caption": "App-Version"
+                            "caption": "App-Version (leer = automatisch)"
                         },
                         {
                             "type": "PopupButton",
@@ -106,7 +106,7 @@
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "Die Comfort Cloud weist Anfragen zu alter App-Versionen ab (Fehlercode 4106). Meldet das Protokoll diesen Fehler, hier die aktuelle Versionsnummer der offiziellen Comfort-Cloud-App (Play Store/App Store) eintragen und uebernehmen. Standard: 1.21.0"
+                                        "caption": "Die Comfort Cloud weist Anfragen zu alter App-Versionen ab (Fehlercode 4106). WPHub ermittelt die aktuelle Versionsnummer der offiziellen App dann selbst (Play Store, ersatzweise AppBrain) und verwendet sie automatisch weiter. Dieses Feld ist nur der Notnagel, falls die automatische Ermittlung fehlschlaegt: dann hier die Versionsnummer aus dem Play Store/App Store eintragen und uebernehmen. Eine automatisch ermittelte Version hat Vorrang vor diesem Feld."
                                     }
                                 ]
                             }

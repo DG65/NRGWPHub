@@ -46,13 +46,17 @@ class WPHub extends IPSModule
         $this->RegisterPropertyString('CC_Email', '');
         $this->RegisterPropertyString('CC_Password', ''); // PasswordTextBox im Formular
         // Versionsnummer der offiziellen Comfort-Cloud-App: Die API weist zu
-        // alte Versionen ab (Fehlercode 4106); dann hier die aktuelle
-        // Play-Store-/App-Store-Version eintragen.
-        $this->RegisterPropertyString('CC_AppVersion', '1.21.0');
+        // alte Versionen ab (Fehlercode 4106). Das Modul ermittelt die
+        // aktuelle Version dann selbst (Play Store/AppBrain) und merkt sie
+        // sich im Attribut CC_AppVersionAuto -- dieses Feld ist nur der
+        // Notnagel, falls die automatische Ermittlung nicht funktioniert.
+        $this->RegisterPropertyString('CC_AppVersion', '');
 
         // Ergebnis des Handshakes -- NICHT das Passwort selbst.
         $this->RegisterAttributeString('CC_Token', '');
         $this->RegisterAttributeString('CC_DeviceList', '[]');
+        // Zuletzt automatisch ermittelte App-Version (hat Vorrang).
+        $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt bestaetigter Stand des "Neu in Version"-Panels.
         $this->RegisterAttributeString('SeenNews', '');
 
@@ -142,7 +146,11 @@ class WPHub extends IPSModule
             $say('❌ ' . $client->getLastError());
             return;
         }
-        if (!$client->accLogin($bundle)) {
+        $ok = $client->accLogin($bundle);
+        if (!$ok && $this->tryAppVersionRefresh($client)) {
+            $ok = $client->accLogin($bundle);
+        }
+        if (!$ok) {
             $say('❌ ' . $client->getLastError());
             return;
         }
@@ -230,13 +238,37 @@ class WPHub extends IPSModule
 
     private function ccClient(): WPHUB_ComfortCloudClient
     {
-        $appVersion = trim($this->ReadPropertyString('CC_AppVersion'));
+        // Vorrang: zuletzt automatisch ermittelte Version -> manueller
+        // Notnagel aus dem Formular -> Code-Standard (Stand 08/2026).
+        $appVersion = trim($this->ReadAttributeString('CC_AppVersionAuto'));
         if ($appVersion === '') {
-            $appVersion = '1.21.0';
+            $appVersion = trim($this->ReadPropertyString('CC_AppVersion'));
+        }
+        if ($appVersion === '') {
+            $appVersion = '4.4.0';
         }
         return new WPHUB_ComfortCloudClient($appVersion, function (string $topic, string $text) {
             $this->SendDebug('ComfortCloud/' . $topic, $text, 0);
         });
+    }
+
+    /**
+     * Nach einer 4106-Ablehnung (App-Version zu alt): aktuelle Version der
+     * offiziellen App ermitteln, merken und true liefern -- der Aufrufer
+     * wiederholt dann genau einen Versuch.
+     */
+    private function tryAppVersionRefresh(WPHUB_ComfortCloudClient $client): bool
+    {
+        if (!$client->versionRejected()) {
+            return false;
+        }
+        $new = $client->refreshAppVersion();
+        if ($new === null) {
+            return false;
+        }
+        $this->WriteAttributeString('CC_AppVersionAuto', $new);
+        $this->LogMessage('Comfort-Cloud-App-Version automatisch auf ' . $new . ' aktualisiert.', KL_NOTIFY);
+        return true;
     }
 
     /** Token-Buendel aus dem Attribut, null wenn (noch) keines da ist. */
@@ -289,6 +321,9 @@ class WPHub extends IPSModule
     private function refreshDevices(array $bundle, WPHUB_ComfortCloudClient $client): ?array
     {
         $groups = $client->getGroups($bundle);
+        if ($groups === null && $this->tryAppVersionRefresh($client)) {
+            $groups = $client->getGroups($bundle);
+        }
         if ($groups === null) {
             return null;
         }
