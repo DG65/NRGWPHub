@@ -352,6 +352,29 @@ check('Relative Location ohne Slash', $absUrl->invoke($client, 'login?x=1') === 
 check('Absolute Location unveraendert', $absUrl->invoke($client, 'https://example.org/a') === 'https://example.org/a');
 
 // ---------------------------------------------------------------------------
+echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";
+// ---------------------------------------------------------------------------
+// Lehre aus Build 2: login() rief $this->resetCookies() auf, die Methode
+// fehlte aber -- der Pruefstand deckt Netzpfade nicht aus, php -l sieht
+// undefinierte Methoden nicht. Deshalb hier statisch: jeder $this->x()-
+// Aufruf muss in der Klasse (oder ihrer Basis) existieren.
+
+foreach ([
+    ['WPHub/libs/ComfortCloudClient.php', WPHUB_ComfortCloudClient::class],
+    ['WPHub/module.php', WPHub::class],
+] as [$file, $class]) {
+    $src = file_get_contents(__DIR__ . '/../' . $file);
+    preg_match_all('/\$this->([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/', $src, $m);
+    $missing = [];
+    foreach (array_unique($m[1]) as $method) {
+        if (!method_exists($class, $method)) {
+            $missing[] = $method;
+        }
+    }
+    check("Alle \$this->…()-Aufrufe in $file definiert", count($missing) === 0, 'fehlt: ' . implode(', ', $missing));
+}
+
+// ---------------------------------------------------------------------------
 echo "\n";
 if ($failures === 0) {
     echo "Alle Pruefungen bestanden.\n";

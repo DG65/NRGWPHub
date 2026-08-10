@@ -51,6 +51,16 @@ class WPHUB_ComfortCloudClient
         return $this->lastError;
     }
 
+    // Cookie-Behaelter verwerfen, damit ein neuer Login ohne Altlasten
+    // (alte Auth0-Session) startet — Pendant zum clear_domain() der Referenz.
+    private function resetCookies(): void
+    {
+        if ($this->cookieFile !== null && is_file($this->cookieFile)) {
+            @unlink($this->cookieFile);
+        }
+        $this->cookieFile = null;
+    }
+
     // ------------------------------------------------------------------
     // Login-Handshake (Auth0, PKCE). Liefert bei Erfolg ein Token-Buendel:
     // ['accessToken','refreshToken','expiresAt','scope','clientId'].
