@@ -296,29 +296,22 @@ class WPHub extends IPSModule
             return;
         }
         $client = $this->ccClient();
-        $hp = [
-            ['key' => 'Accept', 'value' => 'application/json; charset=UTF-8'],
-            ['key' => 'Content-Type', 'value' => 'application/json'],
-            new stdClass(),
-        ];
         $guidF = urlencode(str_replace('/', 'f', $guid)); // App-Transform für a2wInfo
 
+        // Wo stehen die A2W-Betriebsdaten? Volle Antwortkoerper der Kandidaten.
         $variants = [
-            ['transfer 3-header direct=1', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => $hp]],
-            ['transfer 2-header direct=1', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => [$hp[0], $hp[1]]]],
-            ['transfer +serviceId', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => $hp, 'serviceId' => '']],
-            ['transfer +bodyParam', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => $hp, 'bodyParam' => new stdClass()]],
-            ['a2wInfo transform', 'GET', '/device/a2wInfo/' . $guidF, null],
-            ['a2wInfo raw', 'GET', '/device/a2wInfo/' . rawurlencode($guid), null],
-            ['transfer direct=0', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0', 'requestMethod' => 'GET', 'headerParam' => $hp]],
+            ['device/group (voll)', 'GET', '/device/group', null],
+            ['deviceStatus/{guid}', 'GET', '/deviceStatus/' . $guidF, null],
+            ['deviceStatus/now/{guid}', 'GET', '/deviceStatus/now/' . $guidF, null],
+            ['a2wInfo/{guid} (voll)', 'GET', '/device/a2wInfo/' . $guidF, null],
         ];
 
-        $lines = ['A2W-Probe für GUID ' . $guid . ' (transform: ' . $guidF . '):'];
         foreach ($variants as $i => [$label, $method, $path, $body]) {
             $res = $client->debugCall($bundle, $method, $path, $body);
-            $lines[] = sprintf('#%d %s -> HTTP %d: %s', $i + 1, $label, $res['status'], substr($res['body'], 0, 220));
+            // Je Variante ein eigener Log-Eintrag, damit lange Koerper nicht
+            // abgeschnitten werden.
+            $this->LogMessage(sprintf('A2W-Probe2 #%d %s -> HTTP %d:\n%s', $i + 1, $label, $res['status'], substr($res['body'], 0, 1800)), KL_WARNING);
         }
-        $this->LogMessage(implode("\n", $lines), KL_WARNING);
     }
 
     /**
