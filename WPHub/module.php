@@ -353,6 +353,35 @@ class WPHub extends IPSModule
     }
 
     /**
+     * DIAGNOSE (temporaer): Machbarkeit aquarea-smart.panasonic.com pruefen --
+     * greift unser vorhandenes Token dort direkt, oder braucht es eine
+     * Browser-SSO-Sitzung? Loggt Status/Location/Koerper je Kandidat.
+     */
+    public function ProbeAquareaSmart()
+    {
+        $bundle = $this->ensureToken();
+        if ($bundle === null) {
+            $this->LogMessage('ProbeAquareaSmart: keine gültige Anmeldung.', KL_WARNING);
+            return;
+        }
+        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
+        $client = $this->ccClient();
+        $base = 'https://aquarea-smart.panasonic.com';
+        $variants = [
+            ['devices acc-Header',  $base . '/remote/v1/api/devices', 'acc'],
+            ['devices aqua-Header', $base . '/remote/v1/api/devices', 'aqua'],
+            ['devices?gwid cached', $base . '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0', 'acc'],
+            ['Wurzel /',            $base . '/', 'aqua'],
+        ];
+        foreach ($variants as $i => [$label, $url, $mode]) {
+            $res = $client->debugExternal($bundle, $url, $mode);
+            $this->LogMessage(sprintf('ProbeAqS #%d %s -> HTTP %d, Location=%s, Body: %s',
+                $i + 1, $label, $res['status'], substr($res['location'], 0, 120), substr($res['body'], 0, 700)), KL_WARNING);
+        }
+    }
+
+    /**
      * Zyklische Aktualisierung: Token pruefen/erneuern, Geraeteliste und
      * A2W-Status abrufen, Variablen pflegen.
      */
