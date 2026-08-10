@@ -34,6 +34,7 @@ class WPHUB_ComfortCloudClient
     private $debug = null; // callable(string $topic, string $text)
     private $versionRejected = false;   // letzte API-Antwort war 4106 (App-Version zu alt)
     private $agreementRequired = false; // letzte API-Antwort war 4103 (Bedingungen aktualisiert)
+    private $apiTrace = [];             // Diagnose: letzte API-Aufrufe (Pfad/Status/Antwort, ohne Geheimnisse)
 
     public function __construct(string $appVersion = '1.21.0', ?callable $debug = null)
     {
@@ -51,6 +52,17 @@ class WPHUB_ComfortCloudClient
     public function getLastError(): string
     {
         return $this->lastError;
+    }
+
+    /**
+     * Diagnose-Mitschnitt der letzten Geraete-API-Aufrufe (Methode, Pfad,
+     * Statuscode, gekuerzter Antwortkoerper). Enthaelt KEINE Zugangsdaten --
+     * Token stehen nur in Headern, die hier nicht auftauchen. Fuer die
+     * Fehlersuche ins Systemprotokoll.
+     */
+    public function getApiTrace(): string
+    {
+        return implode("\n", $this->apiTrace);
     }
 
     /** Hat der letzte API-Aufruf die App-Version abgelehnt (Code 4106)? */
@@ -453,7 +465,21 @@ class WPHUB_ComfortCloudClient
         $this->agreementRequired = false;
         $headers = $this->apiHeaders($bundle, $includeClientId);
         $body = ($jsonBody !== null) ? json_encode($jsonBody) : null;
-        return $this->request($method, self::ACC_BASE . $path, $headers, $body);
+        $r = $this->request($method, self::ACC_BASE . $path, $headers, $body);
+
+        // Diagnose-Mitschnitt (nur Pfad ohne Query, Status, gekuerzter Koerper;
+        // keine Header/Token). Query kann eine Geraete-GUID enthalten -> weg.
+        $pathForTrace = explode('?', $path)[0];
+        $reqBody = ($body !== null) ? ' req=' . substr($body, 0, 120) : '';
+        if ($r === null) {
+            $this->apiTrace[] = $method . ' ' . $pathForTrace . ' -> (kein Ergebnis: ' . $this->lastError . ')';
+        } else {
+            $this->apiTrace[] = $method . ' ' . $pathForTrace . ' -> ' . $r['status'] . $reqBody . ' resp=' . substr((string)$r['body'], 0, 200);
+        }
+        if (count($this->apiTrace) > 12) {
+            $this->apiTrace = array_slice($this->apiTrace, -12);
+        }
+        return $r;
     }
 
     private function apiHeaders(array $bundle, bool $includeClientId): array

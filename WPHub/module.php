@@ -249,7 +249,10 @@ class WPHub extends IPSModule
 
         $devices = $this->refreshDevices($bundle, $client);
         if ($devices === null) {
-            $say('⚠️ Zustimmung übermittelt (' . (count($accepted) ? implode(', ', $accepted) : 'nichts offen') . '), aber die Geräteliste lässt sich weiterhin nicht laden: ' . $client->getLastError());
+            // Diagnose ins Systemprotokoll (keine Geheimnisse) -- macht sichtbar,
+            // welche Versionen bestaetigt wurden und wie die Cloud geantwortet hat.
+            $this->LogMessage("WPHub-Diagnose Zustimmung:\n" . $client->getApiTrace(), KL_WARNING);
+            $say('⚠️ Zustimmung übermittelt (' . (count($accepted) ? implode(', ', $accepted) : 'nichts offen') . '), aber die Geräteliste lässt sich weiterhin nicht laden: ' . $client->getLastError() . ' — Details stehen im Systemprotokoll.');
             return;
         }
         $this->SetStatus(102);
