@@ -99,31 +99,110 @@ class WPHUB_ComfortCloudClient
     public function acceptAgreement(array $bundle, int $typeId): bool
     {
         $this->lastError = '';
-        $body = ['agreementStatus' => 1, 'type' => $typeId];
-        $variants = [
-            ['PUT',  '/auth/agreement/status/'],
-            ['PUT',  '/auth/agreement/status'],
-            ['PUT',  '/auth/agreement/status/' . $typeId],
-            ['POST', '/auth/agreement/status/'],
-            ['PUT',  '/auth/v2/agreement/status/'],
-        ];
-        foreach ($variants as [$method, $path]) {
-            $r = $this->apiRequest($bundle, $method, $path, $body);
+
+        // Erkundungsphase (Build 6): Die v1-Route (PUT /auth/agreement/status/,
+        // App-Aera 1.20) existiert nicht mehr; /auth/v2/agreement/status/ ist
+        // real, verlangte aber andere Body-Felder (400, Code 4002). Das
+        // v2-Schema ist nirgends oeffentlich dokumentiert -- deshalb: erst den
+        // v2-Status LESEN (verraet die Feldnamen), daraus den Body ableiten,
+        // danach wenige statische Kandidaten. Weitergeschaltet wird nur bei
+        // 4002 ("Missing required body parameter" = Validierung abgelehnt,
+        // nichts bewirkt) oder unbekannter Route; sonst stoppt die Leiter --
+        // die Zustimmung wird hoechstens einmal ausgefuehrt.
+        $path = '/auth/v2/agreement/status/';
+        $statusRaw = $this->probeAgreementStatusV2($bundle, $typeId);
+
+        $bodies = [];
+        $entry = $this->agreementEntryFromStatus($statusRaw, $typeId);
+        if ($entry !== null) {
+            // Gelesenen Eintrag zurueckspiegeln, Status-Felder auf 1 setzen.
+            foreach (['agreementStatus', 'status'] as $f) {
+                if (array_key_exists($f, $entry)) {
+                    $entry[$f] = 1;
+                }
+            }
+            if (!array_key_exists('agreementStatus', $entry) && !array_key_exists('status', $entry)) {
+                $entry['agreementStatus'] = 1;
+            }
+            $bodies[] = $entry;
+        }
+        $bodies[] = ['agreementStatus' => 1, 'type' => $typeId, 'language' => 0];
+        $bodies[] = ['agreementType' => $typeId, 'agreementStatus' => 1];
+        $bodies[] = ['type' => $typeId, 'status' => 1];
+        $bodies[] = ['agreementList' => [['type' => $typeId, 'agreementStatus' => 1]]];
+
+        foreach ($bodies as $body) {
+            $r = $this->apiRequest($bundle, 'PUT', $path, $body);
             if ($r !== null && $r['status'] === 200) {
-                $this->dbg('agreement', 'Zustimmung Typ ' . $typeId . ' erfolgreich via ' . $method . ' ' . $path);
+                $this->dbg('agreement', 'Zustimmung Typ ' . $typeId . ' erfolgreich, Body: ' . json_encode(array_keys($body)));
                 return true;
             }
-            $unknownRoute = ($r !== null && $r['status'] === 403
-                && strpos((string)$r['body'], 'Missing Authentication Token') !== false);
-            if (!$unknownRoute) {
-                $this->failApi('Zustimmung (' . $method . ' ' . $path . ', Typ ' . $typeId . ')', $r);
+            $retryable = ($r !== null) && (
+                ($r['status'] === 400 && strpos((string)$r['body'], '4002') !== false)
+                || ($r['status'] === 403 && strpos((string)$r['body'], 'Missing Authentication Token') !== false)
+            );
+            if (!$retryable) {
+                $this->failApi('Zustimmung (PUT ' . $path . ', Typ ' . $typeId . ', Felder ' . json_encode(array_keys($body)) . ')', $r);
                 return false;
             }
-            $this->dbg('agreement', 'Route unbekannt (' . $method . ' ' . $path . '), naechster Kandidat');
+            $this->dbg('agreement', 'Body abgelehnt (' . json_encode(array_keys($body)) . '), naechster Kandidat');
         }
-        $this->lastError = 'Zustimmung (Typ ' . $typeId . '): kein bekannter API-Pfad wird von der Cloud akzeptiert. Bitte einmal die offizielle Comfort-Cloud-App oeffnen und die Bedingungen dort bestaetigen.';
+
+        $this->lastError = 'Zustimmung (Typ ' . $typeId . '): kein Body-Format wird von der Cloud akzeptiert.'
+            . ($statusRaw !== null ? ' V2-Statusantwort zur Analyse: ' . substr(json_encode($statusRaw), 0, 400) : ' (v2-Status nicht lesbar)')
+            . ' — Bitte einmal die offizielle Comfort-Cloud-App oeffnen und die Bedingungen dort bestaetigen.';
         $this->dbg('fehler', $this->lastError);
         return false;
+    }
+
+    /** Read-only: v2-Zustimmungsstatus in mehreren Pfadvarianten lesen. */
+    private function probeAgreementStatusV2(array $bundle, int $typeId)
+    {
+        foreach (['/auth/v2/agreement/status/', '/auth/v2/agreement/status', '/auth/v2/agreement/status/' . $typeId] as $p) {
+            $r = $this->apiRequest($bundle, 'GET', $p);
+            if ($r !== null && $r['status'] === 200) {
+                $json = json_decode($r['body'], true);
+                if ($json !== null) {
+                    $this->dbg('agreement', 'v2-Status via GET ' . $p . ': ' . substr($r['body'], 0, 400));
+                    return $json;
+                }
+            }
+        }
+        $this->dbg('agreement', 'v2-Status nicht lesbar');
+        return null;
+    }
+
+    /** Aus einer v2-Statusantwort den Eintrag fuer den Typ herausfinden. */
+    private function agreementEntryFromStatus($statusRaw, int $typeId): ?array
+    {
+        if (!is_array($statusRaw)) {
+            return null;
+        }
+        // Liste direkt oder unter einem Huellen-Schluessel (agreementList o. ae.)
+        $candidates = [];
+        if (array_keys($statusRaw) === range(0, count($statusRaw) - 1)) {
+            $candidates = $statusRaw;
+        } else {
+            foreach ($statusRaw as $v) {
+                if (is_array($v) && array_keys($v) === range(0, count($v) - 1)) {
+                    $candidates = $v;
+                    break;
+                }
+            }
+            if (!$candidates && (isset($statusRaw['type']) || isset($statusRaw['agreementType']))) {
+                $candidates = [$statusRaw];
+            }
+        }
+        foreach ($candidates as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+            $t = $entry['type'] ?? ($entry['agreementType'] ?? null);
+            if ((int)$t === $typeId) {
+                return $entry;
+            }
+        }
+        return null;
     }
 
     public function getAppVersion(): string
