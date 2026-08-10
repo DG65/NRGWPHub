@@ -316,6 +316,43 @@ class WPHub extends IPSModule
     }
 
     /**
+     * DIAGNOSE (temporaer): Direkte Aquarea-Smart-Cloud-Endpunkte auf
+     * accsmart.panasonic.com testen (NICHT ueber den Transfer-Proxy). Loggt je
+     * Kandidat Status + vollen Koerper in Stuecken.
+     */
+    public function ProbeAquarea()
+    {
+        $bundle = $this->ensureToken();
+        if ($bundle === null) {
+            $this->LogMessage('ProbeAquarea: keine gültige Anmeldung.', KL_WARNING);
+            return;
+        }
+        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
+        if ($guid === '') {
+            $this->LogMessage('ProbeAquarea: keine Geräte-GUID im Cache.', KL_WARNING);
+            return;
+        }
+        $client = $this->ccClient();
+        $variants = [
+            ['devices direkt cached', 'GET', '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0'],
+            ['devices direkt live',   'GET', '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1'],
+            ['devices Liste',         'GET', '/remote/v1/api/devices'],
+            ['a2wStatusDisplay',      'GET', '/remote/a2wStatusDisplay'],
+            ['consumption',           'GET', '/remote/v1/api/consumption/' . $guid . '?date=' . date('Ymd')],
+        ];
+        foreach ($variants as $i => [$label, $method, $path]) {
+            $res = $client->debugCall($bundle, $method, $path);
+            $body = (string)$res['body'];
+            $this->LogMessage(sprintf('ProbeAq #%d %s -> HTTP %d, Länge %d', $i + 1, $label, $res['status'], strlen($body)), KL_WARNING);
+            foreach (str_split($body, 1400) as $j => $chunk) {
+                $this->LogMessage('ProbeAq #' . ($i + 1) . '[' . $j . ']: ' . $chunk, KL_WARNING);
+                if ($j >= 2) { break; } // max ~4200 Zeichen je Variante
+            }
+        }
+    }
+
+    /**
      * Zyklische Aktualisierung: Token pruefen/erneuern, Geraeteliste und
      * A2W-Status abrufen, Variablen pflegen.
      */
