@@ -1,0 +1,12 @@
+{
+    "id": "{D81D0DE5-CFA2-4DA3-96ED-1D5F740BD232}",
+    "author": "DG65",
+    "name": "NRG-Stack WPHub for IP-Symcon",
+    "url": "https://github.com/DG65/WPHub",
+    "version": "0.1.0",
+    "build": 1,
+    "date": 1786367545,
+    "compatibility": {
+        "version": "9.0"
+    }
+}

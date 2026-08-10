@@ -1,0 +1,15 @@
+{
+    "id": "{5BE429EA-3AAD-4A8B-85DE-5778CCA2E6BC}",
+    "library": "{D81D0DE5-CFA2-4DA3-96ED-1D5F740BD232}",
+    "name": "WPHub",
+    "type": 3,
+    "vendor": "Panasonic",
+    "aliases": [
+        "NRG-Stack WPHub",
+        "Panasonic Comfort Cloud"
+    ],
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "WPHUB"
+}

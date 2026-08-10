@@ -1,0 +1,79 @@
+{
+    "elements": [
+        {
+            "type": "ExpansionPanel",
+            "caption": "📖 Dokumentation & Hilfe",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "Label",
+                    "caption": "ℹ️ WPHub Version 0.1.0 -- Waermepumpen-Cloud-Anbindung, Start mit Panasonic Comfort Cloud."
+                },
+                {
+                    "type": "Label",
+                    "caption": "Verbindet sich mit der Panasonic Comfort Cloud und stellt gefundene Waermepumpen dem NRG-Stack-Verbund (z. B. EMS) zur Verfuegung. Details: https://github.com/DG65/WPHub"
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "🔧 Allgemein",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "CheckBox",
+                    "name": "WPHUB_Active",
+                    "caption": "WPHub aktiv"
+                },
+                {
+                    "type": "NumberSpinner",
+                    "name": "WPHUB_Interval",
+                    "caption": "Aktualisierungsintervall (Sekunden)",
+                    "minimum": 30,
+                    "maximum": 600,
+                    "suffix": " s"
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "☁️ Panasonic Comfort Cloud",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Label",
+                            "caption": "Zugangsdaten werden nur fuer den einmaligen Login verwendet, danach nicht mehr gespeichert -- nur das resultierende Token."
+                        },
+                        {
+                            "type": "PopupButton",
+                            "caption": "?",
+                            "width": "70px",
+                            "popup": {
+                                "caption": "Hinweis zur Sicherheit",
+                                "items": [
+                                    {
+                                        "type": "Label",
+                                        "caption": "IP-Symcon verschluesselt Attribute NICHT at rest. \"Sicher\" heisst hier: nicht im Formular/Log sichtbar -- keine echte Verschluesselung. Das Passwort wird nur fuer den Login-Handshake verwendet und danach verworfen."
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "CC_Email",
+                    "caption": "Comfort Cloud E-Mail"
+                },
+                {
+                    "type": "PasswordTextBox",
+                    "name": "CC_Password",
+                    "caption": "Comfort Cloud Passwort"
+                }
+            ]
+        }
+    ]
+}
