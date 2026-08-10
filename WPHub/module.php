@@ -277,44 +277,6 @@ class WPHub extends IPSModule
     }
 
     /**
-     * DIAGNOSE (temporaer): Verschiedene A2W-Abrufvarianten gegen das echte
-     * Geraet testen und je Variante Status + gekuerzten Koerper ins System-
-     * protokoll schreiben. Wird per Konsole/Skript ausgeloest, nicht im
-     * Normalbetrieb. Loggt die Geraete-GUID (lokales Protokoll, eigenes Geraet).
-     */
-    public function ProbeA2W()
-    {
-        $bundle = $this->ensureToken();
-        if ($bundle === null) {
-            $this->LogMessage('A2W-Probe: keine gültige Anmeldung.', KL_WARNING);
-            return;
-        }
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
-        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
-        if ($guid === '') {
-            $this->LogMessage('A2W-Probe: keine Geräte-GUID im Cache.', KL_WARNING);
-            return;
-        }
-        $client = $this->ccClient();
-        $guidF = urlencode(str_replace('/', 'f', $guid)); // App-Transform für a2wInfo
-
-        // Wo stehen die A2W-Betriebsdaten? Volle Antwortkoerper der Kandidaten.
-        $variants = [
-            ['device/group (voll)', 'GET', '/device/group', null],
-            ['deviceStatus/{guid}', 'GET', '/deviceStatus/' . $guidF, null],
-            ['deviceStatus/now/{guid}', 'GET', '/deviceStatus/now/' . $guidF, null],
-            ['a2wInfo/{guid} (voll)', 'GET', '/device/a2wInfo/' . $guidF, null],
-        ];
-
-        foreach ($variants as $i => [$label, $method, $path, $body]) {
-            $res = $client->debugCall($bundle, $method, $path, $body);
-            // Je Variante ein eigener Log-Eintrag, damit lange Koerper nicht
-            // abgeschnitten werden.
-            $this->LogMessage(sprintf('A2W-Probe2 #%d %s -> HTTP %d:\n%s', $i + 1, $label, $res['status'], substr($res['body'], 0, 1800)), KL_WARNING);
-        }
-    }
-
-    /**
      * Zyklische Aktualisierung: Token pruefen/erneuern, Geraeteliste und
      * A2W-Status abrufen, Variablen pflegen.
      */
@@ -458,9 +420,10 @@ class WPHub extends IPSModule
     }
 
     /**
-     * Geraeteliste laden, je Aquarea-Geraet den A2W-Status holen und die
-     * Variablen pflegen. Liefert die Geraeteliste oder null bei Cloud-Fehler
-     * (dann bleibt der letzte bekannte Stand unangetastet).
+     * Geraeteliste laden und je Aquarea-Waermepumpe die Variablen pflegen.
+     * Die Betriebsdaten stehen INLINE in der device/group-Antwort (kein
+     * separater Statusabruf). Liefert die Geraeteliste oder null bei Cloud-
+     * Fehler (dann bleibt der letzte bekannte Stand unangetastet).
      */
     private function refreshDevices(array $bundle, WPHUB_ComfortCloudClient $client): ?array
     {
@@ -474,8 +437,7 @@ class WPHub extends IPSModule
 
         $devices = [];
         foreach (($groups['groupList'] ?? []) as $group) {
-            $list = $group['deviceList'] ?? ($group['deviceIdList'] ?? []);
-            foreach ($list as $entry) {
+            foreach (($group['deviceList'] ?? []) as $entry) {
                 if (!is_array($entry)) {
                     continue;
                 }
@@ -483,32 +445,22 @@ class WPHub extends IPSModule
                 if ($guid === '') {
                     continue;
                 }
-                // Klimageraete tragen ihre Parameter direkt in der Gruppen-
-                // antwort -- die bindet WPHub bewusst nicht ein (dafuer gibt
-                // es andere Module). Aquarea-Geraete kommen ohne 'parameters'
-                // und werden ueber den A2W-Statusabruf verifiziert.
-                if (isset($entry['parameters'])) {
-                    $this->SendDebug('Geraete', 'Übersprungen (Klimagerät): ' . ($entry['deviceName'] ?? $guid), 0);
+                // Nur Aquarea-Waermepumpen: deviceType "2" bzw. Eintraege mit
+                // Zonen-/Speicherstatus. Klimageraete (anderer deviceType, mit
+                // 'parameters') bindet WPHub bewusst nicht ein.
+                $isA2W = ((string)($entry['deviceType'] ?? '') === '2')
+                    || isset($entry['zoneStatus']) || isset($entry['tankStatus']);
+                if (!$isA2W) {
+                    $this->SendDebug('Geraete', 'Übersprungen (kein A2W): ' . ($entry['deviceName'] ?? $guid), 0);
                     continue;
                 }
 
-                $status = $client->getAquareaStatus($bundle, $guid, true);
-                if ($status === null) {
-                    // Live-Abfrage fehlgeschlagen -> Cloud-Cache versuchen.
-                    $status = $client->getAquareaStatus($bundle, $guid, false);
-                }
-
-                $name = '';
-                if (is_array($status)) {
-                    $name = (string)($status['a2wName'] ?? '');
-                }
-                if ($name === '') {
-                    $name = (string)($entry['deviceName'] ?? ('Wärmepumpe ' . substr($guid, 0, 8)));
-                }
+                $name = (string)($entry['deviceName'] ?? ('Wärmepumpe ' . substr($guid, 0, 8)));
                 $prefix = $this->devicePrefix($guid);
-                $reachable = is_array($status) && isset($status['status']);
+                // connectionStatus: 1 = erreichbar, 0 = derzeit nicht erreichbar.
+                $reachable = ((int)($entry['connectionStatus'] ?? 0)) === 1;
 
-                $this->maintainDeviceVariables($prefix, $name, $reachable ? $status : null);
+                $this->maintainDeviceVariables($prefix, $name, $entry, $reachable);
 
                 $devices[] = [
                     'guid'      => $guid,
@@ -523,54 +475,54 @@ class WPHub extends IPSModule
         return $devices;
     }
 
-    /** Variablen eines Geraets anlegen/pflegen und Werte schreiben. */
-    private function maintainDeviceVariables(string $prefix, string $name, ?array $statusResponse): void
+    /**
+     * Variablen eines Geraets anlegen/pflegen. $dev ist der Geraeteeintrag aus
+     * der device/group-Antwort. Vorhandene Messwerte werden auch bei
+     * connectionStatus 0 als letzter bekannter Stand geschrieben; die
+     * Erreichbarkeit spiegelt connectionStatus wider.
+     */
+    private function maintainDeviceVariables(string $prefix, string $name, array $dev, bool $reachable): void
     {
         $pos = 0;
         $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
-        $this->SetValue($prefix . 'Erreichbar', $statusResponse !== null);
-        if ($statusResponse === null) {
-            return;
+        $this->SetValue($prefix . 'Erreichbar', $reachable);
+
+        if (isset($dev['operationMode'])) {
+            $this->MaintainVariable($prefix . 'Betriebsart', $name . ': Betriebsart', VARIABLETYPE_INTEGER, '', $pos++, true);
+            $this->SetValue($prefix . 'Betriebsart', (int)$dev['operationMode']);
         }
 
-        $status = $statusResponse['status'] ?? [];
-        if (isset($statusResponse['operation'])) {
-            $this->MaintainVariable($prefix . 'Betrieb', $name . ': Betrieb', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
-            $this->SetValue($prefix . 'Betrieb', (string)$statusResponse['operation'] === '1');
-        }
-        if (isset($status['outdoorNow']) && $this->isValidTemperature($status['outdoorNow'])) {
-            $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': Außentemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-            $this->SetValue($prefix . 'Aussentemperatur', (float)$status['outdoorNow']);
-        }
-
-        // Warmwasserspeicher (nur wenn vorhanden/angeschlossen).
-        $tank = $status['tankStatus'] ?? null;
-        if (is_array($tank) && isset($tank['temperatureNow']) && $this->isValidTemperature($tank['temperatureNow'])) {
-            $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-            $this->SetValue($prefix . 'Warmwasser', (float)$tank['temperatureNow']);
-            if (isset($tank['heatSet']) && $this->isValidTemperature($tank['heatSet'])) {
+        // Warmwasserspeicher: temperatureNow = Ist, temperature = Sollwert.
+        $tank = $dev['tankStatus'] ?? null;
+        if (is_array($tank)) {
+            if (isset($tank['temperatureNow']) && $this->isValidTemperature($tank['temperatureNow'])) {
+                $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+                $this->SetValue($prefix . 'Warmwasser', (float)$tank['temperatureNow']);
+            }
+            if (isset($tank['temperature']) && $this->isValidTemperature($tank['temperature'])) {
                 $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': Warmwasser Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-                $this->SetValue($prefix . 'WarmwasserSoll', (float)$tank['heatSet']);
+                $this->SetValue($prefix . 'WarmwasserSoll', (float)$tank['temperature']);
+            }
+            if (isset($tank['operationStatus'])) {
+                $this->MaintainVariable($prefix . 'WarmwasserBetrieb', $name . ': Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->SetValue($prefix . 'WarmwasserBetrieb', (int)$tank['operationStatus'] === 1);
             }
         }
 
-        // Heizzonen.
-        foreach (($status['zoneStatus'] ?? []) as $zone) {
+        // Heizzonen: temperature = Solltemperatur der Zone, operationStatus = aktiv.
+        foreach (($dev['zoneStatus'] ?? []) as $zone) {
             if (!is_array($zone) || !isset($zone['zoneId'])) {
                 continue;
             }
             $zid = (int)$zone['zoneId'];
-            $zname = trim((string)($zone['zoneName'] ?? ''));
-            if ($zname === '') {
-                $zname = 'Zone ' . $zid;
+            $zname = 'Zone ' . $zid;
+            if (isset($zone['temperature']) && $this->isValidTemperature($zone['temperature'])) {
+                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . $zname . ' Solltemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+                $this->SetValue($prefix . 'Zone' . $zid . 'Soll', (float)$zone['temperature']);
             }
-            if (isset($zone['temperatureNow']) && $this->isValidTemperature($zone['temperatureNow'])) {
-                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Ist', $name . ': ' . $zname . ' Isttemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-                $this->SetValue($prefix . 'Zone' . $zid . 'Ist', (float)$zone['temperatureNow']);
-            }
-            if (isset($zone['heatSet']) && $this->isValidTemperature($zone['heatSet'])) {
-                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . $zname . ' Sollwert (Heizen)', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-                $this->SetValue($prefix . 'Zone' . $zid . 'Soll', (float)$zone['heatSet']);
+            if (isset($zone['operationStatus'])) {
+                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Betrieb', $name . ': ' . $zname . ' aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->SetValue($prefix . 'Zone' . $zid . 'Betrieb', (int)$zone['operationStatus'] === 1);
             }
         }
     }

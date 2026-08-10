@@ -412,68 +412,12 @@ class WPHUB_ComfortCloudClient
         return $json;
     }
 
-    // Aquarea-(A2W-)Status ueber den Transfer-Proxy. $direct=true fragt das
-    // Geraet live ab, false liefert den zwischengespeicherten Cloud-Stand.
-    // Der Proxy verlangt im Body neben apiName/requestMethod eine headerParam-
-    // Liste (sonst 400, Code 4000 "Missing required header parameter"). Die
-    // gwid wird -- wie in der App -- roh in den apiName-Query gehaengt.
-    public function getAquareaStatus(array $bundle, string $gwid, bool $direct = true): ?array
-    {
-        $this->lastError = '';
-        $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', [
-            'apiName'       => '/remote/v1/api/devices?gwid=' . $gwid . '&deviceDirect=' . ($direct ? '1' : '0'),
-            'requestMethod' => 'GET',
-            'headerParam'   => $this->transferHeaderParam(),
-        ]);
-        $json = ($r !== null) ? json_decode($r['body'], true) : null;
-        if ($r === null || $r['status'] !== 200 || !is_array($json)) {
-            $this->failApi('A2W-Status (transfer)', $r);
-            return null;
-        }
-        return $json;
-    }
-
-    // headerParam-Liste fuer den Transfer-Proxy, exakt wie die offizielle App
-    // (zwei echte Header + ein leerer Platzhalter-Eintrag).
-    private function transferHeaderParam(): array
-    {
-        return [
-            ['key' => 'Accept', 'value' => 'application/json; charset=UTF-8'],
-            ['key' => 'Content-Type', 'value' => 'application/json'],
-            new stdClass(),
-        ];
-    }
-
-    // Diagnose: roher, signierter API-Aufruf. Liefert immer ['status','body']
-    // (status 0 = Transportfehler). Nur fuer die A2W-Endpunkt-Erkundung.
-    public function debugCall(array $bundle, string $method, string $path, ?array $jsonBody = null): array
-    {
-        $r = $this->apiRequest($bundle, $method, $path, $jsonBody);
-        if ($r === null) {
-            return ['status' => 0, 'body' => $this->lastError];
-        }
-        return ['status' => $r['status'], 'body' => (string)$r['body']];
-    }
-
-    // EXPERIMENTELL: Verbrauchsdaten (kWh je Stunde) ueber den Transfer-Proxy.
-    // Pfad aus aioaquarea (Aquarea Smart Cloud) uebernommen; ob der Proxy ihn
-    // durchreicht, ist noch nicht am echten Konto verifiziert. Aufrufer muss
-    // mit null rechnen und behandelt das nicht als Fehler.
-    public function getAquareaConsumption(array $bundle, string $gwid, string $dateYmd): ?array
-    {
-        $this->lastError = '';
-        $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', [
-            'apiName'       => '/remote/v1/api/consumption/' . $gwid . '?date=' . rawurlencode($dateYmd),
-            'requestMethod' => 'GET',
-            'headerParam'   => $this->transferHeaderParam(),
-        ]);
-        $json = ($r !== null) ? json_decode($r['body'], true) : null;
-        if ($r === null || $r['status'] !== 200 || !is_array($json)) {
-            $this->failApi('A2W-Verbrauch (transfer, experimentell)', $r);
-            return null;
-        }
-        return $json;
-    }
+    // Hinweis: Die A2W-Betriebsdaten (Verbindungsstatus, Betriebsart, Zonen-
+    // und Speichertemperaturen) liefert die Comfort Cloud bereits INLINE in
+    // der device/group-Antwort je Geraet. Ein separater Statusabruf ist nicht
+    // noetig -- der fruehere Transfer-Proxy (/remote/v1/app/common/transfer)
+    // und /deviceStatus/{guid} sind fuer A2W nicht freigegeben (400/403). Die
+    // Auswertung passiert daher komplett im Modul aus getGroups().
 
     // ------------------------------------------------------------------
     // Intern

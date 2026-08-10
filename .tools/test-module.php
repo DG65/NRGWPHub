@@ -233,10 +233,6 @@ class FakeCC extends WPHUB_ComfortCloudClient
     {
         return $this->fakeAgreementReq;
     }
-    public function getAquareaStatus(array $bundle, string $gwid, bool $direct = true): ?array
-    {
-        return $this->statusResult;
-    }
     public function versionRejected(): bool
     {
         return $this->fakeRejected;
@@ -318,60 +314,77 @@ check('Fremdes NRG.Celsius bleibt unangetastet', $GLOBALS['ips']['profiles']['NR
 echo "Block 2: Geraeteabruf und Variablenpflege\n";
 // ---------------------------------------------------------------------------
 
+// device/group liefert die A2W-Betriebsdaten inline (Struktur wie am echten
+// Konto): ein Klimageraet (deviceType 1, mit parameters -> uebersprungen) und
+// eine Aquarea-Waermepumpe (deviceType 2, Zonen/Speicher inline).
 $fake = new FakeCC();
-$fake->groupsResult = ['groupList' => [[
-    'groupName'  => 'My House',
-    'deviceList' => [
-        ['deviceGuid' => 'AC-1', 'deviceName' => 'Klima Buero', 'parameters' => ['operate' => 1]],
-        ['deviceGuid' => 'B25XXXXXX-1', 'deviceName' => 'Aquarea'],
-    ],
-]]];
-$fake->statusResult = [
-    'operation' => '1',
-    'ownerFlg'  => true,
-    'a2wName'   => 'Aquarea Zuhause',
-    'status'    => [
-        'operationMode' => 1,
-        'outdoorNow'    => 17,
-        'tank'          => 1,
-        'tankStatus'    => ['operationStatus' => 1, 'temperatureNow' => 48, 'heatMin' => 40, 'heatMax' => 65, 'heatSet' => 52],
-        'zoneStatus'    => [
-            ['zoneId' => 1, 'zoneName' => 'Haus', 'zoneType' => 0, 'zoneSensor' => 1, 'operationStatus' => 1, 'temperatureNow' => 22, 'heatSet' => 21, 'coolSet' => 25, 'heatMin' => 5, 'heatMax' => 30, 'coolMin' => 16, 'coolMax' => 30, 'ecoHeat' => -2, 'ecoCool' => 2, 'comfortHeat' => 2, 'comfortCool' => -2],
-            ['zoneId' => 2, 'zoneName' => '', 'zoneType' => 0, 'zoneSensor' => 1, 'operationStatus' => 0, 'temperatureNow' => 126, 'heatSet' => 126],
+$fake->groupsResult = ['groupList' => [
+    [
+        'groupName'  => 'My House',
+        'deviceList' => [
+            ['deviceGuid' => 'AC-1', 'deviceType' => '1', 'deviceName' => 'Klima Buero', 'parameters' => ['operate' => 1]],
         ],
     ],
-];
+    [
+        'groupName'  => 'AQUAREA',
+        'deviceList' => [
+            [
+                'deviceGuid'       => 'B270592026',
+                'deviceType'       => '2',
+                'deviceName'       => 'Heizung',
+                'connectionStatus' => 1,
+                'operationMode'    => 2,
+                'zoneStatus'       => [
+                    ['zoneId' => 1, 'operationStatus' => 1, 'temperature' => 19],
+                    ['zoneId' => 2], // ungenutzte Zone, keine Temperatur
+                ],
+                'tankStatus'       => ['operationStatus' => 1, 'temperature' => 43, 'temperatureNow' => 42],
+            ],
+        ],
+    ],
+]];
 
 $refresh = new ReflectionMethod(WPHub::class, 'refreshDevices');
 $refresh->setAccessible(true);
 $devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 
 check('Genau eine Waermepumpe erkannt (Klimageraet uebersprungen)', is_array($devices) && count($devices) === 1, json_encode($devices));
-check('Name aus a2wName uebernommen', $devices[0]['name'] === 'Aquarea Zuhause');
-check('Geraet als erreichbar markiert', $devices[0]['reachable'] === true);
+check('Name aus deviceName uebernommen', $devices[0]['name'] === 'Heizung');
+check('Geraet als erreichbar markiert (connectionStatus 1)', $devices[0]['reachable'] === true);
 
 $prefix = $devices[0]['prefix'];
 $vars = $GLOBALS['ips']['variables'];
 check('Variable Erreichbar = true', ($vars[$prefix . 'Erreichbar']['value'] ?? null) === true);
-check('Variable Betrieb = true', ($vars[$prefix . 'Betrieb']['value'] ?? null) === true);
-check('Aussentemperatur 17 °C', ($vars[$prefix . 'Aussentemperatur']['value'] ?? null) === 17.0);
-check('Aussentemperatur nutzt NRG.Celsius', ($vars[$prefix . 'Aussentemperatur']['profile'] ?? '') === 'NRG.Celsius');
-check('Warmwasser 48 °C', ($vars[$prefix . 'Warmwasser']['value'] ?? null) === 48.0);
-check('Warmwasser-Soll 52 °C', ($vars[$prefix . 'WarmwasserSoll']['value'] ?? null) === 52.0);
-check('Zone 1 Ist 22 °C', ($vars[$prefix . 'Zone1Ist']['value'] ?? null) === 22.0);
-check('Zone 1 Soll 21 °C', ($vars[$prefix . 'Zone1Soll']['value'] ?? null) === 21.0);
-check('Zone 2 (Marker 126) legt KEINE Ist-Variable an', !isset($vars[$prefix . 'Zone2Ist']));
+check('Betriebsart = 2', ($vars[$prefix . 'Betriebsart']['value'] ?? null) === 2);
+check('Warmwasser Ist 42 °C (temperatureNow)', ($vars[$prefix . 'Warmwasser']['value'] ?? null) === 42.0);
+check('Warmwasser Soll 43 °C (temperature)', ($vars[$prefix . 'WarmwasserSoll']['value'] ?? null) === 43.0);
+check('Warmwasser nutzt NRG.Celsius', ($vars[$prefix . 'Warmwasser']['profile'] ?? '') === 'NRG.Celsius');
+check('Warmwasser Betrieb = true', ($vars[$prefix . 'WarmwasserBetrieb']['value'] ?? null) === true);
+check('Zone 1 Soll 19 °C', ($vars[$prefix . 'Zone1Soll']['value'] ?? null) === 19.0);
+check('Zone 1 Betrieb = true', ($vars[$prefix . 'Zone1Betrieb']['value'] ?? null) === true);
+check('Zone 2 ohne Temperatur legt KEINE Soll-Variable an', !isset($vars[$prefix . 'Zone2Soll']));
+
+// Nicht erreichbar (connectionStatus 0): Werte bleiben (letzter Stand), nur Erreichbar=false.
+$fake->groupsResult['groupList'][1]['deviceList'][0]['connectionStatus'] = 0;
+$devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
+check('connectionStatus 0 → nicht erreichbar', $devices[0]['reachable'] === false);
+check('Erreichbar-Variable = false', ($GLOBALS['ips']['variables'][$prefix . 'Erreichbar']['value'] ?? null) === false);
+check('Messwerte bleiben trotz offline erhalten', ($GLOBALS['ips']['variables'][$prefix . 'Warmwasser']['value'] ?? null) === 42.0);
 
 // ---------------------------------------------------------------------------
 echo "Block 3: EMS-Vertrag (GetFunctions)\n";
 // ---------------------------------------------------------------------------
+
+// Wieder erreichbar schalten fuer den reachable=true-Pfad.
+$fake->groupsResult['groupList'][1]['deviceList'][0]['connectionStatus'] = 1;
+$refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 
 $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
 check('contractVersion = 1.2', ($f['contractVersion'] ?? '') === '1.2');
-check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Aquarea Zuhause');
+check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
 check('Measured = false', ($f['Measured'] ?? true) === false);
@@ -384,7 +397,7 @@ $markAll->setAccessible(true);
 $markAll->invoke($mod);
 $functions = $mod->GetFunctions();
 check('Nach Cloud-Ausfall: reachable = false', ($functions[0]['reachable'] ?? true) === false);
-check('Variablen bleiben nach Ausfall erhalten', isset($GLOBALS['ips']['variables'][$prefix . 'Aussentemperatur']));
+check('Variablen bleiben nach Ausfall erhalten', isset($GLOBALS['ips']['variables'][$prefix . 'Warmwasser']));
 
 // ---------------------------------------------------------------------------
 echo "Block 4: Client-Hilfsfunktionen (ohne Netz)\n";
@@ -481,7 +494,7 @@ check('Genau ein PUT mit beiden Dokumenten', count($fake4->putCalls) === 1 && co
 check('PUT enthaelt die gelieferten Versionen', ($fake4->putCalls[0][0]['version'] ?? '') === '2026-05-01' && ($fake4->putCalls[0][1]['version'] ?? '') === '2026-05-02');
 check('Gleiche Sitzung nutzt Geraeteliste (keine Erneuerung)', $fake4->reauthCalls === 0, $fake4->reauthCalls . ' Aufrufe');
 check('Danach Status 102', $mod->status === 102, 'Status ' . $mod->status);
-check('Erfolgsmeldung mit Geraeteliste', strpos(end($sayMessages), 'Aquarea Zuhause') !== false, end($sayMessages));
+check('Erfolgsmeldung mit Geraeteliste', strpos(end($sayMessages), 'Heizung') !== false, end($sayMessages));
 
 // Fallback: erste Geraeteliste nach PUT noch 4103 -> frische Sitzung, 2. Versuch klappt.
 $fakeFb = new FakeCC();

@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 17) — 11.08.2026
+
+- **Messwerte werden ausgelesen — direkt aus `device/group`.** Eine Diagnose (Zwischenstände Build 15/16) zeigte: Die A2W-Betriebsdaten liefert die Comfort Cloud bereits inline in der Geräteliste; der Transfer-Proxy (`/remote/v1/app/common/transfer`) und `/deviceStatus/{guid}` sind für Wärmepumpen gar nicht freigegeben (400/403). WPHub wertet die Werte jetzt direkt aus der Geräteantwort aus und legt je Wärmepumpe an: Erreichbar (aus `connectionStatus`), Betriebsart, Warmwasser Ist/Soll und -Betrieb (Speicher) sowie je Heizzone Solltemperatur und Betrieb. Werte bleiben als letzter bekannter Stand erhalten, wenn das Gerät offline ist. Der tote Transfer-Proxy-Code und die temporäre Diagnosefunktion wurden entfernt.
+
 ## 0.1.0 (Build 14) — 10.08.2026
 
 - **Geräteliste lädt, A2W-Statusabruf repariert.** Nach der (in der offiziellen App bestätigten) Zustimmung liefert `device/group` die Wärmepumpe. Der anschließende Aquarea-Statusabruf über den Transfer-Proxy scheiterte aber mit „Missing required header parameter“ (Code 4000): Der Proxy verlangt im Body neben `apiName`/`requestMethod` eine `headerParam`-Liste. WPHub sendet sie jetzt exakt wie die offizielle App (Accept + Content-Type + Platzhalter) und hängt die Geräte-GUID roh an den `apiName`-Query.
