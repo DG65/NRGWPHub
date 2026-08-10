@@ -86,19 +86,44 @@ class WPHUB_ComfortCloudClient
      * Eine Bedingung im Namen des Kontos bestaetigen. Nur auf ausdrueckliche
      * Nutzeraktion hin aufrufen (Schaltflaeche im Formular) -- das Modul
      * stimmt nie stillschweigend selbst zu.
+     *
+     * Der historisch dokumentierte Weg (PUT /auth/agreement/status/, App-Aera
+     * 1.20) antwortet an der heutigen API mit AWS' "Missing Authentication
+     * Token" = Route existiert nicht; der tatsaechliche Accept-Pfad der
+     * aktuellen App ist nirgends oeffentlich mitgeschnitten. Deshalb eine
+     * Kandidatenleiter: Der naechste Versuch faehrt NUR, wenn der vorige
+     * eindeutig "Route unbekannt" war (dann hat er nichts bewirkt) -- bei
+     * Erfolg oder echtem Fehler stoppt die Leiter sofort, die Zustimmung
+     * wird also hoechstens einmal ausgefuehrt.
      */
     public function acceptAgreement(array $bundle, int $typeId): bool
     {
         $this->lastError = '';
-        $r = $this->apiRequest($bundle, 'PUT', '/auth/agreement/status/', [
-            'agreementStatus' => 1,
-            'type'            => $typeId,
-        ]);
-        if ($r === null || $r['status'] !== 200) {
-            $this->failApi('Zustimmung (agreement/status, Typ ' . $typeId . ')', $r);
-            return false;
+        $body = ['agreementStatus' => 1, 'type' => $typeId];
+        $variants = [
+            ['PUT',  '/auth/agreement/status/'],
+            ['PUT',  '/auth/agreement/status'],
+            ['PUT',  '/auth/agreement/status/' . $typeId],
+            ['POST', '/auth/agreement/status/'],
+            ['PUT',  '/auth/v2/agreement/status/'],
+        ];
+        foreach ($variants as [$method, $path]) {
+            $r = $this->apiRequest($bundle, $method, $path, $body);
+            if ($r !== null && $r['status'] === 200) {
+                $this->dbg('agreement', 'Zustimmung Typ ' . $typeId . ' erfolgreich via ' . $method . ' ' . $path);
+                return true;
+            }
+            $unknownRoute = ($r !== null && $r['status'] === 403
+                && strpos((string)$r['body'], 'Missing Authentication Token') !== false);
+            if (!$unknownRoute) {
+                $this->failApi('Zustimmung (' . $method . ' ' . $path . ', Typ ' . $typeId . ')', $r);
+                return false;
+            }
+            $this->dbg('agreement', 'Route unbekannt (' . $method . ' ' . $path . '), naechster Kandidat');
         }
-        return true;
+        $this->lastError = 'Zustimmung (Typ ' . $typeId . '): kein bekannter API-Pfad wird von der Cloud akzeptiert. Bitte einmal die offizielle Comfort-Cloud-App oeffnen und die Bedingungen dort bestaetigen.';
+        $this->dbg('fehler', $this->lastError);
+        return false;
     }
 
     public function getAppVersion(): string

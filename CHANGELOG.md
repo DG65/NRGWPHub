@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 6) — 10.08.2026
+
+- **Zustimmungs-Endpunkt repariert (Kandidatenleiter):** Der historisch dokumentierte Weg `PUT /auth/agreement/status/` (App-Ära 1.20) existiert an der heutigen API nicht mehr — AWS antwortet mit 403 „Missing Authentication Token“ (= Route unbekannt). Da der aktuelle Accept-Pfad der offiziellen App nirgends öffentlich mitgeschnitten ist, probiert die Schaltfläche jetzt eine kleine Kandidatenleiter (ohne Trailing-Slash, Typ-ID im Pfad, POST, v2-Pfad) — der nächste Versuch fährt nur, wenn der vorige eindeutig „Route unbekannt“ war und damit nichts bewirkt hat; bei Erfolg oder echtem Fehler stoppt die Leiter sofort. Das Debug-Protokoll der Instanz vermerkt, welche Variante funktioniert hat. Führt keine Variante zum Ziel, verweist die Meldung auf die Bestätigung in der offiziellen App.
+
 ## 0.1.0 (Build 5) — 10.08.2026
 
 - **Zustimmung zu aktualisierten Panasonic-Bedingungen (Cloud-Fehlercode 4103):** Der dritte Live-Test bestand die komplette Anmeldung, scheiterte dann aber an „Terms and/or Policies have been updated“ — Panasonic verlangt nach Aktualisierungen von Nutzungsbedingungen/Datenschutzerklärung eine erneute Zustimmung des Kontos. Neu: Schaltfläche „📜 Aktualisierte Bedingungen akzeptieren“ im Formular (prüft beide Zustimmungstypen und bestätigt nur Offenes), eigener Instanzstatus 202 „Zustimmung erforderlich“ mit Protokollhinweis (einmalig, nicht je Zyklus). Bewusste Entscheidung: WPHub stimmt **nie automatisch** zu — die Zustimmung ist eine Entscheidung des Kontoinhabers, alternativ genügt ein Öffnen der offiziellen App. Prüfstand um die 4103-Szenarien erweitert (55 Prüfungen).
