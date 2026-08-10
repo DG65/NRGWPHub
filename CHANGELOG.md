@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 7) — 10.08.2026
+
+- **Zustimmung v2 selbstlernend:** Build 6 fand die reale Route (`/auth/v2/agreement/status/`), deren Body-Schema aber nirgends dokumentiert ist (400, Code 4002). Die Schaltfläche liest jetzt zuerst den v2-Zustimmungsstatus (rein lesend — die Antwort verrät die Feldnamen), spiegelt daraus den Bestätigungs-Body und probiert erst danach wenige statische Kandidaten; weitergeschaltet wird nur bei nachweislich wirkungslosen Antworten (4002/Route unbekannt). Scheitert alles, enthält die Fehlermeldung die rohe v2-Statusantwort zur Analyse.
+
 ## 0.1.0 (Build 6) — 10.08.2026
 
 - **Zustimmungs-Endpunkt repariert (Kandidatenleiter):** Der historisch dokumentierte Weg `PUT /auth/agreement/status/` (App-Ära 1.20) existiert an der heutigen API nicht mehr — AWS antwortet mit 403 „Missing Authentication Token“ (= Route unbekannt). Da der aktuelle Accept-Pfad der offiziellen App nirgends öffentlich mitgeschnitten ist, probiert die Schaltfläche jetzt eine kleine Kandidatenleiter (ohne Trailing-Slash, Typ-ID im Pfad, POST, v2-Pfad) — der nächste Versuch fährt nur, wenn der vorige eindeutig „Route unbekannt“ war und damit nichts bewirkt hat; bei Erfolg oder echtem Fehler stoppt die Leiter sofort. Das Debug-Protokoll der Instanz vermerkt, welche Variante funktioniert hat. Führt keine Variante zum Ziel, verweist die Meldung auf die Bestätigung in der offiziellen App.
