@@ -277,6 +277,52 @@ class WPHub extends IPSModule
     }
 
     /**
+     * DIAGNOSE (temporaer): Vollstaendige device/group-Antwort + weitere A2W-
+     * Kandidaten-Endpunkte ins Systemprotokoll. Am aussagekraeftigsten, wenn
+     * die WP ONLINE ist (dann liefert device/group den vollen Datensatz).
+     * Mehrfach ausloesbar, keine Nebenwirkungen.
+     */
+    public function ProbeFull()
+    {
+        $bundle = $this->ensureToken();
+        if ($bundle === null) {
+            $this->LogMessage('ProbeFull: keine gültige Anmeldung.', KL_WARNING);
+            return;
+        }
+        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
+        $client = $this->ccClient();
+
+        // Volle Geraeteantwort in Stuecken.
+        $r = $client->debugCall($bundle, 'GET', '/device/group');
+        $body = (string)$r['body'];
+        $this->LogMessage('ProbeFull device/group HTTP ' . $r['status'] . ', Länge ' . strlen($body), KL_WARNING);
+        foreach (str_split($body, 1400) as $i => $chunk) {
+            $this->LogMessage('ProbeFull group[' . $i . ']: ' . $chunk, KL_WARNING);
+        }
+        if ($guid === '') {
+            return;
+        }
+
+        // Bisher ungetestete A2W-Kandidaten (jeweils Status + Anfang des Koerpers).
+        $hp = [
+            ['key' => 'Accept', 'value' => 'application/json; charset=UTF-8'],
+            ['key' => 'Content-Type', 'value' => 'application/json'],
+            new stdClass(),
+        ];
+        $cand = [
+            ['deviceInfo', 'GET', '/device/deviceInfo/' . $guid, null],
+            ['deviceList', 'GET', '/device/deviceList', null],
+            ['hphw/registerInfo', 'GET', '/hphw/deviceRegisterInfo?deviceGuid=' . $guid, null],
+            ['svc/transfer devices', 'POST', '/remote/v1/app/svc/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0', 'requestMethod' => 'GET', 'headerParam' => $hp]],
+        ];
+        foreach ($cand as $i => [$label, $method, $path, $jbody]) {
+            $res = $client->debugCall($bundle, $method, $path, $jbody);
+            $this->LogMessage(sprintf('ProbeFull cand#%d %s -> HTTP %d: %s', $i + 1, $label, $res['status'], substr((string)$res['body'], 0, 800)), KL_WARNING);
+        }
+    }
+
+    /**
      * Zyklische Aktualisierung: Token pruefen/erneuern, Geraeteliste und
      * A2W-Status abrufen, Variablen pflegen.
      */
