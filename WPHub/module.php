@@ -277,6 +277,45 @@ class WPHub extends IPSModule
     }
 
     /**
+     * DIAGNOSE (temporaer): Volle device/group-Antwort und Energie-Historie
+     * ins Systemprotokoll schreiben, um weitere verfuegbare A2W-Datenpunkte zu
+     * ermitteln. Per Konsole/Skript ausgeloest.
+     */
+    public function ProbeData()
+    {
+        $bundle = $this->ensureToken();
+        if ($bundle === null) {
+            $this->LogMessage('ProbeData: keine gültige Anmeldung.', KL_WARNING);
+            return;
+        }
+        $client = $this->ccClient();
+
+        // 1) Volle Geraeteantwort (in Stuecken, damit nichts abgeschnitten wird).
+        $r = $client->debugCall($bundle, 'GET', '/device/group');
+        $body = (string)$r['body'];
+        $this->LogMessage('ProbeData device/group HTTP ' . $r['status'] . ', Länge ' . strlen($body), KL_WARNING);
+        foreach (str_split($body, 1400) as $i => $chunk) {
+            $this->LogMessage('ProbeData group[' . $i . ']: ' . $chunk, KL_WARNING);
+        }
+
+        // 2) Energie-Historie (StatisticsHistory: deviceGuid/dataMode/date/osTimezone).
+        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
+        if ($guid !== '') {
+            $tz = date('P'); // z. B. +02:00
+            foreach ([0 => 'Tag', 2 => 'Monat'] as $dm => $label) {
+                $res = $client->debugCall($bundle, 'POST', '/deviceHistoryData', [
+                    'deviceGuid'  => $guid,
+                    'dataMode'    => $dm,
+                    'date'        => date('Ymd'),
+                    'osTimezone'  => $tz,
+                ]);
+                $this->LogMessage('ProbeData history(' . $label . ') HTTP ' . $res['status'] . ': ' . substr($res['body'], 0, 1400), KL_WARNING);
+            }
+        }
+    }
+
+    /**
      * Zyklische Aktualisierung: Token pruefen/erneuern, Geraeteliste und
      * A2W-Status abrufen, Variablen pflegen.
      */

@@ -419,6 +419,16 @@ class WPHUB_ComfortCloudClient
     // und /deviceStatus/{guid} sind fuer A2W nicht freigegeben (400/403). Die
     // Auswertung passiert daher komplett im Modul aus getGroups().
 
+    // Diagnose: roher, signierter API-Aufruf. Liefert immer ['status','body'].
+    public function debugCall(array $bundle, string $method, string $path, ?array $jsonBody = null): array
+    {
+        $r = $this->apiRequest($bundle, $method, $path, $jsonBody);
+        if ($r === null) {
+            return ['status' => 0, 'body' => $this->lastError];
+        }
+        return ['status' => $r['status'], 'body' => (string)$r['body']];
+    }
+
     // ------------------------------------------------------------------
     // Intern
     // ------------------------------------------------------------------
