@@ -224,6 +224,17 @@ class WPHub extends IPSModule
         } elseif (!$client->putAgreementStatus($bundle, $docs)) {
             $say('❌ Die Zustimmung konnte nicht übermittelt werden: ' . $client->getLastError());
             return;
+        } else {
+            // Nach 4103 startet die offizielle App neu und meldet sich neu an;
+            // erst mit einer frischen Sitzung greift die Zustimmung serverseitig
+            // fuer die Geraeteliste. Also Access-Token erneuern und eine neue
+            // App-Anmeldung (frische clientId) durchfuehren, dann persistieren.
+            $refreshed = $client->refresh($bundle);
+            if ($refreshed !== null) {
+                $bundle = $refreshed;
+            }
+            $client->accLogin($bundle);
+            $this->WriteAttributeString('CC_Token', json_encode($bundle));
         }
 
         $names = [

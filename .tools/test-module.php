@@ -239,6 +239,8 @@ class FakeCC extends WPHUB_ComfortCloudClient
     public $putResult = true;        // was putAgreementStatus liefert
     public $putCalls = [];           // aufgezeichnete PUT-Listen
 
+    public $reauthCalls = 0;         // wie oft nach dem PUT neu angemeldet wurde
+
     public function getAgreementDocuments(array $bundle, ?int $typeId = null): ?array
     {
         if ($this->documentsAllNull) {
@@ -250,6 +252,16 @@ class FakeCC extends WPHUB_ComfortCloudClient
     {
         $this->putCalls[] = $items;
         return $this->putResult;
+    }
+    // Frische Sitzung nach dem PUT -- im Test ohne Netz nachgebildet.
+    public function refresh(array $bundle): ?array
+    {
+        $this->reauthCalls++;
+        return $bundle;
+    }
+    public function accLogin(array &$bundle): bool
+    {
+        return true;
     }
 }
 
@@ -455,6 +467,7 @@ $mod->status = 202;
 $doAccept->invoke($mod, $fake4, ['accessToken' => 'x'], $say);
 check('Genau ein PUT mit beiden Dokumenten', count($fake4->putCalls) === 1 && count($fake4->putCalls[0]) === 2, json_encode($fake4->putCalls));
 check('PUT enthaelt die gelieferten Versionen', ($fake4->putCalls[0][0]['version'] ?? '') === '2026-05-01' && ($fake4->putCalls[0][1]['version'] ?? '') === '2026-05-02');
+check('Frische Sitzung nach PUT hergestellt', $fake4->reauthCalls === 1, $fake4->reauthCalls . ' Aufrufe');
 check('Danach Status 102', $mod->status === 102, 'Status ' . $mod->status);
 check('Erfolgsmeldung mit Geraeteliste', strpos(end($sayMessages), 'Aquarea Zuhause') !== false, end($sayMessages));
 

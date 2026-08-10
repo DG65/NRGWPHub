@@ -168,7 +168,7 @@ class WPHUB_ComfortCloudClient
             $this->failApi('Zustimmung (v2/agreement/status, ' . count($list) . ' Dokument(e))', $r);
             return false;
         }
-        $this->dbg('agreement', 'Zustimmung erfolgreich fuer Typen ' . implode(',', array_column($list, 'type')));
+        $this->dbg('agreement', 'Zustimmung erfolgreich fuer Typen ' . implode(',', array_column($list, 'type')) . ', Antwort: ' . substr((string)$r['body'], 0, 200));
         return true;
     }
 

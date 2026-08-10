@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 10) — 10.08.2026
+
+- **Nach der Zustimmung frische Sitzung herstellen.** Die Bedingungen wurden akzeptiert (PUT erfolgreich, alle drei Typen), aber die Geräteliste blieb bei 4103. Grund (aus dem App-Verhalten abgeleitet): Die offizielle App verwirft nach 4103 ihre Sitzung und meldet sich neu an — erst mit einer frischen Sitzung wird die Zustimmung serverseitig für die Geräte-API wirksam. WPHub erneuert nach erfolgreicher Zustimmung jetzt das Zugangstoken und die App-Anmeldung (neue clientId) und lädt erst dann die Geräteliste.
+
 ## 0.1.0 (Build 9) — 10.08.2026
 
 - **Zustimmung: Dokumente je Typ abrufen (wie die App).** Der ungefilterte Dokumenten-Abruf lieferte 7 Einträge (alle Typen/Sprachvarianten gemischt, teils ohne Versionsnummer) — die offizielle App fragt statt dessen **je Typ (1/2/3) einzeln** ab und bestätigt genau die eine Version pro Typ. Genau das macht WPHub jetzt auch: Einträge ohne Versionsnummer werden übersprungen, ein einzelner nicht zutreffender Typ (z. B. Servicevertrag, nur Türkei) wird toleriert. Die rohe Dokumenten-Antwort und der exakte PUT-Body landen jetzt im Instanz-Debug, damit ein etwaiger Rest-Fehler eindeutig sichtbar ist.
