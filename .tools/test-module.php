@@ -205,10 +205,12 @@ class FakeCC extends WPHUB_ComfortCloudClient
 {
     public $groupsResult;
     public $statusResult;
-    public $rejectFirstGroups = false;  // erste getGroups-Antwort: 4106
+    public $rejectFirstGroups = false;       // erste getGroups-Antwort: 4106
+    public $agreementRejectFirstGroups = false; // erste getGroups-Antwort: 4103
     public $refreshedVersion = null;    // was refreshAppVersion liefern soll
     public $groupCalls = 0;
     private $fakeRejected = false;
+    private $fakeAgreementReq = false;
 
     public function getGroups(array $bundle): ?array
     {
@@ -218,8 +220,18 @@ class FakeCC extends WPHUB_ComfortCloudClient
             $this->fakeRejected = true;
             return null;
         }
+        if ($this->agreementRejectFirstGroups) {
+            $this->agreementRejectFirstGroups = false;
+            $this->fakeAgreementReq = true;
+            return null;
+        }
         $this->fakeRejected = false;
+        $this->fakeAgreementReq = false;
         return $this->groupsResult;
+    }
+    public function agreementRequired(): bool
+    {
+        return $this->fakeAgreementReq;
     }
     public function getAquareaStatus(array $bundle, string $gwid, bool $direct = true): ?array
     {
@@ -467,9 +479,22 @@ $mod->status = 202;
 $doAccept->invoke($mod, $fake4, ['accessToken' => 'x'], $say);
 check('Genau ein PUT mit beiden Dokumenten', count($fake4->putCalls) === 1 && count($fake4->putCalls[0]) === 2, json_encode($fake4->putCalls));
 check('PUT enthaelt die gelieferten Versionen', ($fake4->putCalls[0][0]['version'] ?? '') === '2026-05-01' && ($fake4->putCalls[0][1]['version'] ?? '') === '2026-05-02');
-check('Frische Sitzung nach PUT hergestellt', $fake4->reauthCalls === 1, $fake4->reauthCalls . ' Aufrufe');
+check('Gleiche Sitzung nutzt Geraeteliste (keine Erneuerung)', $fake4->reauthCalls === 0, $fake4->reauthCalls . ' Aufrufe');
 check('Danach Status 102', $mod->status === 102, 'Status ' . $mod->status);
 check('Erfolgsmeldung mit Geraeteliste', strpos(end($sayMessages), 'Aquarea Zuhause') !== false, end($sayMessages));
+
+// Fallback: erste Geraeteliste nach PUT noch 4103 -> frische Sitzung, 2. Versuch klappt.
+$fakeFb = new FakeCC();
+$fakeFb->groupsResult = $fake->groupsResult;
+$fakeFb->statusResult = $fake->statusResult;
+$fakeFb->documentsByType = [1 => [['type' => 1, 'version' => 'v1']], 2 => [], 3 => []];
+$fakeFb->agreementRejectFirstGroups = true;
+$mod->status = 202;
+$sayMessages = [];
+$doAccept->invoke($mod, $fakeFb, ['accessToken' => 'x'], $say);
+check('Fallback stellt frische Sitzung her', $fakeFb->reauthCalls === 1, $fakeFb->reauthCalls . ' Aufrufe');
+check('Fallback laedt Geraeteliste (Status 102)', $mod->status === 102, 'Status ' . $mod->status);
+check('Fallback: zwei getGroups-Versuche', $fakeFb->groupCalls === 2, $fakeFb->groupCalls . ' Aufrufe');
 
 // PUT von der Cloud abgelehnt: sauberer Abbruch mit Fehlermeldung, kein 102.
 $fake5 = new FakeCC();

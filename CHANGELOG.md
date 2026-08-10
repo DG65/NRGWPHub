@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 12) — 10.08.2026
+
+- **Zustimmung wirkt jetzt (gleiche Sitzung weiternutzen).** Der Protokoll-Mitschnitt zeigte: Die Zustimmung wird serverseitig angenommen (PUT → `{"result":0}`), aber Build 10 hat danach das Token erneuert und sich neu angemeldet — und genau diese **frische** Sitzung kannte die eben erteilte Zustimmung nicht, weshalb die Geräteliste weiter 4103 meldete. Die offizielle App macht es anders: Nach der Zustimmung läuft **dieselbe** Sitzung direkt zur Geräteliste weiter, ohne Token-Wechsel. WPHub macht das jetzt genauso; die Sitzungserneuerung bleibt nur als Rückfall, falls die Zustimmung ausnahmsweise nicht sofort greift.
+
 ## 0.1.0 (Build 11) — 10.08.2026
 
 - **Diagnose-Mitschnitt fürs Systemprotokoll:** Da die Zustimmung serverseitig erfolgreich ist, die Geräteliste aber weiter 4103 meldet, schreibt WPHub in diesem Fall einen Mitschnitt der letzten Cloud-Aufrufe (Pfad ohne Query, Statuscode, gekürzter Antwortkörper — keine Zugangsdaten, Token stehen nur in nicht protokollierten Headern) ins Systemprotokoll. Damit lässt sich die genaue Ursache eingrenzen, ohne im Debug-Fenster mitlesen zu müssen.

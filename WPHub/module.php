@@ -224,17 +224,6 @@ class WPHub extends IPSModule
         } elseif (!$client->putAgreementStatus($bundle, $docs)) {
             $say('❌ Die Zustimmung konnte nicht übermittelt werden: ' . $client->getLastError());
             return;
-        } else {
-            // Nach 4103 startet die offizielle App neu und meldet sich neu an;
-            // erst mit einer frischen Sitzung greift die Zustimmung serverseitig
-            // fuer die Geraeteliste. Also Access-Token erneuern und eine neue
-            // App-Anmeldung (frische clientId) durchfuehren, dann persistieren.
-            $refreshed = $client->refresh($bundle);
-            if ($refreshed !== null) {
-                $bundle = $refreshed;
-            }
-            $client->accLogin($bundle);
-            $this->WriteAttributeString('CC_Token', json_encode($bundle));
         }
 
         $names = [
@@ -247,7 +236,26 @@ class WPHub extends IPSModule
             $accepted[] = $names[$d['type']] ?? ('Dokument ' . $d['type']);
         }
 
+        // Wie die offizielle App: nach der Zustimmung läuft dieselbe Sitzung
+        // weiter zur Geräteliste — KEIN Token-Wechsel (die Zustimmung ist an
+        // die Sitzung gebunden, die sie übermittelt hat). Das Token-Bündel im
+        // Attribut aktualisieren, damit der reguläre Update-Zyklus dieselbe
+        // Sitzung nutzt.
+        $this->WriteAttributeString('CC_Token', json_encode($bundle));
         $devices = $this->refreshDevices($bundle, $client);
+
+        if ($devices === null && $client->agreementRequired()) {
+            // Fallback (nur falls die Zustimmung nicht sofort greift): eine
+            // frische Sitzung herstellen und noch einmal versuchen.
+            $refreshed = $client->refresh($bundle);
+            if ($refreshed !== null) {
+                $bundle = $refreshed;
+            }
+            $client->accLogin($bundle);
+            $this->WriteAttributeString('CC_Token', json_encode($bundle));
+            $devices = $this->refreshDevices($bundle, $client);
+        }
+
         if ($devices === null) {
             // Diagnose ins Systemprotokoll (keine Geheimnisse) -- macht sichtbar,
             // welche Versionen bestaetigt wurden und wie die Cloud geantwortet hat.
