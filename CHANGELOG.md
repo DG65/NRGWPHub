@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 11) — 10.08.2026
+
+- **Diagnose-Mitschnitt fürs Systemprotokoll:** Da die Zustimmung serverseitig erfolgreich ist, die Geräteliste aber weiter 4103 meldet, schreibt WPHub in diesem Fall einen Mitschnitt der letzten Cloud-Aufrufe (Pfad ohne Query, Statuscode, gekürzter Antwortkörper — keine Zugangsdaten, Token stehen nur in nicht protokollierten Headern) ins Systemprotokoll. Damit lässt sich die genaue Ursache eingrenzen, ohne im Debug-Fenster mitlesen zu müssen.
+
 ## 0.1.0 (Build 10) — 10.08.2026
 
 - **Nach der Zustimmung frische Sitzung herstellen.** Die Bedingungen wurden akzeptiert (PUT erfolgreich, alle drei Typen), aber die Geräteliste blieb bei 4103. Grund (aus dem App-Verhalten abgeleitet): Die offizielle App verwirft nach 4103 ihre Sitzung und meldet sich neu an — erst mit einer frischen Sitzung wird die Zustimmung serverseitig für die Geräte-API wirksam. WPHub erneuert nach erfolgreicher Zustimmung jetzt das Zugangstoken und die App-Anmeldung (neue clientId) und lädt erst dann die Geräteliste.
