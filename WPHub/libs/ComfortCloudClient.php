@@ -87,14 +87,54 @@ class WPHUB_ComfortCloudClient
             $this->failApi('Bedingungs-Dokumente (v2/agreement/documents)', $r);
             return null;
         }
+        // Rohantwort ins Debug -- macht bei einem erneuten 4002 die genaue
+        // Feld-/Versionsstruktur sichtbar (enthaelt keine Geheimnisse).
+        $this->dbg('agreement', 'documents(type=' . ($typeId ?? 'alle') . '): ' . substr($r['body'], 0, 600));
         $out = [];
         foreach ($json['agreementList'] as $entry) {
             if (!is_array($entry) || !isset($entry['type']) || !isset($entry['version'])) {
                 continue;
             }
-            $out[] = ['type' => (int)$entry['type'], 'version' => (string)$entry['version']];
+            $version = (string)$entry['version'];
+            if ($version === '') {
+                continue; // ohne Versionsnummer nicht bestaetigbar
+            }
+            $out[] = ['type' => (int)$entry['type'], 'version' => $version];
         }
         return $out;
+    }
+
+    /**
+     * Die zu bestaetigenden Dokument-Versionen einsammeln -- exakt wie die
+     * offizielle App: je Typ (1/2/3) ein eigener documents-Abruf, daraus je
+     * Typ die passende Version. Ein einzelner Typ darf fehlschlagen (z. B.
+     * Typ 3 = Servicevertrag nur Tuerkei) und wird dann uebersprungen; nur
+     * wenn KEIN Typ abrufbar ist, gilt das als Fehler (null). Der ungefilterte
+     * Abruf (alle Typen/Sprachen auf einmal) liefert dagegen Fremdvarianten
+     * und fuehrte zu 4002 -- deshalb bewusst je Typ.
+     */
+    public function collectAgreementVersions(array $bundle): ?array
+    {
+        $out = [];
+        $anyOk = false;
+        foreach (self::AGREEMENT_TYPES as $typeId) {
+            $docs = $this->getAgreementDocuments($bundle, $typeId);
+            if ($docs === null) {
+                continue;
+            }
+            $anyOk = true;
+            foreach ($docs as $d) {
+                if ((int)$d['type'] === $typeId) {
+                    $out[$typeId] = ['type' => $typeId, 'version' => $d['version']];
+                    break;
+                }
+            }
+        }
+        if (!$anyOk) {
+            $this->lastError = 'Keiner der Bedingungs-Typen war abrufbar: ' . $this->lastError;
+            return null;
+        }
+        return array_values($out);
     }
 
     /**
@@ -121,7 +161,9 @@ class WPHUB_ComfortCloudClient
             $this->lastError = 'Zustimmung: keine gueltigen Dokument-Versionen zum Bestaetigen vorhanden.';
             return false;
         }
-        $r = $this->apiRequest($bundle, 'PUT', '/auth/v2/agreement/status', ['agreementList' => $list]);
+        $payload = ['agreementList' => $list];
+        $this->dbg('agreement', '[PUT] ' . json_encode($payload));
+        $r = $this->apiRequest($bundle, 'PUT', '/auth/v2/agreement/status', $payload);
         if ($r === null || $r['status'] !== 200) {
             $this->failApi('Zustimmung (v2/agreement/status, ' . count($list) . ' Dokument(e))', $r);
             return false;

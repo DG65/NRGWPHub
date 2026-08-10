@@ -234,13 +234,17 @@ class FakeCC extends WPHUB_ComfortCloudClient
         return $this->refreshedVersion;
     }
 
-    public $documentsResult;         // was getAgreementDocuments liefert
+    public $documentsByType = [];    // typeId => Liste [['type'=>int,'version'=>str]] | null
+    public $documentsAllNull = false; // erzwingt null fuer jeden Typ
     public $putResult = true;        // was putAgreementStatus liefert
     public $putCalls = [];           // aufgezeichnete PUT-Listen
 
     public function getAgreementDocuments(array $bundle, ?int $typeId = null): ?array
     {
-        return $this->documentsResult;
+        if ($this->documentsAllNull) {
+            return null;
+        }
+        return array_key_exists($typeId, $this->documentsByType) ? $this->documentsByType[$typeId] : [];
     }
     public function putAgreementStatus(array $bundle, array $items): bool
     {
@@ -436,14 +440,16 @@ $say = function (string $m) use (&$sayMessages) {
 $doAccept = new ReflectionMethod(WPHub::class, 'doAcceptAgreements');
 $doAccept->setAccessible(true);
 
-// Zwei offene Dokumente (Typ 1+2) mit Versionen: beide werden in EINEM PUT
-// mit genau diesen Versionen bestaetigt, danach laedt die Geraeteliste (102).
+// Je Typ ein Dokument mit Version: Typen 1+2 offen, Typ 3 (Tuerkei) liefert
+// nichts. Beide werden in EINEM PUT mit genau diesen Versionen bestaetigt,
+// danach laedt die Geraeteliste (102).
 $fake4 = new FakeCC();
 $fake4->groupsResult = $fake->groupsResult;
 $fake4->statusResult = $fake->statusResult;
-$fake4->documentsResult = [
-    ['type' => 1, 'version' => '2026-05-01'],
-    ['type' => 2, 'version' => '2026-05-02'],
+$fake4->documentsByType = [
+    1 => [['type' => 1, 'version' => '2026-05-01']],
+    2 => [['type' => 2, 'version' => '2026-05-02']],
+    3 => [],
 ];
 $mod->status = 202;
 $doAccept->invoke($mod, $fake4, ['accessToken' => 'x'], $say);
@@ -454,7 +460,7 @@ check('Erfolgsmeldung mit Geraeteliste', strpos(end($sayMessages), 'Aquarea Zuha
 
 // PUT von der Cloud abgelehnt: sauberer Abbruch mit Fehlermeldung, kein 102.
 $fake5 = new FakeCC();
-$fake5->documentsResult = [['type' => 1, 'version' => 'v9']];
+$fake5->documentsByType = [1 => [['type' => 1, 'version' => 'v9']]];
 $fake5->putResult = false;
 $mod->status = 202;
 $sayMessages = [];
@@ -463,9 +469,9 @@ check('Ablehnung bricht ab (ein PUT-Versuch)', count($fake5->putCalls) === 1);
 check('Status bleibt 202', $mod->status === 202, 'Status ' . $mod->status);
 check('Fehlermeldung ausgegeben', strpos(end($sayMessages), '❌') === 0, end($sayMessages));
 
-// Dokumente nicht abrufbar (null): Abbruch, gar kein PUT.
+// Kein Typ abrufbar (alle null): Abbruch, gar kein PUT.
 $fake6 = new FakeCC();
-$fake6->documentsResult = null;
+$fake6->documentsAllNull = true;
 $mod->status = 202;
 $sayMessages = [];
 $doAccept->invoke($mod, $fake6, ['accessToken' => 'x'], $say);

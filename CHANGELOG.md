@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 9) — 10.08.2026
+
+- **Zustimmung: Dokumente je Typ abrufen (wie die App).** Der ungefilterte Dokumenten-Abruf lieferte 7 Einträge (alle Typen/Sprachvarianten gemischt, teils ohne Versionsnummer) — die offizielle App fragt statt dessen **je Typ (1/2/3) einzeln** ab und bestätigt genau die eine Version pro Typ. Genau das macht WPHub jetzt auch: Einträge ohne Versionsnummer werden übersprungen, ein einzelner nicht zutreffender Typ (z. B. Servicevertrag, nur Türkei) wird toleriert. Die rohe Dokumenten-Antwort und der exakte PUT-Body landen jetzt im Instanz-Debug, damit ein etwaiger Rest-Fehler eindeutig sichtbar ist.
+
 ## 0.1.0 (Build 8) — 10.08.2026
 
 - **Zustimmung endgültig korrekt (echtes App-Schema):** Das Body-Format der v2-Zustimmung ist in keiner Community-Bibliothek gelöst; ich habe es aus der offiziellen Android-App (aktuelle Version, dekompiliert) direkt abgeleitet. Der richtige Ablauf: erst `GET /auth/v2/agreement/documents?language=0&includeContent=0` (liefert je Dokument Typ **und Versionsnummer**), dann `PUT /auth/v2/agreement/status` mit `{"agreementList":[{"type":<int>,"version":"<str>"}]}` — also die konkrete Version bestätigen, nicht ein generischer „akzeptiert“-Status. Genau das Fehlen der Version war der Grund für „Missing required body parameter“. Das ganze Raten aus Build 6/7 ist durch diesen einen belegten Aufruf ersetzt.

@@ -212,8 +212,9 @@ class WPHub extends IPSModule
     private function doAcceptAgreements(WPHUB_ComfortCloudClient $client, array $bundle, callable $say): void
     {
         // Die aktuellen Bedingungs-Dokumente inkl. Versionsnummern holen
-        // (genau wie die offizielle App) und exakt diese Versionen bestätigen.
-        $docs = $client->getAgreementDocuments($bundle);
+        // (genau wie die offizielle App: je Typ ein Abruf) und exakt diese
+        // Versionen bestätigen.
+        $docs = $client->collectAgreementVersions($bundle);
         if ($docs === null) {
             $say('❌ Die aktuellen Bedingungen konnten nicht abgerufen werden: ' . $client->getLastError());
             return;
