@@ -277,6 +277,51 @@ class WPHub extends IPSModule
     }
 
     /**
+     * DIAGNOSE (temporaer): Verschiedene A2W-Abrufvarianten gegen das echte
+     * Geraet testen und je Variante Status + gekuerzten Koerper ins System-
+     * protokoll schreiben. Wird per Konsole/Skript ausgeloest, nicht im
+     * Normalbetrieb. Loggt die Geraete-GUID (lokales Protokoll, eigenes Geraet).
+     */
+    public function ProbeA2W()
+    {
+        $bundle = $this->ensureToken();
+        if ($bundle === null) {
+            $this->LogMessage('A2W-Probe: keine gültige Anmeldung.', KL_WARNING);
+            return;
+        }
+        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
+        if ($guid === '') {
+            $this->LogMessage('A2W-Probe: keine Geräte-GUID im Cache.', KL_WARNING);
+            return;
+        }
+        $client = $this->ccClient();
+        $hp = [
+            ['key' => 'Accept', 'value' => 'application/json; charset=UTF-8'],
+            ['key' => 'Content-Type', 'value' => 'application/json'],
+            new stdClass(),
+        ];
+        $guidF = urlencode(str_replace('/', 'f', $guid)); // App-Transform für a2wInfo
+
+        $variants = [
+            ['transfer 3-header direct=1', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => $hp]],
+            ['transfer 2-header direct=1', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => [$hp[0], $hp[1]]]],
+            ['transfer +serviceId', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => $hp, 'serviceId' => '']],
+            ['transfer +bodyParam', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET', 'headerParam' => $hp, 'bodyParam' => new stdClass()]],
+            ['a2wInfo transform', 'GET', '/device/a2wInfo/' . $guidF, null],
+            ['a2wInfo raw', 'GET', '/device/a2wInfo/' . rawurlencode($guid), null],
+            ['transfer direct=0', 'POST', '/remote/v1/app/common/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0', 'requestMethod' => 'GET', 'headerParam' => $hp]],
+        ];
+
+        $lines = ['A2W-Probe für GUID ' . $guid . ' (transform: ' . $guidF . '):'];
+        foreach ($variants as $i => [$label, $method, $path, $body]) {
+            $res = $client->debugCall($bundle, $method, $path, $body);
+            $lines[] = sprintf('#%d %s -> HTTP %d: %s', $i + 1, $label, $res['status'], substr($res['body'], 0, 220));
+        }
+        $this->LogMessage(implode("\n", $lines), KL_WARNING);
+    }
+
+    /**
      * Zyklische Aktualisierung: Token pruefen/erneuern, Geraeteliste und
      * A2W-Status abrufen, Variablen pflegen.
      */

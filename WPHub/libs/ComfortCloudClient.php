@@ -444,6 +444,17 @@ class WPHUB_ComfortCloudClient
         ];
     }
 
+    // Diagnose: roher, signierter API-Aufruf. Liefert immer ['status','body']
+    // (status 0 = Transportfehler). Nur fuer die A2W-Endpunkt-Erkundung.
+    public function debugCall(array $bundle, string $method, string $path, ?array $jsonBody = null): array
+    {
+        $r = $this->apiRequest($bundle, $method, $path, $jsonBody);
+        if ($r === null) {
+            return ['status' => 0, 'body' => $this->lastError];
+        }
+        return ['status' => $r['status'], 'body' => (string)$r['body']];
+    }
+
     // EXPERIMENTELL: Verbrauchsdaten (kWh je Stunde) ueber den Transfer-Proxy.
     // Pfad aus aioaquarea (Aquarea Smart Cloud) uebernommen; ob der Proxy ihn
     // durchreicht, ist noch nicht am echten Konto verifiziert. Aufrufer muss
