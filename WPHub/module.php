@@ -211,21 +211,28 @@ class WPHub extends IPSModule
     /** Kern von AcceptAgreements, testbar mit injiziertem Client. */
     private function doAcceptAgreements(WPHUB_ComfortCloudClient $client, array $bundle, callable $say): void
     {
+        // Die aktuellen Bedingungs-Dokumente inkl. Versionsnummern holen
+        // (genau wie die offizielle App) und exakt diese Versionen bestätigen.
+        $docs = $client->getAgreementDocuments($bundle);
+        if ($docs === null) {
+            $say('❌ Die aktuellen Bedingungen konnten nicht abgerufen werden: ' . $client->getLastError());
+            return;
+        }
+        if (count($docs) === 0) {
+            $say('ℹ️ Die Cloud meldet keine offenen Bedingungen. Versuche direkt, die Geräteliste zu laden …');
+        } elseif (!$client->putAgreementStatus($bundle, $docs)) {
+            $say('❌ Die Zustimmung konnte nicht übermittelt werden: ' . $client->getLastError());
+            return;
+        }
+
         $names = [
             self::AGREEMENT_TERMS   => 'Nutzungsbedingungen',
             self::AGREEMENT_PRIVACY => 'Datenschutzerklärung',
+            3                        => 'Servicevertrag',
         ];
         $accepted = [];
-        foreach ($names as $typeId => $label) {
-            $status = $client->getAgreementStatus($bundle, $typeId);
-            if ($status === 1) {
-                continue; // bereits zugestimmt
-            }
-            if (!$client->acceptAgreement($bundle, $typeId)) {
-                $say('❌ ' . $label . ' konnte nicht bestätigt werden: ' . $client->getLastError());
-                return;
-            }
-            $accepted[] = $label;
+        foreach ($docs as $d) {
+            $accepted[] = $names[$d['type']] ?? ('Dokument ' . $d['type']);
         }
 
         $devices = $this->refreshDevices($bundle, $client);

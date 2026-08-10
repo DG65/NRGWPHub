@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 8) — 10.08.2026
+
+- **Zustimmung endgültig korrekt (echtes App-Schema):** Das Body-Format der v2-Zustimmung ist in keiner Community-Bibliothek gelöst; ich habe es aus der offiziellen Android-App (aktuelle Version, dekompiliert) direkt abgeleitet. Der richtige Ablauf: erst `GET /auth/v2/agreement/documents?language=0&includeContent=0` (liefert je Dokument Typ **und Versionsnummer**), dann `PUT /auth/v2/agreement/status` mit `{"agreementList":[{"type":<int>,"version":"<str>"}]}` — also die konkrete Version bestätigen, nicht ein generischer „akzeptiert“-Status. Genau das Fehlen der Version war der Grund für „Missing required body parameter“. Das ganze Raten aus Build 6/7 ist durch diesen einen belegten Aufruf ersetzt.
+
 ## 0.1.0 (Build 7) — 10.08.2026
 
 - **Zustimmung v2 selbstlernend:** Build 6 fand die reale Route (`/auth/v2/agreement/status/`), deren Body-Schema aber nirgends dokumentiert ist (400, Code 4002). Die Schaltfläche liest jetzt zuerst den v2-Zustimmungsstatus (rein lesend — die Antwort verrät die Feldnamen), spiegelt daraus den Bestätigungs-Body und probiert erst danach wenige statische Kandidaten; weitergeschaltet wird nur bei nachweislich wirkungslosen Antworten (4002/Route unbekannt). Scheitert alles, enthält die Fehlermeldung die rohe v2-Statusantwort zur Analyse.

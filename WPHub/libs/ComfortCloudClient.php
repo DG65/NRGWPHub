@@ -65,144 +65,69 @@ class WPHUB_ComfortCloudClient
         return $this->agreementRequired;
     }
 
+    // Zustimmungstypen (aus der offiziellen App): 1 = Nutzungsbedingungen,
+    // 2 = Datenschutzerklaerung, 3 = Servicevertrag (nur Tuerkei).
+    const AGREEMENT_TYPES = [1, 2, 3];
+
     /**
-     * Zustimmungsstatus abfragen: 1 = Nutzungsbedingungen, 2 = Datenschutz-
-     * erklaerung (3 = Servicevertrag, nur Tuerkei). Rueckgabe: Status laut
-     * Cloud (1 = zugestimmt), null bei Fehler.
+     * Aktuelle Bedingungs-Dokumente inkl. Versionsnummern abrufen (rein
+     * lesend). Genau der Aufruf der offiziellen App:
+     *   GET /auth/v2/agreement/documents?language=0&includeContent=0[&type=N]
+     * Antwort: { "agreementList": [ { "type":"1", "version":"…", … }, … ] }
+     * (type kommt als String). Rueckgabe: Liste [['type'=>int,'version'=>str]],
+     * null bei Fehler. Ohne $typeId werden alle Typen geliefert.
      */
-    public function getAgreementStatus(array $bundle, int $typeId): ?int
+    public function getAgreementDocuments(array $bundle, ?int $typeId = null): ?array
     {
         $this->lastError = '';
-        $r = $this->apiRequest($bundle, 'GET', '/auth/agreement/status/' . $typeId);
+        $query = 'language=0&includeContent=0' . ($typeId !== null ? '&type=' . $typeId : '');
+        $r = $this->apiRequest($bundle, 'GET', '/auth/v2/agreement/documents?' . $query);
         $json = ($r !== null) ? json_decode($r['body'], true) : null;
-        if ($r === null || $r['status'] !== 200 || !is_array($json) || !isset($json['agreementStatus'])) {
-            $this->failApi('Zustimmungsstatus (agreement/status/' . $typeId . ')', $r);
+        if ($r === null || $r['status'] !== 200 || !is_array($json) || !isset($json['agreementList'])) {
+            $this->failApi('Bedingungs-Dokumente (v2/agreement/documents)', $r);
             return null;
         }
-        return (int)$json['agreementStatus'];
-    }
-
-    /**
-     * Eine Bedingung im Namen des Kontos bestaetigen. Nur auf ausdrueckliche
-     * Nutzeraktion hin aufrufen (Schaltflaeche im Formular) -- das Modul
-     * stimmt nie stillschweigend selbst zu.
-     *
-     * Der historisch dokumentierte Weg (PUT /auth/agreement/status/, App-Aera
-     * 1.20) antwortet an der heutigen API mit AWS' "Missing Authentication
-     * Token" = Route existiert nicht; der tatsaechliche Accept-Pfad der
-     * aktuellen App ist nirgends oeffentlich mitgeschnitten. Deshalb eine
-     * Kandidatenleiter: Der naechste Versuch faehrt NUR, wenn der vorige
-     * eindeutig "Route unbekannt" war (dann hat er nichts bewirkt) -- bei
-     * Erfolg oder echtem Fehler stoppt die Leiter sofort, die Zustimmung
-     * wird also hoechstens einmal ausgefuehrt.
-     */
-    public function acceptAgreement(array $bundle, int $typeId): bool
-    {
-        $this->lastError = '';
-
-        // Erkundungsphase (Build 6): Die v1-Route (PUT /auth/agreement/status/,
-        // App-Aera 1.20) existiert nicht mehr; /auth/v2/agreement/status/ ist
-        // real, verlangte aber andere Body-Felder (400, Code 4002). Das
-        // v2-Schema ist nirgends oeffentlich dokumentiert -- deshalb: erst den
-        // v2-Status LESEN (verraet die Feldnamen), daraus den Body ableiten,
-        // danach wenige statische Kandidaten. Weitergeschaltet wird nur bei
-        // 4002 ("Missing required body parameter" = Validierung abgelehnt,
-        // nichts bewirkt) oder unbekannter Route; sonst stoppt die Leiter --
-        // die Zustimmung wird hoechstens einmal ausgefuehrt.
-        $path = '/auth/v2/agreement/status/';
-        $statusRaw = $this->probeAgreementStatusV2($bundle, $typeId);
-
-        $bodies = [];
-        $entry = $this->agreementEntryFromStatus($statusRaw, $typeId);
-        if ($entry !== null) {
-            // Gelesenen Eintrag zurueckspiegeln, Status-Felder auf 1 setzen.
-            foreach (['agreementStatus', 'status'] as $f) {
-                if (array_key_exists($f, $entry)) {
-                    $entry[$f] = 1;
-                }
-            }
-            if (!array_key_exists('agreementStatus', $entry) && !array_key_exists('status', $entry)) {
-                $entry['agreementStatus'] = 1;
-            }
-            $bodies[] = $entry;
-        }
-        $bodies[] = ['agreementStatus' => 1, 'type' => $typeId, 'language' => 0];
-        $bodies[] = ['agreementType' => $typeId, 'agreementStatus' => 1];
-        $bodies[] = ['type' => $typeId, 'status' => 1];
-        $bodies[] = ['agreementList' => [['type' => $typeId, 'agreementStatus' => 1]]];
-
-        foreach ($bodies as $body) {
-            $r = $this->apiRequest($bundle, 'PUT', $path, $body);
-            if ($r !== null && $r['status'] === 200) {
-                $this->dbg('agreement', 'Zustimmung Typ ' . $typeId . ' erfolgreich, Body: ' . json_encode(array_keys($body)));
-                return true;
-            }
-            $retryable = ($r !== null) && (
-                ($r['status'] === 400 && strpos((string)$r['body'], '4002') !== false)
-                || ($r['status'] === 403 && strpos((string)$r['body'], 'Missing Authentication Token') !== false)
-            );
-            if (!$retryable) {
-                $this->failApi('Zustimmung (PUT ' . $path . ', Typ ' . $typeId . ', Felder ' . json_encode(array_keys($body)) . ')', $r);
-                return false;
-            }
-            $this->dbg('agreement', 'Body abgelehnt (' . json_encode(array_keys($body)) . '), naechster Kandidat');
-        }
-
-        $this->lastError = 'Zustimmung (Typ ' . $typeId . '): kein Body-Format wird von der Cloud akzeptiert.'
-            . ($statusRaw !== null ? ' V2-Statusantwort zur Analyse: ' . substr(json_encode($statusRaw), 0, 400) : ' (v2-Status nicht lesbar)')
-            . ' — Bitte einmal die offizielle Comfort-Cloud-App oeffnen und die Bedingungen dort bestaetigen.';
-        $this->dbg('fehler', $this->lastError);
-        return false;
-    }
-
-    /** Read-only: v2-Zustimmungsstatus in mehreren Pfadvarianten lesen. */
-    private function probeAgreementStatusV2(array $bundle, int $typeId)
-    {
-        foreach (['/auth/v2/agreement/status/', '/auth/v2/agreement/status', '/auth/v2/agreement/status/' . $typeId] as $p) {
-            $r = $this->apiRequest($bundle, 'GET', $p);
-            if ($r !== null && $r['status'] === 200) {
-                $json = json_decode($r['body'], true);
-                if ($json !== null) {
-                    $this->dbg('agreement', 'v2-Status via GET ' . $p . ': ' . substr($r['body'], 0, 400));
-                    return $json;
-                }
-            }
-        }
-        $this->dbg('agreement', 'v2-Status nicht lesbar');
-        return null;
-    }
-
-    /** Aus einer v2-Statusantwort den Eintrag fuer den Typ herausfinden. */
-    private function agreementEntryFromStatus($statusRaw, int $typeId): ?array
-    {
-        if (!is_array($statusRaw)) {
-            return null;
-        }
-        // Liste direkt oder unter einem Huellen-Schluessel (agreementList o. ae.)
-        $candidates = [];
-        if (array_keys($statusRaw) === range(0, count($statusRaw) - 1)) {
-            $candidates = $statusRaw;
-        } else {
-            foreach ($statusRaw as $v) {
-                if (is_array($v) && array_keys($v) === range(0, count($v) - 1)) {
-                    $candidates = $v;
-                    break;
-                }
-            }
-            if (!$candidates && (isset($statusRaw['type']) || isset($statusRaw['agreementType']))) {
-                $candidates = [$statusRaw];
-            }
-        }
-        foreach ($candidates as $entry) {
-            if (!is_array($entry)) {
+        $out = [];
+        foreach ($json['agreementList'] as $entry) {
+            if (!is_array($entry) || !isset($entry['type']) || !isset($entry['version'])) {
                 continue;
             }
-            $t = $entry['type'] ?? ($entry['agreementType'] ?? null);
-            if ((int)$t === $typeId) {
-                return $entry;
-            }
+            $out[] = ['type' => (int)$entry['type'], 'version' => (string)$entry['version']];
         }
-        return null;
+        return $out;
+    }
+
+    /**
+     * Bedingungen im Namen des Kontos bestaetigen -- der PUT der offiziellen
+     * App, exakt nach ihrem Schema (aus dem App-Code der aktuellen Version
+     * abgeleitet, nicht geraten):
+     *   PUT /auth/v2/agreement/status
+     *   { "agreementList": [ { "type": <int>, "version": "<str>" }, … ] }
+     * Jeder Eintrag ist ein bestaetigtes Dokument mit genau der Version, die
+     * die documents-Antwort geliefert hat. Nur auf ausdrueckliche Nutzer-
+     * aktion aufrufen -- das Modul stimmt nie stillschweigend selbst zu.
+     */
+    public function putAgreementStatus(array $bundle, array $items): bool
+    {
+        $this->lastError = '';
+        $list = [];
+        foreach ($items as $it) {
+            if (!isset($it['type']) || !isset($it['version'])) {
+                continue;
+            }
+            $list[] = ['type' => (int)$it['type'], 'version' => (string)$it['version']];
+        }
+        if (count($list) === 0) {
+            $this->lastError = 'Zustimmung: keine gueltigen Dokument-Versionen zum Bestaetigen vorhanden.';
+            return false;
+        }
+        $r = $this->apiRequest($bundle, 'PUT', '/auth/v2/agreement/status', ['agreementList' => $list]);
+        if ($r === null || $r['status'] !== 200) {
+            $this->failApi('Zustimmung (v2/agreement/status, ' . count($list) . ' Dokument(e))', $r);
+            return false;
+        }
+        $this->dbg('agreement', 'Zustimmung erfolgreich fuer Typen ' . implode(',', array_column($list, 'type')));
+        return true;
     }
 
     public function getAppVersion(): string
