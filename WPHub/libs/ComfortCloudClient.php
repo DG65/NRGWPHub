@@ -173,6 +173,15 @@ class WPHUB_ComfortCloudClient
             $this->lastError = 'Zustimmung: keine gueltigen Dokument-Versionen zum Bestaetigen vorhanden.';
             return false;
         }
+        // Wie die offizielle App: unmittelbar vor dem PUT einmal den
+        // Zustimmungsstatus lesen (GET), auf derselben Sitzung. Ergebnis wird
+        // nicht ausgewertet -- der Aufruf scheint serverseitig den PUT zu
+        // "scharf" zu machen (die App tut es reproduzierbar so).
+        $rg = $this->apiRequest($bundle, 'GET', '/auth/v2/agreement/status');
+        if ($rg !== null) {
+            $this->dbg('agreement', 'status(vor PUT): ' . substr((string)$rg['body'], 0, 200));
+        }
+
         $payload = ['agreementList' => $list];
         $this->dbg('agreement', '[PUT] ' . json_encode($payload));
         $r = $this->apiRequest($bundle, 'PUT', '/auth/v2/agreement/status', $payload);

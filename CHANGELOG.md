@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 13) — 10.08.2026
+
+- **Zustimmung: Status-GET direkt vor dem PUT** (wie die offizielle App). Der PUT meldet zwar Erfolg (`{"result":0}`), aber die Geräteliste blieb bei 4103 — die App liest unmittelbar vor dem PUT auf derselben Sitzung einmal den Zustimmungsstatus; genau das ergänzt WPHub jetzt. **Bekannte Einschränkung:** Sollte die programmatische Zustimmung weiterhin nicht greifen, genügt der zuverlässige Weg — einmal die offizielle Comfort-Cloud-App öffnen, dort die neuen Bedingungen bestätigen, danach in WPHub „Anmelden und Wärmepumpen suchen“. Die Zustimmung ist ohnehin eine seltene, einmalige Aktion pro Bedingungs-Aktualisierung.
+
 ## 0.1.0 (Build 12) — 10.08.2026
 
 - **Zustimmung wirkt jetzt (gleiche Sitzung weiternutzen).** Der Protokoll-Mitschnitt zeigte: Die Zustimmung wird serverseitig angenommen (PUT → `{"result":0}`), aber Build 10 hat danach das Token erneuert und sich neu angemeldet — und genau diese **frische** Sitzung kannte die eben erteilte Zustimmung nicht, weshalb die Geräteliste weiter 4103 meldete. Die offizielle App macht es anders: Nach der Zustimmung läuft **dieselbe** Sitzung direkt zur Geräteliste weiter, ohne Token-Wechsel. WPHub macht das jetzt genauso; die Sitzungserneuerung bleibt nur als Rückfall, falls die Zustimmung ausnahmsweise nicht sofort greift.
