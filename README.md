@@ -8,7 +8,14 @@ WPHub verbindet IP-Symcon mit Wärmepumpen-Herstellerclouds und stellt gefundene
 
 ## Status
 
-Frühes Scaffold (Stand 10.08.2026) — Grundgerüst (Formular, Modul-Lebenszyklus, `GetFunctions()`-Vertragsform) steht, die eigentliche Panasonic-Comfort-Cloud-Anbindung (Login-Handshake, Geräte-/Messwertabfrage) ist noch nicht implementiert. Siehe [CLAUDE.md](CLAUDE.md) für den vollständigen Übergabe-Kontext.
+Erster funktionsfähiger Stand (0.1.0, 10.08.2026), noch nicht am echten Konto verifiziert:
+
+- **Anmeldung** an der Panasonic Comfort Cloud (Auth0/PKCE-Handshake wie die offizielle App; Konto wie in der App). Das Passwort dient nur der einmaligen Anmeldung und wird danach automatisch geleert — gespeichert bleibt nur der Zugangsschlüssel (Hinweis: IP-Symcon verschlüsselt Attribute nicht at rest). Konten mit Zwei-Faktor-Authentifizierung werden noch nicht unterstützt.
+- **Gerätesuche:** Aquarea-Wärmepumpen des Kontos werden automatisch gefunden; Klimageräte bindet WPHub bewusst nicht ein.
+- **Variablen je Wärmepumpe:** Erreichbarkeit, Betrieb, Außentemperatur, Warmwasser (Ist/Soll), Heizzonen (Ist/Soll).
+- **EMS-Vertrag:** `WPHUB_GetFunctions()` liefert je Gerät einen `Type=>'heatpump'`-Eintrag (contractVersion 1.2). `PowerID`/`EnergyID` sind derzeit 0 — die Comfort Cloud liefert keine Momentanleistung und keine kumulativen Zähler, und nach Verbund-Regel wird Energie nie aus Tageswerten hochgerechnet.
+
+Offen: Verifikation am echten Konto, Verbrauchsdaten-Endpunkt (experimentell vorbereitet), 2FA. Siehe [CLAUDE.md](CLAUDE.md) für den vollständigen Übergabe-Kontext.
 
 ## Verbund
 

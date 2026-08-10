@@ -11,7 +11,11 @@
                 },
                 {
                     "type": "Label",
-                    "caption": "Verbindet sich mit der Panasonic Comfort Cloud und stellt gefundene Waermepumpen dem NRG-Stack-Verbund (z. B. EMS) zur Verfuegung. Details: https://github.com/DG65/WPHub"
+                    "caption": "Verbindet sich mit der Panasonic Comfort Cloud (gleiches Konto wie die offizielle App) und stellt gefundene Aquarea-Waermepumpen dem NRG-Stack-Verbund (z. B. EMS) zur Verfuegung. Klimageraete werden bewusst nicht eingebunden. Details: https://github.com/DG65/WPHub"
+                },
+                {
+                    "type": "Label",
+                    "caption": "Ablauf: 1. E-Mail und Passwort eintragen → 2. Übernehmen → 3. „Anmelden und Wärmepumpen suchen“ → 4. „WPHub aktiv“ einschalten und Übernehmen."
                 }
             ]
         },
@@ -45,7 +49,7 @@
                     "items": [
                         {
                             "type": "Label",
-                            "caption": "Zugangsdaten werden nur fuer den einmaligen Login verwendet, danach nicht mehr gespeichert -- nur das resultierende Token."
+                            "caption": "Zugangsdaten werden nur fuer die einmalige Anmeldung verwendet, danach nicht mehr gespeichert -- nur der resultierende Zugangsschluessel."
                         },
                         {
                             "type": "PopupButton",
@@ -56,7 +60,7 @@
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "IP-Symcon verschluesselt Attribute NICHT at rest. \"Sicher\" heisst hier: nicht im Formular/Log sichtbar -- keine echte Verschluesselung. Das Passwort wird nur fuer den Login-Handshake verwendet und danach verworfen."
+                                        "caption": "IP-Symcon verschluesselt Attribute NICHT at rest. \"Sicher\" heisst hier: nicht im Formular/Protokoll sichtbar -- keine echte Verschluesselung. Das Passwort wird nur fuer die einmalige Anmeldung verwendet und danach automatisch geleert; gespeichert bleibt nur der Zugangsschluessel (Token). Konten mit Zwei-Faktor-Authentifizierung (2FA) werden noch nicht unterstuetzt."
                                     }
                                 ]
                             }
@@ -71,9 +75,52 @@
                 {
                     "type": "PasswordTextBox",
                     "name": "CC_Password",
-                    "caption": "Comfort Cloud Passwort"
+                    "caption": "Comfort Cloud Passwort (wird nach der Anmeldung geleert)"
+                },
+                {
+                    "type": "Button",
+                    "name": "CC_LoginButton",
+                    "caption": "🔑  Anmelden und Wärmepumpen suchen",
+                    "onClick": "WPHUB_Login($id);"
+                },
+                {
+                    "type": "Label",
+                    "name": "CC_Result",
+                    "caption": "",
+                    "visible": false
+                },
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "ValidationTextBox",
+                            "name": "CC_AppVersion",
+                            "caption": "App-Version"
+                        },
+                        {
+                            "type": "PopupButton",
+                            "caption": "?",
+                            "width": "70px",
+                            "popup": {
+                                "caption": "Wozu die App-Version?",
+                                "items": [
+                                    {
+                                        "type": "Label",
+                                        "caption": "Die Comfort Cloud weist Anfragen zu alter App-Versionen ab (Fehlercode 4106). Meldet das Protokoll diesen Fehler, hier die aktuelle Versionsnummer der offiziellen Comfort-Cloud-App (Play Store/App Store) eintragen und uebernehmen. Standard: 1.21.0"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
                 }
             ]
+        }
+    ],
+    "status": [
+        {
+            "code": 201,
+            "icon": "error",
+            "caption": "Anmeldung an der Comfort Cloud erforderlich -- im Formular anmelden"
         }
     ]
 }

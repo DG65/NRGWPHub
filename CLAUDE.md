@@ -89,22 +89,55 @@ hatte. **Nicht von sich aus mit weiteren Herstellern anfangen.**
   `PasswordTextBox` + Sicherheits-PopupButton
 - `LICENSE` (1:1 aus EMS-Repo)
 
-## Was noch fehlt (eigentliche Aufgabe dieser Sitzung)
+## Umsetzungsstand (10.08.2026, Build 2)
 
-1. Panasonic Comfort Cloud API recherchieren (inoffiziell, kein offizielles
-   öffentliches API — Community-Reverse-Engineering nötig, z. B. bestehende
-   Python-/Node-Bibliotheken als Referenz für den Login-Flow prüfen).
-2. `Login()`-Methode: E-Mail+Passwort → Token, Token in `CC_Token` ablegen,
-   Property-Passwort NICHT dauerhaft behalten.
-3. Geräteliste + Messwerte abrufen, `CC_DeviceList`-Attribut befüllen,
-   passende IPS-Variablen anlegen (`MaintainVariable()`, siehe SUITE.md
-   Stolperfalle zu `RegisterVariableXXX()`).
-4. `GetFunctions()` mit echten `PowerID`/`EnergyID` befüllen.
-5. Token-Ablauf/Reauth-Handling.
-6. "🆕 Neu in Version 0.1.0"-Panel ergänzen, sobald der erste funktionsfähige
-   Stand steht (aktuell bewusst weggelassen, Scaffold hat noch keine
-   nutzbare Funktion).
-7. Punkt-12-Checkliste ("Neuinstallations-Simulation") vor dem ersten
+Erledigt (siehe CHANGELOG 0.1.0 Build 2):
+
+1. ✅ API recherchiert — Referenz: sockless-coding/aio-panasonic-comfort-cloud
+   (Python, aktiv gepflegt; lostfields' requests.http beschreibt nur den
+   VERALTETEN Vor-2023-Flow). Kernpunkte: Auth0/PKCE-Login auf
+   authglb.digital.panasonic.com (Scope enthält `a2w.control` → Aquarea läuft
+   über die Comfort Cloud, kein separates Aquarea-Smart-Cloud-Konto nötig),
+   Geräte-API auf accsmart.panasonic.com mit signiertem `x-cfc-api-key`
+   (sha256 aus Zeitstempel+Token, in PHP nachgebaut und gegen die
+   Python-Referenz abgeglichen), A2W-Status über den Transfer-Proxy
+   `/remote/v1/app/common/transfer`. Alles in
+   `WPHub/libs/ComfortCloudClient.php` (Klasse `WPHUB_ComfortCloudClient`).
+2. ✅ `Login()` (Auth0-Handshake, Token-Bündel in `CC_Token`, Passwort-Property
+   wird nach Erfolg geleert — Muster MeterHub/InexogyLogin). 2FA-Konten werden
+   erkannt und mit klarer Meldung abgelehnt (noch nicht unterstützt).
+3. ✅ Gerätesuche + Variablen (`MaintainVariable`, `NRG.Celsius` nur-bei-Fehlen):
+   Erreichbar, Betrieb, Außentemperatur, Warmwasser Ist/Soll, Zonen Ist/Soll.
+   Marker 126 = „kein Messwert" wird gefiltert; Klimageräte (Einträge MIT
+   `parameters` in der Gruppenantwort) werden bewusst übersprungen.
+4. ⚠️ `GetFunctions()` liefert HeishaMon-Form mit contractVersion **1.2**
+   (HeishaMon ems-integration liefert 1.2, nicht mehr 1.0 wie im Scaffold) —
+   aber `PowerID`/`EnergyID` bewusst 0: Die Cloud liefert keine
+   Momentanleistung, Verbrauch nur als Tageswerte → Verbund-Regel „Energie nur
+   aus kumulativen Zählern, nie hochrechnen".
+5. ✅ Token-Erneuerung über Refresh-Token (5-Minuten-Vorlauf); schlägt sie fehl
+   → Status 201 „Anmeldung erforderlich" + Protokollhinweis (Neuanmeldung kann
+   das Modul mangels gespeichertem Passwort bewusst nicht selbst auslösen).
+6. ✅ „🆕 Neu in Version"-Panel (Attribut `SeenNews` + `UpdateFormField`, kein
+   Selbst-Persistieren).
+7. Prüfstand: `php .tools/test-module.php` (39 Prüfungen, ohne Netz).
+
+## Was noch offen ist
+
+1. **Verifikation am echten Konto** — der komplette Login-/Abruf-Pfad ist
+   gegen die Python-Referenz gebaut, aber noch nie gegen die echte Cloud
+   gelaufen. Erster Test an Dietmars Anlage nötig (SendDebug der Instanz
+   liefert die HTTP-Stationen).
+2. **Leistung/Energie:** `getAquareaConsumption()` ist experimentell
+   vorbereitet (Pfad aus aioaquarea, über den Transfer-Proxy ungeprüft).
+   Wenn am echten Konto verifiziert: klären, ob daraus eine vertragstaugliche
+   Größe wird (kumulativ zählen? → mit EMS abstimmen), erst dann
+   `PowerID`/`EnergyID` befüllen.
+3. **2FA-Unterstützung** (Auth0 mfa_token-Flow, in der Python-Referenz
+   vorhanden) — nur bei Bedarf.
+4. **Forum-Hinweis-Panel** folgt, sobald es einen WPHub-Forumsthread gibt
+   (gleiche Begründung wie bei MeterHub).
+5. Punkt-12-Checkliste ("Neuinstallations-Simulation") vor dem ersten
    beta/main-Wechsel durchgehen.
 
 ## Verbund-Kontakt
