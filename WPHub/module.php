@@ -313,15 +313,25 @@ class WPHub extends IPSModule
             ['key' => 'Content-Type', 'value' => 'application/json'],
             new stdClass(),
         ];
+        $guidF = urlencode(str_replace('/', 'f', $guid)); // App-Transform (a2wInfo)
+        $tz = date('P');
         $cand = [
-            ['deviceInfo', 'GET', '/device/deviceInfo/' . $guid, null],
-            ['deviceList', 'GET', '/device/deviceList', null],
-            ['hphw/registerInfo', 'GET', '/hphw/deviceRegisterInfo?deviceGuid=' . $guid, null],
-            ['svc/transfer devices', 'POST', '/remote/v1/app/svc/transfer', ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0', 'requestMethod' => 'GET', 'headerParam' => $hp]],
+            // Der im Flutter-Code gefundene A2W-Statusendpunkt:
+            ['hphw/deviceStatus/{guid}',   'GET', '/hphw/deviceStatus/' . $guid, null],
+            ['hphw/deviceStatus/{guidF}',  'GET', '/hphw/deviceStatus/' . $guidF, null],
+            ['hphw/deviceStatus?guid',     'GET', '/hphw/deviceStatus?deviceGuid=' . $guid, null],
+            ['deviceInfo/4/{guid}',        'GET', '/device/deviceInfo/4/' . $guid, null],
+            ['deviceInfo/{guid}/4',        'GET', '/device/deviceInfo/' . $guid . '/4', null],
+            ['hphw/deviceHistoryData',     'POST', '/hphw/deviceHistoryData', ['deviceGuid' => $guid, 'dataMode' => 0, 'date' => date('Ymd'), 'osTimezone' => $tz]],
         ];
         foreach ($cand as $i => [$label, $method, $path, $jbody]) {
             $res = $client->debugCall($bundle, $method, $path, $jbody);
-            $this->LogMessage(sprintf('ProbeFull cand#%d %s -> HTTP %d: %s', $i + 1, $label, $res['status'], substr((string)$res['body'], 0, 800)), KL_WARNING);
+            $b = (string)$res['body'];
+            $this->LogMessage(sprintf('ProbeFull cand#%d %s -> HTTP %d, Länge %d', $i + 1, $label, $res['status'], strlen($b)), KL_WARNING);
+            foreach (str_split($b, 1400) as $j => $chunk) {
+                $this->LogMessage('ProbeFull cand#' . ($i + 1) . '[' . $j . ']: ' . $chunk, KL_WARNING);
+                if ($j >= 2) { break; }
+            }
         }
     }
 
