@@ -313,16 +313,17 @@ class WPHub extends IPSModule
             ['key' => 'Content-Type', 'value' => 'application/json'],
             new stdClass(),
         ];
-        $guidF = urlencode(str_replace('/', 'f', $guid)); // App-Transform (a2wInfo)
-        $tz = date('P');
+        // /hphw/deviceStatus?deviceGuid=… ist die reale Route (gab 400, nicht 403).
+        // Es fehlt vermutlich der osTimezone-Query-Parameter (im Flutter-Code direkt
+        // bei diesem Endpunkt gefunden). Verschiedene Parameter-Kombinationen testen.
+        $tzEnc = urlencode(date('P')); // z. B. %2B02%3A00
+        $g = rawurlencode($guid);
         $cand = [
-            // Der im Flutter-Code gefundene A2W-Statusendpunkt:
-            ['hphw/deviceStatus/{guid}',   'GET', '/hphw/deviceStatus/' . $guid, null],
-            ['hphw/deviceStatus/{guidF}',  'GET', '/hphw/deviceStatus/' . $guidF, null],
-            ['hphw/deviceStatus?guid',     'GET', '/hphw/deviceStatus?deviceGuid=' . $guid, null],
-            ['deviceInfo/4/{guid}',        'GET', '/device/deviceInfo/4/' . $guid, null],
-            ['deviceInfo/{guid}/4',        'GET', '/device/deviceInfo/' . $guid . '/4', null],
-            ['hphw/deviceHistoryData',     'POST', '/hphw/deviceHistoryData', ['deviceGuid' => $guid, 'dataMode' => 0, 'date' => date('Ymd'), 'osTimezone' => $tz]],
+            ['hphw ?guid&tz',            'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . $tzEnc, null],
+            ['hphw ?guid&type&tz',       'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&deviceType=2&osTimezone=' . $tzEnc, null],
+            ['hphw ?guid&direct&tz',     'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&deviceDirect=0&osTimezone=' . $tzEnc, null],
+            ['hphw ?guid (baseline)',    'GET', '/hphw/deviceStatus?deviceGuid=' . $g, null],
+            ['hphw history ?guid&tz',    'GET', '/hphw/deviceHistoryData?deviceGuid=' . $g . '&osTimezone=' . $tzEnc, null],
         ];
         foreach ($cand as $i => [$label, $method, $path, $jbody]) {
             $res = $client->debugCall($bundle, $method, $path, $jbody);
