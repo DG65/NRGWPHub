@@ -63,9 +63,6 @@ class WPHub extends IPSModule
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt bestaetigter Stand des "Neu in Version"-Panels.
         $this->RegisterAttributeString('SeenNews', '');
-        // DIAGNOSE (temporaer): Hash des zuletzt protokollierten Online-
-        // Datensatzes, damit die Auto-Erfassung nicht in jedem Zyklus spammt.
-        $this->RegisterAttributeString('CC_LastOnlineDump', '');
 
         $this->RegisterTimer('WPHUB_UpdateTimer', 0, 'WPHUB_Update($_IPS[\'TARGET\']);');
     }
@@ -517,22 +514,12 @@ class WPHub extends IPSModule
 
                 $name = (string)($entry['deviceName'] ?? ('Wärmepumpe ' . substr($guid, 0, 8)));
                 $prefix = $this->devicePrefix($guid);
-                // connectionStatus: 1 = erreichbar, 0 = derzeit nicht erreichbar.
-                $reachable = ((int)($entry['connectionStatus'] ?? 0)) === 1;
-
-                // DIAGNOSE (temporaer): Beim UEBERGANG offline->online genau EINEN
-                // vollen Rohdatensatz ins Protokoll schreiben -- offline liefert
-                // die Cloud nur den Minimalstand; online erwarten wir mehr Felder
-                // (Modi, Fluesterbetrieb, Aussentemp. …). Marker wird bei offline
-                // zurueckgesetzt, damit je Online-Phase nur einmal geloggt wird.
-                if ($reachable) {
-                    if ($this->ReadAttributeString('CC_LastOnlineDump') !== $guid) {
-                        $this->WriteAttributeString('CC_LastOnlineDump', $guid);
-                        $this->LogMessage('WPHub Online-Rohdatensatz (' . $name . '): ' . json_encode($entry, JSON_UNESCAPED_UNICODE), KL_WARNING);
-                    }
-                } elseif ($this->ReadAttributeString('CC_LastOnlineDump') === $guid) {
-                    $this->WriteAttributeString('CC_LastOnlineDump', '');
-                }
+                // Erreichbar = Geraet ist in device/group vorhanden und liefert
+                // aktuelle Daten. connectionStatus:0 ist der NORMALZUSTAND (die
+                // App zeigt das Geraet nie als "offline"), taugt also NICHT als
+                // Erreichbarkeitsindikator. Faellt der ganze Cloud-Abruf aus,
+                // setzt markAllUnreachable() die Variablen auf false.
+                $reachable = true;
 
                 $this->maintainDeviceVariables($prefix, $name, $entry, $reachable);
 

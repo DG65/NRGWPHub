@@ -350,7 +350,7 @@ $devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 
 check('Genau eine Waermepumpe erkannt (Klimageraet uebersprungen)', is_array($devices) && count($devices) === 1, json_encode($devices));
 check('Name aus deviceName uebernommen', $devices[0]['name'] === 'Heizung');
-check('Geraet als erreichbar markiert (connectionStatus 1)', $devices[0]['reachable'] === true);
+check('Geraet als erreichbar markiert (in device/group vorhanden)', $devices[0]['reachable'] === true);
 
 $prefix = $devices[0]['prefix'];
 $vars = $GLOBALS['ips']['variables'];
@@ -364,19 +364,25 @@ check('Zone 1 Soll 19 °C', ($vars[$prefix . 'Zone1Soll']['value'] ?? null) === 
 check('Zone 1 Betrieb = true', ($vars[$prefix . 'Zone1Betrieb']['value'] ?? null) === true);
 check('Zone 2 ohne Temperatur legt KEINE Soll-Variable an', !isset($vars[$prefix . 'Zone2Soll']));
 
-// Nicht erreichbar (connectionStatus 0): Werte bleiben (letzter Stand), nur Erreichbar=false.
+// connectionStatus:0 ist Normalzustand -> weiterhin erreichbar (die Cloud liefert
+// aktuelle Werte, die App zeigt das Geraet nie als offline).
 $fake->groupsResult['groupList'][1]['deviceList'][0]['connectionStatus'] = 0;
 $devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
-check('connectionStatus 0 → nicht erreichbar', $devices[0]['reachable'] === false);
-check('Erreichbar-Variable = false', ($GLOBALS['ips']['variables'][$prefix . 'Erreichbar']['value'] ?? null) === false);
-check('Messwerte bleiben trotz offline erhalten', ($GLOBALS['ips']['variables'][$prefix . 'Warmwasser']['value'] ?? null) === 42.0);
+check('connectionStatus 0 bleibt erreichbar (Normalzustand)', $devices[0]['reachable'] === true);
+check('Erreichbar-Variable = true', ($GLOBALS['ips']['variables'][$prefix . 'Erreichbar']['value'] ?? null) === true);
+
+// Cloud-Ausfall: markAllUnreachable() setzt Erreichbar=false, Werte bleiben.
+$markAllTmp = new ReflectionMethod(WPHub::class, 'markAllUnreachable');
+$markAllTmp->setAccessible(true);
+$markAllTmp->invoke($mod);
+check('Nach Cloud-Ausfall Erreichbar=false', ($GLOBALS['ips']['variables'][$prefix . 'Erreichbar']['value'] ?? null) === false);
+check('Messwerte bleiben trotz Ausfall erhalten', ($GLOBALS['ips']['variables'][$prefix . 'Warmwasser']['value'] ?? null) === 42.0);
 
 // ---------------------------------------------------------------------------
 echo "Block 3: EMS-Vertrag (GetFunctions)\n";
 // ---------------------------------------------------------------------------
 
-// Wieder erreichbar schalten fuer den reachable=true-Pfad.
-$fake->groupsResult['groupList'][1]['deviceList'][0]['connectionStatus'] = 1;
+// Erneuter Abruf -> Geraet wieder erreichbar fuer den reachable=true-Pfad.
 $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 
 $functions = $mod->GetFunctions();

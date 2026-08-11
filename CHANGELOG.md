@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 27) — 12.08.2026
+
+- **„Erreichbar" korrigiert.** Bisher basierte die Erreichbarkeit auf `connectionStatus == 1` — das war falsch: `connectionStatus:0` ist der **Normalzustand** (die Comfort-Cloud-App zeigt die Wärmepumpe nie als offline, und die Cloud liefert durchgehend aktuelle Werte). Die Variable stand dadurch dauerhaft fälschlich auf „nicht erreichbar". Jetzt gilt ein Gerät als erreichbar, sobald es in `device/group` mit aktuellen Daten erscheint; nur ein kompletter Cloud-Ausfall setzt es auf „nicht erreichbar". (Die Builds 22–26 dazwischen waren Diagnose-Zwischenstände auf der Suche nach dem Aquarea-Detail-Endpunkt `/hphw/deviceStatus`.)
+
 ## 0.1.0 (Build 21) — 11.08.2026
 
 - **Aufräumen nach Datenquellen-Analyse.** Untersuchung, ob sich die reichhaltige Aquarea-Telemetrie (Außentemperatur, Vor-/Rücklauf, COP, Energie) anbinden lässt: Der frühere Consumer-Host `aquarea-smart.panasonic.com` existiert nicht mehr (keine DNS-Auflösung), und der überlebende Dienst `ac.smartcloud.panasonic.com` nutzt ein eigenes Login (nicht Panasonic ID/Auth0) — mit dem Comfort-Cloud-Token nicht erreichbar. Ergebnis: Über den Comfort-Cloud-Zugang bleibt es bei den Basisdaten aus `device/group` (Build 17). Die temporären Diagnosefunktionen wurden wieder entfernt; das Modul ist im verifizierten, sauberen Stand.
