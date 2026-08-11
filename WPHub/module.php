@@ -313,17 +313,17 @@ class WPHub extends IPSModule
             ['key' => 'Content-Type', 'value' => 'application/json'],
             new stdClass(),
         ];
-        // /hphw/deviceStatus?deviceGuid=… ist die reale Route (gab 400, nicht 403).
-        // Es fehlt vermutlich der osTimezone-Query-Parameter (im Flutter-Code direkt
-        // bei diesem Endpunkt gefunden). Verschiedene Parameter-Kombinationen testen.
-        $tzEnc = urlencode(date('P')); // z. B. %2B02%3A00
+        // /hphw/deviceStatus ist die reale Route (400 statt 403), aber GET mit
+        // Query blieb 400. Nach dem Muster der anderen hphw-/History-Endpunkte
+        // vermutlich ein POST mit JSON-Body. Verschiedene Formen testen.
+        $tz = date('P');
         $g = rawurlencode($guid);
         $cand = [
-            ['hphw ?guid&tz',            'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . $tzEnc, null],
-            ['hphw ?guid&type&tz',       'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&deviceType=2&osTimezone=' . $tzEnc, null],
-            ['hphw ?guid&direct&tz',     'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&deviceDirect=0&osTimezone=' . $tzEnc, null],
-            ['hphw ?guid (baseline)',    'GET', '/hphw/deviceStatus?deviceGuid=' . $g, null],
-            ['hphw history ?guid&tz',    'GET', '/hphw/deviceHistoryData?deviceGuid=' . $g . '&osTimezone=' . $tzEnc, null],
+            ['POST body guid+tz',        'POST', '/hphw/deviceStatus', ['deviceGuid' => $guid, 'osTimezone' => $tz]],
+            ['POST body guid+tz+type',   'POST', '/hphw/deviceStatus', ['deviceGuid' => $guid, 'osTimezone' => $tz, 'deviceType' => 2]],
+            ['POST body guid only',      'POST', '/hphw/deviceStatus', ['deviceGuid' => $guid]],
+            ['POST ?guid&tz kein Body',  'POST', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . urlencode($tz), null],
+            ['POST history body',        'POST', '/hphw/deviceHistoryData', ['deviceGuid' => $guid, 'dataMode' => 0, 'date' => date('Ymd'), 'osTimezone' => $tz]],
         ];
         foreach ($cand as $i => [$label, $method, $path, $jbody]) {
             $res = $client->debugCall($bundle, $method, $path, $jbody);
