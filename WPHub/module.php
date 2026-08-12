@@ -310,22 +310,20 @@ class WPHub extends IPSModule
             ['key' => 'Content-Type', 'value' => 'application/json'],
             new stdClass(),
         ];
-        // /hphw/deviceStatus?deviceGuid=X gab 400 (Route existiert, Pflicht-
-        // param fehlt). Hypothese: der Parameter heisst anders (guid/gwid).
-        // Verschiedene Parameternamen testen. App-Version mitloggen.
-        $this->LogMessage('ProbeFull x-app-version = ' . $client->getAppVersion(), KL_WARNING);
+        // 400 = „Missing required HEADER parameter". Query-Varianten halfen
+        // nicht -> Hypothese: osTimezone (steht im Flutter-Code direkt beim
+        // Endpunkt) muss als HTTP-HEADER mit. Verschiedene Header testen.
         $tz = date('P');
-        $tzE = urlencode($tz);
         $g = rawurlencode($guid);
         $cand = [
-            ['?guid&tz',        'GET', '/hphw/deviceStatus?guid=' . $g . '&osTimezone=' . $tzE, null],
-            ['?gwid&tz',        'GET', '/hphw/deviceStatus?gwid=' . $g . '&osTimezone=' . $tzE, null],
-            ['?deviceGuid&tz(raw)', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . $tz, null],
-            ['?deviceGuid&type&mode&tz', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&deviceType=2&dataMode=0&osTimezone=' . $tzE, null],
-            ['?deviceGuid (baseline)', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g, null],
+            ['Header osTimezone',        'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['osTimezone: ' . $tz]],
+            ['Header osTimezone +Query', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . urlencode($tz), ['osTimezone: ' . $tz]],
+            ['Header x-app-timezone',    'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['x-app-timezone: ' . $tz]],
+            ['Header X-OS-Timezone',     'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['X-OS-Timezone: ' . $tz]],
+            ['Header timezone',          'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['timezone: ' . $tz]],
         ];
-        foreach ($cand as $i => [$label, $method, $path, $jbody]) {
-            $res = $client->debugCall($bundle, $method, $path, $jbody);
+        foreach ($cand as $i => [$label, $method, $path, $hdrs]) {
+            $res = $client->debugCall($bundle, $method, $path, null, $hdrs);
             $b = (string)$res['body'];
             $this->LogMessage(sprintf('ProbeFull cand#%d %s -> HTTP %d, Länge %d', $i + 1, $label, $res['status'], strlen($b)), KL_WARNING);
             foreach (str_split($b, 1400) as $j => $chunk) {

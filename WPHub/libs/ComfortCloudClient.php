@@ -420,9 +420,9 @@ class WPHUB_ComfortCloudClient
     // Auswertung passiert daher komplett im Modul aus getGroups().
 
     // Diagnose: roher, signierter API-Aufruf. Liefert immer ['status','body'].
-    public function debugCall(array $bundle, string $method, string $path, ?array $jsonBody = null): array
+    public function debugCall(array $bundle, string $method, string $path, ?array $jsonBody = null, array $extraHeaders = []): array
     {
-        $r = $this->apiRequest($bundle, $method, $path, $jsonBody);
+        $r = $this->apiRequest($bundle, $method, $path, $jsonBody, true, $extraHeaders);
         if ($r === null) {
             return ['status' => 0, 'body' => $this->lastError];
         }
@@ -448,12 +448,13 @@ class WPHUB_ComfortCloudClient
         ];
     }
 
-    // Signierter Aufruf der Geraete-API (accsmart).
-    private function apiRequest(array $bundle, string $method, string $path, ?array $jsonBody = null, bool $includeClientId = true): ?array
+    // Signierter Aufruf der Geraete-API (accsmart). $extraHeaders (nur Diagnose)
+    // werden zusaetzlich angehaengt.
+    private function apiRequest(array $bundle, string $method, string $path, ?array $jsonBody = null, bool $includeClientId = true, array $extraHeaders = []): ?array
     {
         $this->versionRejected = false;
         $this->agreementRequired = false;
-        $headers = $this->apiHeaders($bundle, $includeClientId);
+        $headers = array_merge($this->apiHeaders($bundle, $includeClientId), $extraHeaders);
         $body = ($jsonBody !== null) ? json_encode($jsonBody) : null;
         $r = $this->request($method, self::ACC_BASE . $path, $headers, $body);
 
