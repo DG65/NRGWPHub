@@ -304,26 +304,25 @@ class WPHub extends IPSModule
             return;
         }
 
-        // Bisher ungetestete A2W-Kandidaten (jeweils Status + Anfang des Koerpers).
-        $hp = [
-            ['key' => 'Accept', 'value' => 'application/json; charset=UTF-8'],
-            ['key' => 'Content-Type', 'value' => 'application/json'],
-            new stdClass(),
-        ];
-        // 400 = „Missing required HEADER parameter". Query-Varianten halfen
-        // nicht -> Hypothese: osTimezone (steht im Flutter-Code direkt beim
-        // Endpunkt) muss als HTTP-HEADER mit. Verschiedene Header testen.
+        // Kandidaten nach Abgleich mit der aktiv gepflegten Referenz
+        // cjaliaga/aioaquarea (Home-Assistant-Integration, produktiv im
+        // Einsatz): (a) Transfer-Proxy mit apiName/requestMethod-Body statt
+        // direktem Pfad -- exakt deren get_device_status()-Form, live und
+        // cached; (b) /hphw/deviceStatus jetzt mit global ergaenztem
+        // Accept-Header (fehlte zuvor komplett -- moeglicher Grund fuer
+        // "Missing required header parameter").
         $tz = date('P');
         $g = rawurlencode($guid);
         $cand = [
-            ['Header osTimezone',        'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['osTimezone: ' . $tz]],
-            ['Header osTimezone +Query', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . urlencode($tz), ['osTimezone: ' . $tz]],
-            ['Header x-app-timezone',    'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['x-app-timezone: ' . $tz]],
-            ['Header X-OS-Timezone',     'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['X-OS-Timezone: ' . $tz]],
-            ['Header timezone',          'GET', '/hphw/deviceStatus?deviceGuid=' . $g, ['timezone: ' . $tz]],
+            ['Transfer live (deviceDirect=1)',   'POST', '/remote/v1/app/common/transfer', null,
+                ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET']],
+            ['Transfer cached (deviceDirect=0)', 'POST', '/remote/v1/app/common/transfer', null,
+                ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0', 'requestMethod' => 'GET']],
+            ['hphw mit Accept-Header',           'GET',  '/hphw/deviceStatus?deviceGuid=' . $g, [], null],
+            ['hphw + osTimezone-Header',         'GET',  '/hphw/deviceStatus?deviceGuid=' . $g, ['osTimezone: ' . $tz], null],
         ];
-        foreach ($cand as $i => [$label, $method, $path, $hdrs]) {
-            $res = $client->debugCall($bundle, $method, $path, null, $hdrs);
+        foreach ($cand as $i => [$label, $method, $path, $hdrs, $body]) {
+            $res = $client->debugCall($bundle, $method, $path, $body, $hdrs ?? []);
             $b = (string)$res['body'];
             $this->LogMessage(sprintf('ProbeFull cand#%d %s -> HTTP %d, Länge %d', $i + 1, $label, $res['status'], strlen($b)), KL_WARNING);
             foreach (str_split($b, 1400) as $j => $chunk) {

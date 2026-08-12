@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.1.0 (Build 30) — 12.08.2026
+
+- **ProbeFull: neuer Anlauf für die Aquarea-Reichdaten, diesmal nach Abgleich mit einer aktiv gepflegten Referenz.** Die Home-Assistant-Integration `cjaliaga/aioaquarea` (produktiv im Einsatz) zeigte zwei Dinge: (1) WPHub sendete bislang **keinen `Accept`-Header** — jetzt bei jedem Cloud-Aufruf global ergänzt (`accept: application/json; charset=utf-8`), ein möglicher Kandidat für die bisherige „Missing required header parameter"-Fehlermeldung. (2) Der Transfer-Proxy (`/remote/v1/app/common/transfer`) wird von der Referenz mit einer **einfacheren Body-Form** angesprochen als in Build 14 vermutet — nur `apiName`/`requestMethod`, **kein** `headerParam`. `ProbeFull` testet jetzt genau diese Form (live + cached) sowie `/hphw/deviceStatus` mit dem neuen Accept-Header. Rein diagnostisch, keine funktionale Änderung an den bestehenden, verifizierten Basisdaten.
+
 ## 0.1.0 (Build 27) — 12.08.2026
 
 - **„Erreichbar" korrigiert.** Bisher basierte die Erreichbarkeit auf `connectionStatus == 1` — das war falsch: `connectionStatus:0` ist der **Normalzustand** (die Comfort-Cloud-App zeigt die Wärmepumpe nie als offline, und die Cloud liefert durchgehend aktuelle Werte). Die Variable stand dadurch dauerhaft fälschlich auf „nicht erreichbar". Jetzt gilt ein Gerät als erreichbar, sobald es in `device/group` mit aktuellen Daten erscheint; nur ein kompletter Cloud-Ausfall setzt es auf „nicht erreichbar". (Die Builds 22–26 dazwischen waren Diagnose-Zwischenstände auf der Suche nach dem Aquarea-Detail-Endpunkt `/hphw/deviceStatus`.)

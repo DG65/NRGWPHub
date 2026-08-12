@@ -477,6 +477,7 @@ class WPHUB_ComfortCloudClient
     {
         $timestamp = date('Y-m-d H:i:s');
         $headers = [
+            'accept: application/json; charset=utf-8',
             'content-type: application/json;charset=utf-8',
             'user-agent: G-RAC',
             'x-app-name: Comfort Cloud',
