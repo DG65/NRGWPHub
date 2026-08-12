@@ -310,17 +310,19 @@ class WPHub extends IPSModule
             ['key' => 'Content-Type', 'value' => 'application/json'],
             new stdClass(),
         ];
-        // /hphw/deviceStatus ist die reale Route (400 statt 403), aber GET mit
-        // Query blieb 400. Nach dem Muster der anderen hphw-/History-Endpunkte
-        // vermutlich ein POST mit JSON-Body. Verschiedene Formen testen.
+        // /hphw/deviceStatus?deviceGuid=X gab 400 (Route existiert, Pflicht-
+        // param fehlt). Hypothese: der Parameter heisst anders (guid/gwid).
+        // Verschiedene Parameternamen testen. App-Version mitloggen.
+        $this->LogMessage('ProbeFull x-app-version = ' . $client->getAppVersion(), KL_WARNING);
         $tz = date('P');
+        $tzE = urlencode($tz);
         $g = rawurlencode($guid);
         $cand = [
-            ['POST body guid+tz',        'POST', '/hphw/deviceStatus', ['deviceGuid' => $guid, 'osTimezone' => $tz]],
-            ['POST body guid+tz+type',   'POST', '/hphw/deviceStatus', ['deviceGuid' => $guid, 'osTimezone' => $tz, 'deviceType' => 2]],
-            ['POST body guid only',      'POST', '/hphw/deviceStatus', ['deviceGuid' => $guid]],
-            ['POST ?guid&tz kein Body',  'POST', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . urlencode($tz), null],
-            ['POST history body',        'POST', '/hphw/deviceHistoryData', ['deviceGuid' => $guid, 'dataMode' => 0, 'date' => date('Ymd'), 'osTimezone' => $tz]],
+            ['?guid&tz',        'GET', '/hphw/deviceStatus?guid=' . $g . '&osTimezone=' . $tzE, null],
+            ['?gwid&tz',        'GET', '/hphw/deviceStatus?gwid=' . $g . '&osTimezone=' . $tzE, null],
+            ['?deviceGuid&tz(raw)', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&osTimezone=' . $tz, null],
+            ['?deviceGuid&type&mode&tz', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g . '&deviceType=2&dataMode=0&osTimezone=' . $tzE, null],
+            ['?deviceGuid (baseline)', 'GET', '/hphw/deviceStatus?deviceGuid=' . $g, null],
         ];
         foreach ($cand as $i => [$label, $method, $path, $jbody]) {
             $res = $client->debugCall($bundle, $method, $path, $jbody);
