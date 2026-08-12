@@ -440,6 +440,71 @@ class WPHUB_ComfortCloudClient
     }
 
     // ------------------------------------------------------------------
+    // Steuerung (Transfer-Proxy, gleiches Muster wie getDeviceStatus, aber
+    // requestMethod POST mit einem einzelnen zu aendernden Feld je Aufruf --
+    // bewusst NICHT der volle Betriebsart-/Zonen-Umschalter (der muesste
+    // Zonen- UND Speicherstatus im selben Aufruf mitschicken, sonst droht,
+    // andere Zonen versehentlich ab-/umzuschalten). Referenz: device_control.py
+    // aus cjaliaga/aioaquarea, dieselbe bodyParam-Form je Kandidat.
+    // ------------------------------------------------------------------
+
+    private function postDeviceUpdate(array $bundle, string $guid, array $bodyParamExtra): bool
+    {
+        $this->lastError = '';
+        $body = [
+            'apiName'       => '/remote/v1/api/devices',
+            'requestMethod' => 'POST',
+            'bodyParam'     => array_merge(['gwid' => $guid], $bodyParamExtra),
+        ];
+        $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', $body);
+        $json = ($r !== null) ? json_decode($r['body'], true) : null;
+        // Fehlantworten enthalten durchgehend ein 'code'-Feld (z.B. 4000);
+        // Erfolgsantworten des Transfer-Proxys nicht.
+        if ($r !== null && $r['status'] === 200 && is_array($json) && !isset($json['code'])) {
+            return true;
+        }
+        $this->failApi('Geraetesteuerung', $r);
+        return false;
+    }
+
+    public function setQuietMode(array $bundle, string $guid, int $mode): bool
+    {
+        return $this->postDeviceUpdate($bundle, $guid, ['quietMode' => $mode]);
+    }
+
+    public function setPowerfulTime(array $bundle, string $guid, int $mode): bool
+    {
+        return $this->postDeviceUpdate($bundle, $guid, ['powerful' => $mode]);
+    }
+
+    public function setForceDHW(array $bundle, string $guid, bool $on): bool
+    {
+        return $this->postDeviceUpdate($bundle, $guid, ['forceDHW' => $on ? 1 : 0]);
+    }
+
+    public function setForceHeater(array $bundle, string $guid, bool $on): bool
+    {
+        return $this->postDeviceUpdate($bundle, $guid, ['forceHeater' => $on ? 1 : 0]);
+    }
+
+    public function setHolidayTimer(array $bundle, string $guid, bool $on): bool
+    {
+        return $this->postDeviceUpdate($bundle, $guid, ['holidayTimer' => $on ? 1 : 0]);
+    }
+
+    public function setTankTemperature(array $bundle, string $guid, float $temperature): bool
+    {
+        return $this->postDeviceUpdate($bundle, $guid, ['tankStatus' => ['heatSet' => (int)round($temperature)]]);
+    }
+
+    // $key ist 'heatSet' oder 'coolSet', je nach aktueller Betriebsart der
+    // Zone -- der Aufrufer (Modul) entscheidet das anhand von operationMode.
+    public function setZoneTemperature(array $bundle, string $guid, int $zoneId, float $temperature, string $key): bool
+    {
+        return $this->postDeviceUpdate($bundle, $guid, ['zoneStatus' => [['zoneId' => $zoneId, $key => (int)round($temperature)]]]);
+    }
+
+    // ------------------------------------------------------------------
     // Intern
     // ------------------------------------------------------------------
 

@@ -106,6 +106,7 @@ class WPHub extends IPSModule
                 'items'    => [
                     ['type' => 'Label', 'caption' => '• Reichhaltige Betriebsdaten: Aussentemperatur, Ist-Temperatur je Heizzone, Fluester- und Leistungsbetrieb, Urlaubstimer, Notbetriebe Warmwasser/Heizung'],
                     ['type' => 'Label', 'caption' => '• Diese Werte kommen zusaetzlich zu den bisherigen Basisdaten (Betriebsart, Warmwasser, Sollwerte); der Zusatzabruf kann in seltenen Faellen ausbleiben, dann bleibt der letzte bekannte Stand erhalten'],
+                    ['type' => 'Label', 'caption' => '• Steuerung: Fluester-/Leistungsbetrieb, Urlaubstimer, Notbetriebe sowie Warmwasser-/Zonen-Sollwerte lassen sich jetzt auch aus Symcon heraus setzen -- ein Fehlschlag wird protokolliert, die Variable bleibt dann auf dem letzten bestaetigten Cloud-Stand'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
@@ -337,6 +338,85 @@ class WPHub extends IPSModule
         return $out;
     }
 
+    /**
+     * Steuerung: WebFront/EMS aendert eine der per EnableAction() freige-
+     * gebenen Variablen (Fluesterbetrieb, Leistungsbetrieb, Urlaubstimer,
+     * Notbetriebe, Warmwasser-/Zonen-Sollwert). Der Praefix (9 Zeichen, siehe
+     * devicePrefix()) bestimmt das Geraet, der Rest des Idents den Befehl.
+     * Bei Erfolg wird die Variable auf den neuen Wert gesetzt, sonst bleibt
+     * sie auf dem letzten bestaetigten Cloud-Stand und eine Protokollzeile
+     * erklaert, warum.
+     */
+    public function RequestAction($Ident, $Value)
+    {
+        if (strlen($Ident) <= 9) {
+            $this->LogMessage('RequestAction: unbekannter Ident ' . $Ident, KL_WARNING);
+            return;
+        }
+        $prefix = substr($Ident, 0, 9);
+        $field = substr($Ident, 9);
+
+        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $dev = null;
+        foreach ((is_array($devices) ? $devices : []) as $d) {
+            if (($d['prefix'] ?? '') === $prefix) {
+                $dev = $d;
+                break;
+            }
+        }
+        if ($dev === null) {
+            $this->LogMessage('RequestAction: Gerät zu ' . $Ident . ' nicht gefunden.', KL_WARNING);
+            return;
+        }
+
+        $bundle = $this->ensureToken();
+        if ($bundle === null) {
+            $this->LogMessage('RequestAction: keine gültige Anmeldung.', KL_WARNING);
+            return;
+        }
+        $this->applyControl($Ident, $field, $Value, $dev, $bundle, $this->ccClient());
+    }
+
+    /**
+     * Testbarer Kern von RequestAction() -- Client als Parameter injizierbar,
+     * gleiches Muster wie refreshDevices(). Setzt die Variable nur bei
+     * bestaetigtem Cloud-Erfolg; schlaegt der Befehl fehl, bleibt sie auf dem
+     * letzten bekannten Stand und eine Protokollzeile erklaert, warum.
+     */
+    private function applyControl(string $ident, string $field, $value, array $dev, array $bundle, WPHUB_ComfortCloudClient $client): void
+    {
+        $guid = (string)$dev['guid'];
+
+        if ($field === 'Fluesterbetrieb') {
+            $ok = $client->setQuietMode($bundle, $guid, (int)$value);
+        } elseif ($field === 'Leistungsbetrieb') {
+            $ok = $client->setPowerfulTime($bundle, $guid, (int)$value);
+        } elseif ($field === 'Urlaubstimer') {
+            $ok = $client->setHolidayTimer($bundle, $guid, (bool)$value);
+        } elseif ($field === 'NotbetriebWarmwasser') {
+            $ok = $client->setForceDHW($bundle, $guid, (bool)$value);
+        } elseif ($field === 'NotHeizbetrieb') {
+            $ok = $client->setForceHeater($bundle, $guid, (bool)$value);
+        } elseif ($field === 'WarmwasserSoll') {
+            $ok = $client->setTankTemperature($bundle, $guid, (float)$value);
+        } elseif (preg_match('/^Zone(\d+)Soll$/', $field, $m) === 1) {
+            // ExtendedOperationMode 2/4 = Kuehlen -> coolSet, sonst heatSet
+            // (0=Aus,1=Heizen,3=Auto Heizen zaehlen als Heizen-Kontext).
+            $mode = $dev['operationMode'] ?? null;
+            $key = in_array($mode, [2, 4], true) ? 'coolSet' : 'heatSet';
+            $ok = $client->setZoneTemperature($bundle, $guid, (int)$m[1], (float)$value, $key);
+        } else {
+            $this->LogMessage('RequestAction: unbekanntes Steuerfeld ' . $field, KL_WARNING);
+            return;
+        }
+
+        if ($ok) {
+            $this->SetValue($ident, $value);
+        } else {
+            $this->LogMessage('Steuerbefehl (' . $field . ') fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Intern
     // ------------------------------------------------------------------
@@ -475,10 +555,14 @@ class WPHub extends IPSModule
                 $this->maintainDeviceVariables($prefix, $name, $entry, $reachable, $status);
 
                 $devices[] = [
-                    'guid'      => $guid,
-                    'name'      => $name,
-                    'prefix'    => $prefix,
-                    'reachable' => $reachable,
+                    'guid'          => $guid,
+                    'name'          => $name,
+                    'prefix'        => $prefix,
+                    'reachable'     => $reachable,
+                    // Fuer RequestAction: bei einer Zonen-Solltemperatur muss
+                    // je nach aktueller Betriebsart heatSet oder coolSet
+                    // gesetzt werden (siehe setZoneTemperature()).
+                    'operationMode' => isset($entry['operationMode']) ? (int)$entry['operationMode'] : null,
                 ];
             }
         }
@@ -518,6 +602,7 @@ class WPHub extends IPSModule
             }
             if (isset($tank['temperature']) && $this->isValidTemperature($tank['temperature'])) {
                 $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': Warmwasser Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+                $this->EnableAction($prefix . 'WarmwasserSoll');
                 $this->SetValue($prefix . 'WarmwasserSoll', (float)$tank['temperature']);
             }
             if (isset($tank['operationStatus'])) {
@@ -545,6 +630,7 @@ class WPHub extends IPSModule
             $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : ('Zone ' . $zid);
             if (isset($zone['temperature']) && $this->isValidTemperature($zone['temperature'])) {
                 $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . $zname . ' Solltemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+                $this->EnableAction($prefix . 'Zone' . $zid . 'Soll');
                 $this->SetValue($prefix . 'Zone' . $zid . 'Soll', (float)$zone['temperature']);
             }
             if (is_array($sz) && isset($sz['temperatureNow']) && $this->isValidTemperature($sz['temperatureNow'])) {
@@ -557,26 +643,34 @@ class WPHub extends IPSModule
             }
         }
 
-        // Betriebsmodi aus dem Transfer-Statusabruf (geraeteweit, nicht je Zone).
+        // Betriebsmodi aus dem Transfer-Statusabruf (geraeteweit, nicht je
+        // Zone) -- alle hier steuerbar (EnableAction), Aenderungen laufen
+        // ueber RequestAction() in den entsprechenden ComfortCloudClient-
+        // Aufruf.
         if (is_array($status)) {
             if (isset($status['quietMode'])) {
                 $this->MaintainVariable($prefix . 'Fluesterbetrieb', $name . ': Flüsterbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Fluesterbetrieb', $pos++, true);
+                $this->EnableAction($prefix . 'Fluesterbetrieb');
                 $this->SetValue($prefix . 'Fluesterbetrieb', (int)$status['quietMode']);
             }
             if (isset($status['powerful'])) {
                 $this->MaintainVariable($prefix . 'Leistungsbetrieb', $name . ': Leistungsbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Leistungsbetrieb', $pos++, true);
+                $this->EnableAction($prefix . 'Leistungsbetrieb');
                 $this->SetValue($prefix . 'Leistungsbetrieb', (int)$status['powerful']);
             }
             if (isset($status['holidayTimer'])) {
                 $this->MaintainVariable($prefix . 'Urlaubstimer', $name . ': Urlaubstimer aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->EnableAction($prefix . 'Urlaubstimer');
                 $this->SetValue($prefix . 'Urlaubstimer', (int)$status['holidayTimer'] === 1);
             }
             if (isset($status['forceDHW'])) {
                 $this->MaintainVariable($prefix . 'NotbetriebWarmwasser', $name . ': Notbetrieb Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->EnableAction($prefix . 'NotbetriebWarmwasser');
                 $this->SetValue($prefix . 'NotbetriebWarmwasser', (int)$status['forceDHW'] === 1);
             }
             if (isset($status['forceHeater'])) {
                 $this->MaintainVariable($prefix . 'NotHeizbetrieb', $name . ': Not-Heizbetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->EnableAction($prefix . 'NotHeizbetrieb');
                 $this->SetValue($prefix . 'NotHeizbetrieb', (int)$status['forceHeater'] === 1);
             }
         }

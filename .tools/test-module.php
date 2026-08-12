@@ -191,6 +191,12 @@ class IPSModule
             $GLOBALS['ips']['variables'][$ident]['value'] = $value;
         }
     }
+    protected function EnableAction(string $ident): void
+    {
+        if (isset($GLOBALS['ips']['variables'][$ident])) {
+            $GLOBALS['ips']['variables'][$ident]['actionEnabled'] = true;
+        }
+    }
     protected function GetIDForIdent(string $ident)
     {
         if (!isset($GLOBALS['ips']['variables'][$ident])) {
@@ -278,6 +284,51 @@ class FakeCC extends WPHUB_ComfortCloudClient
     public function getDeviceStatus(array $bundle, string $guid): ?array
     {
         return $this->statusResult;
+    }
+
+    // Steuerung: erfolgreiche/fehlgeschlagene Antwort per Attrappe steuerbar,
+    // jeder Aufruf wird mit seinen Parametern aufgezeichnet.
+    public $controlResult = true;
+    public $controlCalls = [];
+
+    public function setQuietMode(array $bundle, string $guid, int $mode): bool
+    {
+        $this->controlCalls[] = ['setQuietMode', $guid, $mode];
+        return $this->controlResult;
+    }
+    public function setPowerfulTime(array $bundle, string $guid, int $mode): bool
+    {
+        $this->controlCalls[] = ['setPowerfulTime', $guid, $mode];
+        return $this->controlResult;
+    }
+    public function setForceDHW(array $bundle, string $guid, bool $on): bool
+    {
+        $this->controlCalls[] = ['setForceDHW', $guid, $on];
+        return $this->controlResult;
+    }
+    public function setForceHeater(array $bundle, string $guid, bool $on): bool
+    {
+        $this->controlCalls[] = ['setForceHeater', $guid, $on];
+        return $this->controlResult;
+    }
+    public function setHolidayTimer(array $bundle, string $guid, bool $on): bool
+    {
+        $this->controlCalls[] = ['setHolidayTimer', $guid, $on];
+        return $this->controlResult;
+    }
+    public function setTankTemperature(array $bundle, string $guid, float $temperature): bool
+    {
+        $this->controlCalls[] = ['setTankTemperature', $guid, $temperature];
+        return $this->controlResult;
+    }
+    public function setZoneTemperature(array $bundle, string $guid, int $zoneId, float $temperature, string $key): bool
+    {
+        $this->controlCalls[] = ['setZoneTemperature', $guid, $zoneId, $temperature, $key];
+        return $this->controlResult;
+    }
+    public function getLastError(): string
+    {
+        return 'Attrappen-Fehler';
     }
 }
 
@@ -584,6 +635,64 @@ $sayMessages = [];
 $doAccept->invoke($mod, $fake6, ['accessToken' => 'x'], $say);
 check('Ohne Dokumente kein PUT', count($fake6->putCalls) === 0);
 check('Fehlermeldung ausgegeben', strpos(end($sayMessages), '❌') === 0, end($sayMessages));
+
+// ---------------------------------------------------------------------------
+echo "Block 4d: Steuerung (RequestAction)\n";
+// ---------------------------------------------------------------------------
+// applyControl() ist der testbare Kern von RequestAction() (Client per
+// Parameter injizierbar, wie bei refreshDevices()). Die Variablen existieren
+// bereits aus Block 2/2b (gleicher $prefix).
+
+$applyControl = new ReflectionMethod(WPHub::class, 'applyControl');
+$applyControl->setAccessible(true);
+$ctrl = new FakeCC();
+$bundle = ['accessToken' => 'x'];
+$devHeat = ['guid' => 'B270592026', 'operationMode' => 1]; // Heizen -> heatSet
+$devCool = ['guid' => 'B270592026', 'operationMode' => 2]; // Kuehlen -> coolSet
+
+$applyControl->invoke($mod, $prefix . 'Fluesterbetrieb', 'Fluesterbetrieb', 2, $devCool, $bundle, $ctrl);
+check('Flüsterbetrieb: Variable auf neuen Wert gesetzt', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['value'] ?? null) === 2);
+check('Flüsterbetrieb: setQuietMode mit Modus 2 aufgerufen', end($ctrl->controlCalls) === ['setQuietMode', 'B270592026', 2]);
+
+$applyControl->invoke($mod, $prefix . 'Leistungsbetrieb', 'Leistungsbetrieb', 1, $devCool, $bundle, $ctrl);
+check('Leistungsbetrieb: Variable gesetzt', ($GLOBALS['ips']['variables'][$prefix . 'Leistungsbetrieb']['value'] ?? null) === 1);
+check('Leistungsbetrieb: setPowerfulTime aufgerufen', end($ctrl->controlCalls) === ['setPowerfulTime', 'B270592026', 1]);
+
+$applyControl->invoke($mod, $prefix . 'Urlaubstimer', 'Urlaubstimer', true, $devCool, $bundle, $ctrl);
+check('Urlaubstimer: Variable gesetzt', ($GLOBALS['ips']['variables'][$prefix . 'Urlaubstimer']['value'] ?? null) === true);
+check('Urlaubstimer: setHolidayTimer(true) aufgerufen', end($ctrl->controlCalls) === ['setHolidayTimer', 'B270592026', true]);
+
+$applyControl->invoke($mod, $prefix . 'NotbetriebWarmwasser', 'NotbetriebWarmwasser', true, $devCool, $bundle, $ctrl);
+check('Notbetrieb Warmwasser: setForceDHW(true) aufgerufen', end($ctrl->controlCalls) === ['setForceDHW', 'B270592026', true]);
+
+$applyControl->invoke($mod, $prefix . 'NotHeizbetrieb', 'NotHeizbetrieb', false, $devCool, $bundle, $ctrl);
+check('Not-Heizbetrieb: setForceHeater(false) aufgerufen', end($ctrl->controlCalls) === ['setForceHeater', 'B270592026', false]);
+
+$applyControl->invoke($mod, $prefix . 'WarmwasserSoll', 'WarmwasserSoll', 45.0, $devCool, $bundle, $ctrl);
+check('Warmwasser Soll: Variable auf 45.0 gesetzt', ($GLOBALS['ips']['variables'][$prefix . 'WarmwasserSoll']['value'] ?? null) === 45.0);
+check('Warmwasser Soll: setTankTemperature(45.0) aufgerufen', end($ctrl->controlCalls) === ['setTankTemperature', 'B270592026', 45.0]);
+
+// Zonen-Solltemperatur: je nach aktueller Betriebsart heatSet oder coolSet.
+$applyControl->invoke($mod, $prefix . 'Zone1Soll', 'Zone1Soll', 21.0, $devCool, $bundle, $ctrl);
+check('Zone Soll (Kühlen=2): coolSet verwendet', end($ctrl->controlCalls) === ['setZoneTemperature', 'B270592026', 1, 21.0, 'coolSet']);
+
+$applyControl->invoke($mod, $prefix . 'Zone1Soll', 'Zone1Soll', 21.0, $devHeat, $bundle, $ctrl);
+check('Zone Soll (Heizen=1): heatSet verwendet', end($ctrl->controlCalls) === ['setZoneTemperature', 'B270592026', 1, 21.0, 'heatSet']);
+
+// Fehlschlag: Variable bleibt auf dem letzten bekannten Stand, Protokollzeile erklärt warum.
+$ctrl->controlResult = false;
+$GLOBALS['ips']['log'] = [];
+$applyControl->invoke($mod, $prefix . 'Fluesterbetrieb', 'Fluesterbetrieb', 0, $devCool, $bundle, $ctrl);
+check('Fehlschlag: Variable bleibt auf altem Wert (2, nicht 0)', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['value'] ?? null) === 2);
+check('Fehlschlag: Protokollzeile mit Fehlertext', count($GLOBALS['ips']['log']) === 1 && strpos($GLOBALS['ips']['log'][0], 'Attrappen-Fehler') !== false);
+
+// Unbekanntes Feld: kein Cloud-Aufruf, kein SetValue, nur eine Protokollzeile.
+$ctrl->controlResult = true;
+$ctrl->controlCalls = [];
+$GLOBALS['ips']['log'] = [];
+$applyControl->invoke($mod, $prefix . 'UnbekanntesFeld', 'UnbekanntesFeld', 1, $devCool, $bundle, $ctrl);
+check('Unbekanntes Feld: kein Client-Aufruf', count($ctrl->controlCalls) === 0);
+check('Unbekanntes Feld: Protokollzeile', count($GLOBALS['ips']['log']) === 1);
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";

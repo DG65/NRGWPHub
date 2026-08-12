@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 34) — 13.08.2026
+
+- **Steuerung ergänzt.** Flüsterbetrieb, Leistungsbetrieb, Urlaubstimer (nur Ein/Aus, kein Datumsbereich), Notbetrieb Warmwasser/Heizung sowie die Warmwasser- und Zonen-Solltemperatur lassen sich jetzt direkt in Symcon ändern (`RequestAction`) — nicht nur auslesen. Jeder Befehl geht über den gleichen Transfer-Proxy-Aufruf wie der Statusabruf (ein einzelnes Feld je Aufruf, nach dem Muster der Referenzimplementierungen). Die Zonen-Solltemperatur wählt automatisch das passende Feld (Heiz- oder Kühl-Sollwert) je nach aktueller Betriebsart. Bei einem fehlgeschlagenen Befehl bleibt die Variable auf dem letzten bestätigten Cloud-Stand, keine unbestätigten Werte in der Anzeige; eine Protokollzeile erklärt den Grund. **Bewusst nicht enthalten:** volle Betriebsart-Umschaltung (Heizen/Kühlen/Auto/Aus) — die verlangt laut Referenz den kompletten Zonen- und Speicherstatus im selben Aufruf und würde bei falscher Umsetzung riskieren, andere Zonen versehentlich ab- oder umzuschalten; ein echter Wochenplan sowie Urlaubszeiten mit Datumsbereich sind über die Cloud-API nach aktuellem Kenntnisstand nicht erreichbar (in keiner der geprüften Referenzimplementierungen vorhanden).
+
 ## 0.2.0 (Build 33) — 12.08.2026
 
 - **Profil für Betriebsart ergänzt.** Die Variable zeigte bisher nur eine rohe Zahl. Neues Profil `WPHUB.Betriebsart` (Aus/Heizen/Kühlen/Auto Heizen/Auto Kühlen, nach `ExtendedOperationMode` der Referenzimplementierungen) macht den Wert lesbar.
