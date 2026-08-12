@@ -364,6 +364,7 @@ $prefix = $devices[0]['prefix'];
 $vars = $GLOBALS['ips']['variables'];
 check('Variable Erreichbar = true', ($vars[$prefix . 'Erreichbar']['value'] ?? null) === true);
 check('Betriebsart = 2', ($vars[$prefix . 'Betriebsart']['value'] ?? null) === 2);
+check('Betriebsart nutzt WPHUB.Betriebsart-Profil', ($vars[$prefix . 'Betriebsart']['profile'] ?? '') === 'WPHUB.Betriebsart');
 check('Warmwasser Ist 42 °C (temperatureNow)', ($vars[$prefix . 'Warmwasser']['value'] ?? null) === 42.0);
 check('Warmwasser Soll 43 °C (temperature)', ($vars[$prefix . 'WarmwasserSoll']['value'] ?? null) === 43.0);
 check('Warmwasser nutzt NRG.Celsius', ($vars[$prefix . 'Warmwasser']['profile'] ?? '') === 'NRG.Celsius');

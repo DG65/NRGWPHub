@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 33) — 12.08.2026
+
+- **Profil für Betriebsart ergänzt.** Die Variable zeigte bisher nur eine rohe Zahl. Neues Profil `WPHUB.Betriebsart` (Aus/Heizen/Kühlen/Auto Heizen/Auto Kühlen, nach `ExtendedOperationMode` der Referenzimplementierungen) macht den Wert lesbar.
+
 ## 0.2.0 (Build 32) — 12.08.2026
 
 - **Reichhaltige Aquarea-Betriebsdaten.** Zusätzlich zu den bisherigen Basisdaten (Betriebsart, Warmwasser, Zonen-Sollwerte) liefert WPHub jetzt je Wärmepumpe: **Außentemperatur**, **Ist-Temperatur je Heizzone** (mit dem echten Zonennamen, z. B. „HK1"), **Flüsterbetrieb** (Aus/Stufe 1–3), **Leistungsbetrieb** (Aus/30/60/90 Minuten), **Urlaubstimer** sowie **Notbetrieb Warmwasser**/**Not-Heizbetrieb**. Datenquelle ist der Transfer-Proxy (`/remote/v1/app/common/transfer`, live mit Cache-Rückfall) — der bereits länger bekannte Weg, der bislang durchgehend mit „Missing required header parameter" (Code 4000) scheiterte. Der eigentliche Fehler: WPHub sendete `Content-Type: application/json;charset=utf-8`, während die POST-lastigen Routen offenbar strikt den exakten String `application/json` (ohne Charset-Zusatz) verlangen — gefunden durch Abgleich mit einer seit Redaktionsschluss aktiv gepflegten Drittanbieter-Implementierung. Der Zusatzabruf ist bewusst fehlertolerant: Schlägt er fehl, bleiben die betroffenen Variablen auf dem letzten bekannten Stand, der Rest der Aktualisierung läuft unbeeinflusst weiter. Die temporäre Diagnosefunktion `ProbeFull` wurde entfernt.

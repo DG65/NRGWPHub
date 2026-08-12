@@ -500,7 +500,7 @@ class WPHub extends IPSModule
         $this->SetValue($prefix . 'Erreichbar', $reachable);
 
         if (isset($dev['operationMode'])) {
-            $this->MaintainVariable($prefix . 'Betriebsart', $name . ': Betriebsart', VARIABLETYPE_INTEGER, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'Betriebsart', $name . ': Betriebsart', VARIABLETYPE_INTEGER, 'WPHUB.Betriebsart', $pos++, true);
             $this->SetValue($prefix . 'Betriebsart', (int)$dev['operationMode']);
         }
 
@@ -626,6 +626,14 @@ class WPHub extends IPSModule
         }
         // Modulspezifisch (kein NRG.*-Praefix): Werte aus dem A2W-Transfer-
         // Statusabruf, die kein anderes NRG-Stack-Modul teilt.
+        if (!IPS_VariableProfileExists('WPHUB.Betriebsart')) {
+            IPS_CreateVariableProfile('WPHUB.Betriebsart', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 0, 'Aus', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 1, 'Heizen', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 2, 'Kühlen', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 3, 'Auto Heizen', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 4, 'Auto Kühlen', '', -1);
+        }
         if (!IPS_VariableProfileExists('WPHUB.Fluesterbetrieb')) {
             IPS_CreateVariableProfile('WPHUB.Fluesterbetrieb', VARIABLETYPE_INTEGER);
             IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 0, 'Aus', '', -1);
