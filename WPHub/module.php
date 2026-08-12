@@ -107,6 +107,7 @@ class WPHub extends IPSModule
                     ['type' => 'Label', 'caption' => '• Reichhaltige Betriebsdaten: Aussentemperatur, Ist-Temperatur je Heizzone, Fluester- und Leistungsbetrieb, Urlaubstimer, Notbetriebe Warmwasser/Heizung'],
                     ['type' => 'Label', 'caption' => '• Diese Werte kommen zusaetzlich zu den bisherigen Basisdaten (Betriebsart, Warmwasser, Sollwerte); der Zusatzabruf kann in seltenen Faellen ausbleiben, dann bleibt der letzte bekannte Stand erhalten'],
                     ['type' => 'Label', 'caption' => '• Steuerung: Fluester-/Leistungsbetrieb, Urlaubstimer, Notbetriebe sowie Warmwasser-/Zonen-Sollwerte lassen sich jetzt auch aus Symcon heraus setzen -- ein Fehlschlag wird protokolliert, die Variable bleibt dann auf dem letzten bestaetigten Cloud-Stand'],
+                    ['type' => 'Label', 'caption' => '• Weitere Betriebsdaten: Eco-/Komfortmodus, Betriebsrichtung, Abtaubetrieb, Fehlerstatus sowie Energieverbrauch des laufenden Tages (Heizen/Kuehlen/Warmwasser) -- Letzterer nur informativ, kein Bestandteil des EMS-Vertrags'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
@@ -551,8 +552,9 @@ class WPHub extends IPSModule
                 // betroffenen Variablen einfach auf dem letzten bekannten
                 // Stand; der Rest der Aktualisierung ist davon nicht betroffen.
                 $status = $client->getDeviceStatus($bundle, $guid);
+                $consumption = $client->getDeviceConsumptionToday($bundle, $guid);
 
-                $this->maintainDeviceVariables($prefix, $name, $entry, $reachable, $status);
+                $this->maintainDeviceVariables($prefix, $name, $entry, $reachable, $status, $consumption);
 
                 $devices[] = [
                     'guid'          => $guid,
@@ -577,7 +579,7 @@ class WPHub extends IPSModule
      * connectionStatus 0 als letzter bekannter Stand geschrieben; die
      * Erreichbarkeit spiegelt connectionStatus wider.
      */
-    private function maintainDeviceVariables(string $prefix, string $name, array $dev, bool $reachable, ?array $status = null): void
+    private function maintainDeviceVariables(string $prefix, string $name, array $dev, bool $reachable, ?array $status = null, ?array $consumption = null): void
     {
         $pos = 0;
         $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
@@ -673,6 +675,54 @@ class WPHub extends IPSModule
                 $this->EnableAction($prefix . 'NotHeizbetrieb');
                 $this->SetValue($prefix . 'NotHeizbetrieb', (int)$status['forceHeater'] === 1);
             }
+            if (isset($status['deiceStatus'])) {
+                $this->MaintainVariable($prefix . 'Abtaubetrieb', $name . ': Abtaubetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->SetValue($prefix . 'Abtaubetrieb', (int)$status['deiceStatus'] === 1);
+            }
+            if (isset($status['direction'])) {
+                $this->MaintainVariable($prefix . 'Betriebsrichtung', $name . ': Betriebsrichtung', VARIABLETYPE_INTEGER, 'WPHUB.Betriebsrichtung', $pos++, true);
+                $this->SetValue($prefix . 'Betriebsrichtung', (int)$status['direction']);
+            }
+            if (isset($status['specialStatus'])) {
+                $this->MaintainVariable($prefix . 'EcoKomfort', $name . ': Eco-/Komfortmodus', VARIABLETYPE_INTEGER, 'WPHUB.EcoKomfort', $pos++, true);
+                $this->SetValue($prefix . 'EcoKomfort', (int)$status['specialStatus']);
+            }
+            // Fehlerstatus: leere Liste ist der Normalfall, dann 0/"".
+            $faults = $status['faultStatus'] ?? [];
+            if (is_array($faults)) {
+                $this->MaintainVariable($prefix . 'Fehleranzahl', $name . ': Fehleranzahl', VARIABLETYPE_INTEGER, '', $pos++, true);
+                $this->SetValue($prefix . 'Fehleranzahl', count($faults));
+                $texts = [];
+                foreach ($faults as $f) {
+                    if (is_array($f) && ($f['errorMessage'] ?? '') !== '') {
+                        $texts[] = (string)$f['errorMessage'];
+                    }
+                }
+                $this->MaintainVariable($prefix . 'Fehlertext', $name . ': Fehlertext', VARIABLETYPE_STRING, '', $pos++, true);
+                $this->SetValue($prefix . 'Fehlertext', implode('; ', $texts));
+            }
+        }
+
+        // Energieverbrauch des laufenden Tages -- rein informativ, NICHT Teil
+        // des EMS-Vertrags (PowerID/EnergyID bleiben 0: Tageswerte springen um
+        // Mitternacht auf 0, sind also kein kumulativer Zaehler).
+        if (is_array($consumption)) {
+            if (isset($consumption['heat'])) {
+                $this->MaintainVariable($prefix . 'EnergieHeizenHeute', $name . ': Energieverbrauch Heizen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->SetValue($prefix . 'EnergieHeizenHeute', (float)$consumption['heat']);
+            }
+            if (isset($consumption['cool'])) {
+                $this->MaintainVariable($prefix . 'EnergieKuehlenHeute', $name . ': Energieverbrauch Kühlen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->SetValue($prefix . 'EnergieKuehlenHeute', (float)$consumption['cool']);
+            }
+            if (isset($consumption['tank'])) {
+                $this->MaintainVariable($prefix . 'EnergieWarmwasserHeute', $name . ': Energieverbrauch Warmwasser (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->SetValue($prefix . 'EnergieWarmwasserHeute', (float)$consumption['tank']);
+            }
+            if (isset($consumption['total'])) {
+                $this->MaintainVariable($prefix . 'EnergieGesamtHeute', $name . ': Energieverbrauch gesamt (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->SetValue($prefix . 'EnergieGesamtHeute', (float)$consumption['total']);
+            }
         }
     }
 
@@ -718,6 +768,11 @@ class WPHub extends IPSModule
             IPS_SetVariableProfileText('NRG.Celsius', '', ' °C');
             IPS_SetVariableProfileDigits('NRG.Celsius', 1);
         }
+        if (!IPS_VariableProfileExists('NRG.kWh')) {
+            IPS_CreateVariableProfile('NRG.kWh', VARIABLETYPE_FLOAT);
+            IPS_SetVariableProfileText('NRG.kWh', '', ' kWh');
+            IPS_SetVariableProfileDigits('NRG.kWh', 2);
+        }
         // Modulspezifisch (kein NRG.*-Praefix): Werte aus dem A2W-Transfer-
         // Statusabruf, die kein anderes NRG-Stack-Modul teilt.
         if (!IPS_VariableProfileExists('WPHUB.Betriebsart')) {
@@ -741,6 +796,18 @@ class WPHub extends IPSModule
             IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 1, '30 Minuten', '', -1);
             IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 2, '60 Minuten', '', -1);
             IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 3, '90 Minuten', '', -1);
+        }
+        if (!IPS_VariableProfileExists('WPHUB.Betriebsrichtung')) {
+            IPS_CreateVariableProfile('WPHUB.Betriebsrichtung', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 0, 'Ruht', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 1, 'Umwälzpumpe', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 2, 'Warmwasser', '', -1);
+        }
+        if (!IPS_VariableProfileExists('WPHUB.EcoKomfort')) {
+            IPS_CreateVariableProfile('WPHUB.EcoKomfort', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 0, 'Aus', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 1, 'Eco', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 2, 'Komfort', '', -1);
         }
     }
 }

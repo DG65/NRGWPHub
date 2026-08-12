@@ -215,6 +215,7 @@ class FakeCC extends WPHUB_ComfortCloudClient
 {
     public $groupsResult;
     public $statusResult;
+    public $consumptionResult;
     public $rejectFirstGroups = false;       // erste getGroups-Antwort: 4106
     public $agreementRejectFirstGroups = false; // erste getGroups-Antwort: 4103
     public $refreshedVersion = null;    // was refreshAppVersion liefern soll
@@ -284,6 +285,10 @@ class FakeCC extends WPHUB_ComfortCloudClient
     public function getDeviceStatus(array $bundle, string $guid): ?array
     {
         return $this->statusResult;
+    }
+    public function getDeviceConsumptionToday(array $bundle, string $guid): ?array
+    {
+        return $this->consumptionResult;
     }
 
     // Steuerung: erfolgreiche/fehlgeschlagene Antwort per Attrappe steuerbar,
@@ -453,10 +458,16 @@ $fake->statusResult = [
     'forceHeater'   => 0,
     'outdoorNow'    => 25,
     'holidayTimer'  => 1,
+    'deiceStatus'   => 1,
+    'specialStatus' => 2,
+    'faultStatus'   => [
+        ['errorCode' => 'H12', 'errorMessage' => 'Kommunikationsfehler Außeneinheit'],
+    ],
     'zoneStatus'    => [
         ['zoneId' => 1, 'zoneName' => 'HK1', 'temperatureNow' => 18],
     ],
 ];
+$fake->consumptionResult = ['heat' => 3.5, 'cool' => 0.0, 'tank' => 1.2, 'total' => 4.7];
 $devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 $vars = $GLOBALS['ips']['variables'];
 check('Außentemperatur = 25 °C', ($vars[$prefix . 'Aussentemperatur']['value'] ?? null) === 25.0);
@@ -469,15 +480,34 @@ check('Leistungsbetrieb = 0 (Aus)', ($vars[$prefix . 'Leistungsbetrieb']['value'
 check('Urlaubstimer = true', ($vars[$prefix . 'Urlaubstimer']['value'] ?? null) === true);
 check('Notbetrieb Warmwasser = true (forceDHW=1)', ($vars[$prefix . 'NotbetriebWarmwasser']['value'] ?? null) === true);
 check('Not-Heizbetrieb = false (forceHeater=0)', ($vars[$prefix . 'NotHeizbetrieb']['value'] ?? null) === false);
+check('Abtaubetrieb = true (deiceStatus=1)', ($vars[$prefix . 'Abtaubetrieb']['value'] ?? null) === true);
+check('Betriebsrichtung = 1 (Umwälzpumpe)', ($vars[$prefix . 'Betriebsrichtung']['value'] ?? null) === 1);
+check('Eco/Komfort = 2 (Komfort)', ($vars[$prefix . 'EcoKomfort']['value'] ?? null) === 2);
+check('Fehleranzahl = 1', ($vars[$prefix . 'Fehleranzahl']['value'] ?? null) === 1);
+check('Fehlertext enthält Fehlermeldung', ($vars[$prefix . 'Fehlertext']['value'] ?? '') === 'Kommunikationsfehler Außeneinheit');
+check('Energie Heizen heute = 3.5 kWh', ($vars[$prefix . 'EnergieHeizenHeute']['value'] ?? null) === 3.5);
+check('Energie Heizen nutzt NRG.kWh', ($vars[$prefix . 'EnergieHeizenHeute']['profile'] ?? '') === 'NRG.kWh');
+check('Energie Kühlen heute = 0.0 kWh', ($vars[$prefix . 'EnergieKuehlenHeute']['value'] ?? null) === 0.0);
+check('Energie Warmwasser heute = 1.2 kWh', ($vars[$prefix . 'EnergieWarmwasserHeute']['value'] ?? null) === 1.2);
+check('Energie gesamt heute = 4.7 kWh', ($vars[$prefix . 'EnergieGesamtHeute']['value'] ?? null) === 4.7);
+
+// Keine Fehler: leere Liste -> Fehleranzahl 0, Fehlertext leer.
+$fake->statusResult['faultStatus'] = [];
+$refresh->invoke($mod, ['accessToken' => 'x'], $fake);
+$vars = $GLOBALS['ips']['variables'];
+check('Ohne Fehler: Fehleranzahl = 0', ($vars[$prefix . 'Fehleranzahl']['value'] ?? null) === 0);
+check('Ohne Fehler: Fehlertext leer', ($vars[$prefix . 'Fehlertext']['value'] ?? null) === '');
 
 // Schlaegt der Zusatzabruf fehl (statusResult=null), bleiben die
 // Basisdaten unangetastet und es werden keine Reichdaten-Variablen
 // neu angelegt bzw. die vorhandenen bleiben auf dem letzten Stand.
 $fake->statusResult = null;
+$fake->consumptionResult = null;
 $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 $vars = $GLOBALS['ips']['variables'];
 check('Ohne Statusabruf bleibt Außentemperatur erhalten (letzter Stand)', ($vars[$prefix . 'Aussentemperatur']['value'] ?? null) === 25.0);
 check('Basisdaten (Betriebsart) weiterhin korrekt', ($vars[$prefix . 'Betriebsart']['value'] ?? null) === 2);
+check('Ohne Verbrauchsabruf bleibt Energie Heizen erhalten (letzter Stand)', ($vars[$prefix . 'EnergieHeizenHeute']['value'] ?? null) === 3.5);
 
 // ---------------------------------------------------------------------------
 echo "Block 3: EMS-Vertrag (GetFunctions)\n";

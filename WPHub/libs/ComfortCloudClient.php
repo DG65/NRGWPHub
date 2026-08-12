@@ -439,6 +439,46 @@ class WPHUB_ComfortCloudClient
         return null;
     }
 
+    // Energieverbrauch des laufenden Tages (kWh), ueber den Transfer-Proxy
+    // je Betriebsart aufgeschluesselt und stundenweise geliefert -- hier zum
+    // Tageswert aufsummiert. Referenz: cjaliaga/aioaquarea consumption_manager.py.
+    // Ausdruecklich NICHT als kumulativer Zaehler geeignet (springt um
+    // Mitternacht auf 0) -- daher NICHT Teil des EMS-Vertrags (PowerID/
+    // EnergyID bleiben 0), nur eine informative Zusatzgroesse.
+    public function getDeviceConsumptionToday(array $bundle, string $guid): ?array
+    {
+        $this->lastError = '';
+        $offset = date('P'); // z.B. "+02:00"
+        $body = [
+            'apiName'       => '/remote/v1/api/consumption',
+            'requestMethod' => 'POST',
+            'bodyParam'     => [
+                'gwid'       => $guid,
+                'dataMode'   => 0, // 0 = Tag (stundenweise)
+                'date'       => date('Ymd'),
+                'osTimezone' => $offset,
+            ],
+        ];
+        $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', $body);
+        $json = ($r !== null) ? json_decode($r['body'], true) : null;
+        if ($r === null || $r['status'] !== 200 || !is_array($json) || !isset($json['historyDataList']) || !is_array($json['historyDataList'])) {
+            $this->failApi('Energieverbrauch (Transfer-Proxy)', $r);
+            return null;
+        }
+        $heat = 0.0;
+        $cool = 0.0;
+        $tank = 0.0;
+        foreach ($json['historyDataList'] as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $heat += (float)($item['heatConsumption'] ?? 0);
+            $cool += (float)($item['coolConsumption'] ?? 0);
+            $tank += (float)($item['tankConsumption'] ?? 0);
+        }
+        return ['heat' => $heat, 'cool' => $cool, 'tank' => $tank, 'total' => $heat + $cool + $tank];
+    }
+
     // ------------------------------------------------------------------
     // Steuerung (Transfer-Proxy, gleiches Muster wie getDeviceStatus, aber
     // requestMethod POST mit einem einzelnen zu aendernden Feld je Aufruf --
