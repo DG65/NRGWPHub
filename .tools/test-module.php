@@ -57,6 +57,10 @@ function IPS_SetVariableProfileDigits(string $name, int $digits): void
 {
     $GLOBALS['ips']['profiles'][$name]['digits'] = $digits;
 }
+function IPS_SetVariableProfileAssociation(string $name, float $value, string $valueText, string $valueIcon, int $valueColor): void
+{
+    $GLOBALS['ips']['profiles'][$name]['associations'][] = $value;
+}
 function IPS_SetProperty(int $id, string $name, $value): void
 {
     $GLOBALS['ips']['properties'][$name] = $value;
@@ -271,6 +275,10 @@ class FakeCC extends WPHUB_ComfortCloudClient
     {
         return true;
     }
+    public function getDeviceStatus(array $bundle, string $guid): ?array
+    {
+        return $this->statusResult;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -377,6 +385,47 @@ $markAllTmp->setAccessible(true);
 $markAllTmp->invoke($mod);
 check('Nach Cloud-Ausfall Erreichbar=false', ($GLOBALS['ips']['variables'][$prefix . 'Erreichbar']['value'] ?? null) === false);
 check('Messwerte bleiben trotz Ausfall erhalten', ($GLOBALS['ips']['variables'][$prefix . 'Warmwasser']['value'] ?? null) === 42.0);
+
+// ---------------------------------------------------------------------------
+echo "Block 2b: Reichhaltiger A2W-Status (Transfer-Proxy)\n";
+// ---------------------------------------------------------------------------
+
+// Antwortform wie am echten Konto ueber getDeviceStatus() (Transfer-Proxy,
+// deviceDirect=1/0). $status ist bereits das entpackte 'status'-Objekt.
+$fake->statusResult = [
+    'operationMode' => 2,
+    'direction'     => 1,
+    'quietMode'     => 3,
+    'powerful'      => 0,
+    'forceDHW'      => 1,
+    'forceHeater'   => 0,
+    'outdoorNow'    => 25,
+    'holidayTimer'  => 1,
+    'zoneStatus'    => [
+        ['zoneId' => 1, 'zoneName' => 'HK1', 'temperatureNow' => 18],
+    ],
+];
+$devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
+$vars = $GLOBALS['ips']['variables'];
+check('Außentemperatur = 25 °C', ($vars[$prefix . 'Aussentemperatur']['value'] ?? null) === 25.0);
+check('Außentemperatur nutzt NRG.Celsius', ($vars[$prefix . 'Aussentemperatur']['profile'] ?? '') === 'NRG.Celsius');
+check('Zone 1 Ist = 18 °C (aus zoneStatus/temperatureNow)', ($vars[$prefix . 'Zone1Ist']['value'] ?? null) === 18.0);
+check('Zonenname aus Status uebernommen (HK1 statt "Zone 1")', ($vars[$prefix . 'Zone1Ist']['name'] ?? '') === 'Heizung: HK1 Isttemperatur');
+check('Flüsterbetrieb = 3 (Stufe 3)', ($vars[$prefix . 'Fluesterbetrieb']['value'] ?? null) === 3);
+check('Flüsterbetrieb nutzt WPHUB.Fluesterbetrieb-Profil', ($vars[$prefix . 'Fluesterbetrieb']['profile'] ?? '') === 'WPHUB.Fluesterbetrieb');
+check('Leistungsbetrieb = 0 (Aus)', ($vars[$prefix . 'Leistungsbetrieb']['value'] ?? null) === 0);
+check('Urlaubstimer = true', ($vars[$prefix . 'Urlaubstimer']['value'] ?? null) === true);
+check('Notbetrieb Warmwasser = true (forceDHW=1)', ($vars[$prefix . 'NotbetriebWarmwasser']['value'] ?? null) === true);
+check('Not-Heizbetrieb = false (forceHeater=0)', ($vars[$prefix . 'NotHeizbetrieb']['value'] ?? null) === false);
+
+// Schlaegt der Zusatzabruf fehl (statusResult=null), bleiben die
+// Basisdaten unangetastet und es werden keine Reichdaten-Variablen
+// neu angelegt bzw. die vorhandenen bleiben auf dem letzten Stand.
+$fake->statusResult = null;
+$refresh->invoke($mod, ['accessToken' => 'x'], $fake);
+$vars = $GLOBALS['ips']['variables'];
+check('Ohne Statusabruf bleibt Außentemperatur erhalten (letzter Stand)', ($vars[$prefix . 'Aussentemperatur']['value'] ?? null) === 25.0);
+check('Basisdaten (Betriebsart) weiterhin korrekt', ($vars[$prefix . 'Betriebsart']['value'] ?? null) === 2);
 
 // ---------------------------------------------------------------------------
 echo "Block 3: EMS-Vertrag (GetFunctions)\n";

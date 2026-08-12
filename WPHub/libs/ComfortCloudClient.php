@@ -412,21 +412,31 @@ class WPHUB_ComfortCloudClient
         return $json;
     }
 
-    // Hinweis: Die A2W-Betriebsdaten (Verbindungsstatus, Betriebsart, Zonen-
-    // und Speichertemperaturen) liefert die Comfort Cloud bereits INLINE in
-    // der device/group-Antwort je Geraet. Ein separater Statusabruf ist nicht
-    // noetig -- der fruehere Transfer-Proxy (/remote/v1/app/common/transfer)
-    // und /deviceStatus/{guid} sind fuer A2W nicht freigegeben (400/403). Die
-    // Auswertung passiert daher komplett im Modul aus getGroups().
-
-    // Diagnose: roher, signierter API-Aufruf. Liefert immer ['status','body'].
-    public function debugCall(array $bundle, string $method, string $path, ?array $jsonBody = null, array $extraHeaders = []): array
+    // Reichhaltiger A2W-Status (Aussentemperatur, Zonen-Ist-Temperatur,
+    // Fluester-/Leistungsbetrieb, Urlaubstimer, Notbetriebe) ueber den
+    // Transfer-Proxy. Erst live (deviceDirect=1), bei Fehlschlag aus dem
+    // Cloud-Cache (deviceDirect=0) -- Muster aus mehreren aktiv gepflegten
+    // Referenzimplementierungen (u.a. cjaliaga/aioaquarea, die Homey-App
+    // mathieuChamois/com.panasonic.aquarea.community). Wichtig: Content-Type
+    // OHNE ";charset=utf-8"-Zusatz -- mit Zusatz lehnt der Transfer-Proxy
+    // jeden Aufruf mit "Missing required header parameter" (Code 4000) ab,
+    // waehrend die einfachere device/group-Route das nicht prueft.
+    public function getDeviceStatus(array $bundle, string $guid): ?array
     {
-        $r = $this->apiRequest($bundle, $method, $path, $jsonBody, true, $extraHeaders);
-        if ($r === null) {
-            return ['status' => 0, 'body' => $this->lastError];
+        $this->lastError = '';
+        foreach ([1, 0] as $deviceDirect) {
+            $body = [
+                'apiName'       => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=' . $deviceDirect,
+                'requestMethod' => 'GET',
+            ];
+            $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', $body);
+            $json = ($r !== null) ? json_decode($r['body'], true) : null;
+            if ($r !== null && $r['status'] === 200 && is_array($json) && isset($json['status']) && is_array($json['status'])) {
+                return $json['status'];
+            }
         }
-        return ['status' => $r['status'], 'body' => (string)$r['body']];
+        $this->failApi('A2W-Statusabruf (Transfer-Proxy)', $r ?? null);
+        return null;
     }
 
     // ------------------------------------------------------------------

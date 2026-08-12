@@ -29,7 +29,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.1.0';
+    const NEWS_VERSION = '0.2.0';
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -104,9 +104,8 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• Erstausgabe: Anmeldung an der Panasonic Comfort Cloud (Konto wie in der offiziellen App)'],
-                    ['type' => 'Label', 'caption' => '• Aquarea-Waermepumpen des Kontos werden automatisch gefunden; je Geraet entstehen Variablen fuer Betrieb, Aussentemperatur, Warmwasser und Heizzonen'],
-                    ['type' => 'Label', 'caption' => '• Anbindung an den NRG-Stack-Verbund (EMS) ueber die gemeinsame Waermepumpen-Schnittstelle'],
+                    ['type' => 'Label', 'caption' => '• Reichhaltige Betriebsdaten: Aussentemperatur, Ist-Temperatur je Heizzone, Fluester- und Leistungsbetrieb, Urlaubstimer, Notbetriebe Warmwasser/Heizung'],
+                    ['type' => 'Label', 'caption' => '• Diese Werte kommen zusaetzlich zu den bisherigen Basisdaten (Betriebsart, Warmwasser, Sollwerte); der Zusatzabruf kann in seltenen Faellen ausbleiben, dann bleibt der letzte bekannte Stand erhalten'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
@@ -274,62 +273,6 @@ class WPHub extends IPSModule
             $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
         }
         $say(implode("\n", $lines));
-    }
-
-    /**
-     * DIAGNOSE (temporaer): Vollstaendige device/group-Antwort + weitere A2W-
-     * Kandidaten-Endpunkte ins Systemprotokoll. Am aussagekraeftigsten, wenn
-     * die WP ONLINE ist (dann liefert device/group den vollen Datensatz).
-     * Mehrfach ausloesbar, keine Nebenwirkungen.
-     */
-    public function ProbeFull()
-    {
-        $bundle = $this->ensureToken();
-        if ($bundle === null) {
-            $this->LogMessage('ProbeFull: keine gültige Anmeldung.', KL_WARNING);
-            return;
-        }
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
-        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
-        $client = $this->ccClient();
-
-        // Volle Geraeteantwort in Stuecken.
-        $r = $client->debugCall($bundle, 'GET', '/device/group');
-        $body = (string)$r['body'];
-        $this->LogMessage('ProbeFull device/group HTTP ' . $r['status'] . ', Länge ' . strlen($body), KL_WARNING);
-        foreach (str_split($body, 1400) as $i => $chunk) {
-            $this->LogMessage('ProbeFull group[' . $i . ']: ' . $chunk, KL_WARNING);
-        }
-        if ($guid === '') {
-            return;
-        }
-
-        // Kandidaten nach Abgleich mit der aktiv gepflegten Referenz
-        // cjaliaga/aioaquarea (Home-Assistant-Integration, produktiv im
-        // Einsatz): (a) Transfer-Proxy mit apiName/requestMethod-Body statt
-        // direktem Pfad -- exakt deren get_device_status()-Form, live und
-        // cached; (b) /hphw/deviceStatus jetzt mit global ergaenztem
-        // Accept-Header (fehlte zuvor komplett -- moeglicher Grund fuer
-        // "Missing required header parameter").
-        $tz = date('P');
-        $g = rawurlencode($guid);
-        $cand = [
-            ['Transfer live (deviceDirect=1)',   'POST', '/remote/v1/app/common/transfer', null,
-                ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=1', 'requestMethod' => 'GET']],
-            ['Transfer cached (deviceDirect=0)', 'POST', '/remote/v1/app/common/transfer', null,
-                ['apiName' => '/remote/v1/api/devices?gwid=' . $guid . '&deviceDirect=0', 'requestMethod' => 'GET']],
-            ['hphw mit Accept-Header',           'GET',  '/hphw/deviceStatus?deviceGuid=' . $g, [], null],
-            ['hphw + osTimezone-Header',         'GET',  '/hphw/deviceStatus?deviceGuid=' . $g, ['osTimezone: ' . $tz], null],
-        ];
-        foreach ($cand as $i => [$label, $method, $path, $hdrs, $body]) {
-            $res = $client->debugCall($bundle, $method, $path, $body, $hdrs ?? []);
-            $b = (string)$res['body'];
-            $this->LogMessage(sprintf('ProbeFull cand#%d %s -> HTTP %d, Länge %d', $i + 1, $label, $res['status'], strlen($b)), KL_WARNING);
-            foreach (str_split($b, 1400) as $j => $chunk) {
-                $this->LogMessage('ProbeFull cand#' . ($i + 1) . '[' . $j . ']: ' . $chunk, KL_WARNING);
-                if ($j >= 2) { break; }
-            }
-        }
     }
 
     /**
@@ -520,7 +463,16 @@ class WPHub extends IPSModule
                 // setzt markAllUnreachable() die Variablen auf false.
                 $reachable = true;
 
-                $this->maintainDeviceVariables($prefix, $name, $entry, $reachable);
+                // Reichhaltiger Status (Aussentemperatur, Zonen-Ist, Fluester-/
+                // Leistungsbetrieb, Urlaubstimer, Notbetriebe) ueber den
+                // Transfer-Proxy -- zusaetzlich zu den Basisdaten aus
+                // device/group. Schlaegt der Zusatzabruf fehl (das ist eine
+                // inoffizielle Route, kann instabil sein), bleiben die
+                // betroffenen Variablen einfach auf dem letzten bekannten
+                // Stand; der Rest der Aktualisierung ist davon nicht betroffen.
+                $status = $client->getDeviceStatus($bundle, $guid);
+
+                $this->maintainDeviceVariables($prefix, $name, $entry, $reachable, $status);
 
                 $devices[] = [
                     'guid'      => $guid,
@@ -541,7 +493,7 @@ class WPHub extends IPSModule
      * connectionStatus 0 als letzter bekannter Stand geschrieben; die
      * Erreichbarkeit spiegelt connectionStatus wider.
      */
-    private function maintainDeviceVariables(string $prefix, string $name, array $dev, bool $reachable): void
+    private function maintainDeviceVariables(string $prefix, string $name, array $dev, bool $reachable, ?array $status = null): void
     {
         $pos = 0;
         $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
@@ -550,6 +502,11 @@ class WPHub extends IPSModule
         if (isset($dev['operationMode'])) {
             $this->MaintainVariable($prefix . 'Betriebsart', $name . ': Betriebsart', VARIABLETYPE_INTEGER, '', $pos++, true);
             $this->SetValue($prefix . 'Betriebsart', (int)$dev['operationMode']);
+        }
+
+        if (is_array($status) && isset($status['outdoorNow']) && $this->isValidTemperature($status['outdoorNow'])) {
+            $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': Außentemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Aussentemperatur', (float)$status['outdoorNow']);
         }
 
         // Warmwasserspeicher: temperatureNow = Ist, temperature = Sollwert.
@@ -569,20 +526,58 @@ class WPHub extends IPSModule
             }
         }
 
+        // Ist-Temperaturen je Zone aus dem Transfer-Statusabruf, nach zoneId
+        // zugeordnet (dort steckt auch der echte Zonenname, z.B. "HK1").
+        $statusZones = [];
+        foreach ((is_array($status) ? ($status['zoneStatus'] ?? []) : []) as $sz) {
+            if (is_array($sz) && isset($sz['zoneId'])) {
+                $statusZones[(int)$sz['zoneId']] = $sz;
+            }
+        }
+
         // Heizzonen: temperature = Solltemperatur der Zone, operationStatus = aktiv.
         foreach (($dev['zoneStatus'] ?? []) as $zone) {
             if (!is_array($zone) || !isset($zone['zoneId'])) {
                 continue;
             }
             $zid = (int)$zone['zoneId'];
-            $zname = 'Zone ' . $zid;
+            $sz = $statusZones[$zid] ?? null;
+            $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : ('Zone ' . $zid);
             if (isset($zone['temperature']) && $this->isValidTemperature($zone['temperature'])) {
                 $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . $zname . ' Solltemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
                 $this->SetValue($prefix . 'Zone' . $zid . 'Soll', (float)$zone['temperature']);
             }
+            if (is_array($sz) && isset($sz['temperatureNow']) && $this->isValidTemperature($sz['temperatureNow'])) {
+                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Ist', $name . ': ' . $zname . ' Isttemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+                $this->SetValue($prefix . 'Zone' . $zid . 'Ist', (float)$sz['temperatureNow']);
+            }
             if (isset($zone['operationStatus'])) {
                 $this->MaintainVariable($prefix . 'Zone' . $zid . 'Betrieb', $name . ': ' . $zname . ' aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
                 $this->SetValue($prefix . 'Zone' . $zid . 'Betrieb', (int)$zone['operationStatus'] === 1);
+            }
+        }
+
+        // Betriebsmodi aus dem Transfer-Statusabruf (geraeteweit, nicht je Zone).
+        if (is_array($status)) {
+            if (isset($status['quietMode'])) {
+                $this->MaintainVariable($prefix . 'Fluesterbetrieb', $name . ': Flüsterbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Fluesterbetrieb', $pos++, true);
+                $this->SetValue($prefix . 'Fluesterbetrieb', (int)$status['quietMode']);
+            }
+            if (isset($status['powerful'])) {
+                $this->MaintainVariable($prefix . 'Leistungsbetrieb', $name . ': Leistungsbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Leistungsbetrieb', $pos++, true);
+                $this->SetValue($prefix . 'Leistungsbetrieb', (int)$status['powerful']);
+            }
+            if (isset($status['holidayTimer'])) {
+                $this->MaintainVariable($prefix . 'Urlaubstimer', $name . ': Urlaubstimer aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->SetValue($prefix . 'Urlaubstimer', (int)$status['holidayTimer'] === 1);
+            }
+            if (isset($status['forceDHW'])) {
+                $this->MaintainVariable($prefix . 'NotbetriebWarmwasser', $name . ': Notbetrieb Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->SetValue($prefix . 'NotbetriebWarmwasser', (int)$status['forceDHW'] === 1);
+            }
+            if (isset($status['forceHeater'])) {
+                $this->MaintainVariable($prefix . 'NotHeizbetrieb', $name . ': Not-Heizbetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->SetValue($prefix . 'NotHeizbetrieb', (int)$status['forceHeater'] === 1);
             }
         }
     }
@@ -628,6 +623,22 @@ class WPHub extends IPSModule
             IPS_CreateVariableProfile('NRG.Celsius', VARIABLETYPE_FLOAT);
             IPS_SetVariableProfileText('NRG.Celsius', '', ' °C');
             IPS_SetVariableProfileDigits('NRG.Celsius', 1);
+        }
+        // Modulspezifisch (kein NRG.*-Praefix): Werte aus dem A2W-Transfer-
+        // Statusabruf, die kein anderes NRG-Stack-Modul teilt.
+        if (!IPS_VariableProfileExists('WPHUB.Fluesterbetrieb')) {
+            IPS_CreateVariableProfile('WPHUB.Fluesterbetrieb', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 0, 'Aus', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 1, 'Stufe 1', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 2, 'Stufe 2', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 3, 'Stufe 3', '', -1);
+        }
+        if (!IPS_VariableProfileExists('WPHUB.Leistungsbetrieb')) {
+            IPS_CreateVariableProfile('WPHUB.Leistungsbetrieb', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 0, 'Aus', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 1, '30 Minuten', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 2, '60 Minuten', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 3, '90 Minuten', '', -1);
         }
     }
 }
