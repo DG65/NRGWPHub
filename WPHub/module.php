@@ -311,9 +311,20 @@ class WPHub extends IPSModule
 
     /**
      * NRG-Stack-Vertrag fuer Waermepumpen, konsistent zu HeishaMons
-     * GetFunctions() (Type=>'heatpump', contractVersion 1.2). Ein Eintrag je
-     * gefundener Waermepumpe. PowerID/EnergyID = 0: siehe Kopfkommentar --
-     * die Cloud liefert (noch) keine vertragstaugliche Leistung/Energie.
+     * GetFunctions() (Type=>'heatpump'). Ein Eintrag je gefundener
+     * Waermepumpe. PowerID/EnergyID = 0: die Cloud liefert keine
+     * vertragstaugliche Leistung/Energie -- laut Verbund-Abstimmung mit
+     * MeterHub/EMS bewusst so belassen (echte Messwerte kommen ggf. separat
+     * aus einem Messmodul, kein Erzeuger-Vertrag referenziert fremde IDs).
+     *
+     * contractVersion 1.3 (additiv, mit HeishaMon/EMS abgestimmt 13.08.2026):
+     * zusaetzliche *ID-Felder fuer den gemeinsamen heatpump-Vertragstyp.
+     * z1WaterTempID/z2WaterTempID/dhwTempID sind bewusst dieselben
+     * Feldnamen wie bei HeishaMon (identisches Konzept: Zonen-/Warmwasser-
+     * Isttemperatur) -- Konsumenten lesen denselben Feldnamen unabhaengig
+     * vom liefernden Modul. Alle anderen additiven Felder sind neu (WPHub
+     * hat keine Pumpen-/Ventildaten, HeishaMon deckt diese eigenen Konzepte
+     * bislang nicht ab). 0, wenn WPHub den jeweiligen Wert nicht liefert.
      */
     public function GetFunctions()
     {
@@ -324,19 +335,37 @@ class WPHub extends IPSModule
 
         $out = [];
         foreach ($devices as $d) {
-            $reachableID = @$this->GetIDForIdent(($d['prefix'] ?? '') . 'Erreichbar');
+            $prefix = (string)($d['prefix'] ?? '');
+            $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion' => '1.2',
-                'Type'            => 'heatpump',
-                'Caption'         => $d['name'] ?? 'Waermepumpe',
-                'PowerID'         => 0,
-                'EnergyID'        => 0,
-                'Measured'        => false,
-                'unit'            => 'W',
-                'reachable'       => ($reachableID === false) ? (bool)($d['reachable'] ?? false) : (bool)GetValue($reachableID),
+                'contractVersion'      => '1.3',
+                'Type'                 => 'heatpump',
+                'Caption'              => $d['name'] ?? 'Waermepumpe',
+                'PowerID'              => 0,
+                'EnergyID'             => 0,
+                'Measured'             => false,
+                'unit'                 => 'W',
+                'reachable'            => ($reachableID === false) ? (bool)($d['reachable'] ?? false) : (bool)GetValue($reachableID),
+                'outdoorTemperatureID' => $this->contractFieldID($prefix, 'Aussentemperatur'),
+                'z1WaterTempID'        => $this->contractFieldID($prefix, 'Zone1Ist'),
+                'z2WaterTempID'        => $this->contractFieldID($prefix, 'Zone2Ist'),
+                'z1WaterTargetTempID'  => $this->contractFieldID($prefix, 'Zone1Soll'),
+                'z2WaterTargetTempID'  => $this->contractFieldID($prefix, 'Zone2Soll'),
+                'dhwTempID'            => $this->contractFieldID($prefix, 'Warmwasser'),
+                'dhwTargetTempID'      => $this->contractFieldID($prefix, 'WarmwasserSoll'),
+                'quietModeID'          => $this->contractFieldID($prefix, 'Fluesterbetrieb'),
+                'ecoComfortModeID'     => $this->contractFieldID($prefix, 'EcoKomfort'),
+                'holidayTimerID'       => $this->contractFieldID($prefix, 'Urlaubstimer'),
             ];
         }
         return $out;
+    }
+
+    /** Variablen-ID zu Praefix+Ident, oder 0 wenn die Variable (noch) nicht existiert. */
+    private function contractFieldID(string $prefix, string $ident): int
+    {
+        $id = @$this->GetIDForIdent($prefix . $ident);
+        return ($id === false) ? 0 : (int)$id;
     }
 
     /**

@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 40) — 13.08.2026
+
+- **`WPHUB_GetFunctions()` additiv erweitert (contractVersion 1.2 → 1.3).** Bisher gab der Vertrag nur die Basisfelder zurück (Betriebsart war z.B. nur als lose IPS-Variable erreichbar, nicht über den Vertrag) — Dashboard hätte für die geplante Anlagenschema-Visualisierung direkt auf Idents zugreifen müssen, was der Verbund-Konvention widerspricht. Neu: `outdoorTemperatureID`, `z1WaterTempID`, `z2WaterTempID`, `z1WaterTargetTempID`, `z2WaterTargetTempID`, `dhwTempID`, `dhwTargetTempID`, `quietModeID`, `ecoComfortModeID`, `holidayTimerID` — jeweils 0, wenn WPHub den Wert nicht liefert (z.B. Zone 2 nicht vorhanden). `z1WaterTempID`/`z2WaterTempID`/`dhwTempID` nutzen bewusst dieselben Feldnamen wie der mit HeishaMon abgestimmte gemeinsame `heatpump`-Vertragstyp (identisches Konzept: Zonen-/Warmwasser-Isttemperatur) — Dashboard liest denselben Feldnamen unabhängig vom liefernden Modul.
+
 ## 0.2.0 (Build 39) — 13.08.2026
 
 - **Geklärt: `/deviceHistoryData` für dieses Konto gesperrt.** Am echten Konto getestet: 403 Code 4300 „Have no authority to the request" — dieselbe Rechte-Sperre, auf die frühere Untersuchungen der `/hphw`-Endpunkte schon gestoßen waren (`a2wOwnerFlg:false`), keine Frage des Content-Type-Headers. Der Transfer-Proxy-Weg (`/remote/v1/api/consumption`, seit Build 35 in Betrieb) bleibt damit der einzige funktionierende Zugang zu Verbrauchsdaten. Diagnosefunktion `ProbeDeviceHistory` wieder entfernt.

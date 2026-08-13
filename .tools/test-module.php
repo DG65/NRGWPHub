@@ -520,13 +520,28 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.2', ($f['contractVersion'] ?? '') === '1.2');
+check('contractVersion = 1.3', ($f['contractVersion'] ?? '') === '1.3');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
 check('Measured = false', ($f['Measured'] ?? true) === false);
 check('unit = W', ($f['unit'] ?? '') === 'W');
 check('reachable = true (live aus Variable)', ($f['reachable'] ?? false) === true);
+
+// Additive Vertragsfelder (contractVersion 1.3): vorhandene Werte liefern
+// die echte Variablen-ID, fehlende (Zone 2 existiert bei diesem Geraet
+// nicht) liefern 0 -- nie einen falschen Ident raten.
+$vars = $GLOBALS['ips']['variables'];
+check('outdoorTemperatureID zeigt auf Aussentemperatur-Variable', ($f['outdoorTemperatureID'] ?? 0) === ($vars[$prefix . 'Aussentemperatur']['id'] ?? -1));
+check('z1WaterTempID zeigt auf Zone1Ist-Variable', ($f['z1WaterTempID'] ?? 0) === ($vars[$prefix . 'Zone1Ist']['id'] ?? -1));
+check('z1WaterTargetTempID zeigt auf Zone1Soll-Variable', ($f['z1WaterTargetTempID'] ?? 0) === ($vars[$prefix . 'Zone1Soll']['id'] ?? -1));
+check('z2WaterTempID = 0 (Zone 2 nicht vorhanden)', ($f['z2WaterTempID'] ?? -1) === 0);
+check('z2WaterTargetTempID = 0 (Zone 2 nicht vorhanden)', ($f['z2WaterTargetTempID'] ?? -1) === 0);
+check('dhwTempID zeigt auf Warmwasser-Variable', ($f['dhwTempID'] ?? 0) === ($vars[$prefix . 'Warmwasser']['id'] ?? -1));
+check('dhwTargetTempID zeigt auf WarmwasserSoll-Variable', ($f['dhwTargetTempID'] ?? 0) === ($vars[$prefix . 'WarmwasserSoll']['id'] ?? -1));
+check('quietModeID zeigt auf Fluesterbetrieb-Variable', ($f['quietModeID'] ?? 0) === ($vars[$prefix . 'Fluesterbetrieb']['id'] ?? -1));
+check('ecoComfortModeID zeigt auf EcoKomfort-Variable', ($f['ecoComfortModeID'] ?? 0) === ($vars[$prefix . 'EcoKomfort']['id'] ?? -1));
+check('holidayTimerID zeigt auf Urlaubstimer-Variable', ($f['holidayTimerID'] ?? 0) === ($vars[$prefix . 'Urlaubstimer']['id'] ?? -1));
 
 // Cloud-Ausfall: alle Geraete unerreichbar, Variablen bleiben bestehen.
 $markAll = new ReflectionMethod(WPHub::class, 'markAllUnreachable');
