@@ -18,6 +18,17 @@ sich Nutzer mit passender Hardware finden — analog zu Tessie/TibberGridReward,
 die auch mit einem Hersteller/Dienst gestartet sind, für den Dietmar Testzugang
 hatte. **Nicht von sich aus mit weiteren Herstellern anfangen.**
 
+**Update 13.08.2026:** Das ist der Startzustand, kein Dauerzustand. Dietmars
+Zukunftsziel: WPHub soll perspektivisch mehrere Wärmepumpenhersteller über
+deren jeweilige Cloud-APIs bündeln — analog zu InverterHub (mehrere
+Wechselrichter-Hersteller in einem Modul). Nicht von uns aus jetzt starten,
+aber beim Weiterbauen nichts tun, das diesen Weg versperrt. Konkret im Blick
+behalten: `CC_Email`/`CC_Password`/`CC_AppVersion` sind aktuell Comfort-Cloud-
+spezifisch benannte Properties — bei tatsächlicher Erweiterung bräuchte es
+eine Hersteller-Auswahl + je Hersteller ein Formular-Panel. Alles andere
+(Geräteliste, Variablenpflege, Präfixbildung, `WPHUB_GetFunctions()`-Vertrag)
+ist bereits herstellerneutral.
+
 ## Verbund-Konventionen (kondensiert, siehe SUITE.md für Details)
 
 1. **Marke/Repo:** Verbund heißt nach außen "NRG-Stack", DG65 = Hersteller/Org
