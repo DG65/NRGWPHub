@@ -340,34 +340,6 @@ class WPHub extends IPSModule
     }
 
     /**
-     * DIAGNOSE (temporaer): rohe Antwort von /deviceHistoryData (direkter
-     * Endpunkt, kein Transfer-Proxy -- Referenz demel42/IPSymconPanasonic-
-     * ComfortCloud) ins Systemprotokoll. Prueft, ob dieser Weg mehr liefert
-     * als /remote/v1/api/consumption.
-     */
-    public function ProbeDeviceHistory()
-    {
-        $bundle = $this->ensureToken();
-        if ($bundle === null) {
-            $this->LogMessage('ProbeDeviceHistory: keine gültige Anmeldung.', KL_WARNING);
-            return;
-        }
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
-        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
-        if ($guid === '') {
-            $this->LogMessage('ProbeDeviceHistory: kein Gerät bekannt.', KL_WARNING);
-            return;
-        }
-        $client = $this->ccClient();
-        $r = $client->debugDeviceHistory($bundle, $guid);
-        $body = (string)$r['body'];
-        $this->LogMessage('ProbeDeviceHistory HTTP ' . $r['status'] . ', Länge ' . strlen($body), KL_WARNING);
-        foreach (str_split($body, 1400) as $i => $chunk) {
-            $this->LogMessage('ProbeDeviceHistory[' . $i . ']: ' . $chunk, KL_WARNING);
-        }
-    }
-
-    /**
      * Steuerung: WebFront/EMS aendert eine der per EnableAction() freige-
      * gebenen Variablen (Fluesterbetrieb, Leistungsbetrieb, Urlaubstimer,
      * Notbetriebe, Warmwasser-/Zonen-Sollwert). Der Praefix (9 Zeichen, siehe

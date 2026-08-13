@@ -450,7 +450,11 @@ class WPHUB_ComfortCloudClient
     // Feld fuer erzeugte thermische Energie. Fuer eine echte Waermemengen-
     // messung (und damit COP) fehlen Vor-/Ruecklauftemperatur und Durchfluss;
     // der Standardadapter (STD_ADP-TAW1) liefert offenbar nur den
-    // elektrischen Verbrauch.
+    // elektrischen Verbrauch. Der alternative direkte Endpunkt
+    // /deviceHistoryData (Referenz demel42/IPSymconPanasonicComfortCloud)
+    // liefert am echten Konto 403 Code 4300 "Have no authority to the
+    // request" -- dieselbe Rechte-Sperre wie bei den frueher untersuchten
+    // /hphw-Endpunkten (a2wOwnerFlg:false), keine Frage des Content-Type.
     public function getDeviceConsumptionToday(array $bundle, string $guid): ?array
     {
         $this->lastError = '';
@@ -485,21 +489,6 @@ class WPHUB_ComfortCloudClient
         return ['heat' => $heat, 'cool' => $cool, 'tank' => $tank, 'total' => $heat + $cool + $tank];
     }
 
-    // Diagnose (temporaer): direkter Endpunkt /deviceHistoryData (NICHT der
-    // Transfer-Proxy) -- Referenz demel42/IPSymconPanasonicComfortCloud nutzt
-    // ihn fuer denselben Zweck. Prueft, ob dieser andere Weg reichhaltigere
-    // Verbrauchsdaten liefert als /remote/v1/api/consumption.
-    public function debugDeviceHistory(array $bundle, string $guid): array
-    {
-        $body = [
-            'deviceGuid' => $guid,
-            'dataMode'   => 0,
-            'date'       => date('Ymd'),
-            'osTimezone' => date('P'),
-        ];
-        $r = $this->apiRequest($bundle, 'POST', '/deviceHistoryData', $body);
-        return ['status' => $r['status'] ?? 0, 'body' => (string)($r['body'] ?? $this->lastError)];
-    }
 
     // ------------------------------------------------------------------
     // Steuerung (Transfer-Proxy, gleiches Muster wie getDeviceStatus, aber

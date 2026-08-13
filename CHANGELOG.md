@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 39) — 13.08.2026
+
+- **Geklärt: `/deviceHistoryData` für dieses Konto gesperrt.** Am echten Konto getestet: 403 Code 4300 „Have no authority to the request" — dieselbe Rechte-Sperre, auf die frühere Untersuchungen der `/hphw`-Endpunkte schon gestoßen waren (`a2wOwnerFlg:false`), keine Frage des Content-Type-Headers. Der Transfer-Proxy-Weg (`/remote/v1/api/consumption`, seit Build 35 in Betrieb) bleibt damit der einzige funktionierende Zugang zu Verbrauchsdaten. Diagnosefunktion `ProbeDeviceHistory` wieder entfernt.
+
 ## 0.2.0 (Build 38) — 13.08.2026
 
 - **Diagnose `ProbeDeviceHistory` (temporär).** Fund im bereits bestehenden, aktiv gepflegten IP-Symcon-Modul `demel42/IPSymconPanasonicComfortCloud`: Es nutzt für die Verbrauchshistorie den direkten Endpunkt `/deviceHistoryData` statt des Transfer-Proxys — ein Weg, den WPHub noch nie mit dem korrigierten Content-Type-Header getestet hat. `ProbeDeviceHistory` schreibt die rohe Antwort ins Systemprotokoll, um zu prüfen, ob dieser Weg reichhaltigere Daten liefert. Wird nach der Klärung wieder entfernt.
