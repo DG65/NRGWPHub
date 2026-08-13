@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 36) — 13.08.2026
+
+- **Diagnose `ProbeConsumption` (temporär).** Frage: Liefert die Cloud neben dem elektrischen Verbrauch (heat/cool/tankConsumption) auch die erzeugte thermische Energie (für eine COP-Berechnung)? Keine der drei geprüften Referenzimplementierungen wertet ein solches Feld aus — `ProbeConsumption` schreibt die rohe, unverarbeitete Verbrauchsantwort ins Systemprotokoll, um das direkt am echten Konto zu prüfen. Wird nach der Klärung wieder entfernt.
+
 ## 0.2.0 (Build 35) — 13.08.2026
 
 - **Weitere Betriebsdaten aus dem Transfer-Statusabruf.** Neu: Eco-/Komfortmodus (die Eco-/Komfort-Knöpfe aus der App), Betriebsrichtung (Ruht/Umwälzpumpe/Warmwasser), Abtaubetrieb, Fehleranzahl und Fehlertext. Zusätzlich **Energieverbrauch des laufenden Tages** (Heizen/Kühlen/Warmwasser/Gesamt in kWh, neuer Endpunkt `/remote/v1/api/consumption` über denselben Transfer-Proxy) — rein informativ, **kein** Bestandteil des EMS-Vertrags (PowerID/EnergyID bleiben 0), da Tageswerte um Mitternacht auf 0 zurückspringen und damit kein kumulativer Zähler sind. Neues gemeinsames Profil `NRG.kWh`. Bewusst nicht angebunden: Wasserdruck, Bivalentpunkt, Anodenstatus — bei Dietmars Anlage (Standardadapter STD_ADP-TAW1) durchgehend 0, vermutlich für diese Hardware nicht unterstützt; sowie die statisch konfigurierten Eco-/Komfort-Sollwertgrenzen je Zone (Installateur-Einstellung, kein Live-Messwert). 11 neue Tests, 87 Prüfungen insgesamt grün.

@@ -479,6 +479,25 @@ class WPHUB_ComfortCloudClient
         return ['heat' => $heat, 'cool' => $cool, 'tank' => $tank, 'total' => $heat + $cool + $tank];
     }
 
+    // Diagnose (temporaer): rohe, unverarbeitete Verbrauchsantwort -- prueft,
+    // ob die API mehr Felder liefert als heat/cool/tankConsumption (z.B.
+    // erzeugte thermische Energie neben dem elektrischen Verbrauch).
+    public function debugConsumption(array $bundle, string $guid): array
+    {
+        $body = [
+            'apiName'       => '/remote/v1/api/consumption',
+            'requestMethod' => 'POST',
+            'bodyParam'     => [
+                'gwid'       => $guid,
+                'dataMode'   => 0,
+                'date'       => date('Ymd'),
+                'osTimezone' => date('P'),
+            ],
+        ];
+        $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', $body);
+        return ['status' => $r['status'] ?? 0, 'body' => (string)($r['body'] ?? $this->lastError)];
+    }
+
     // ------------------------------------------------------------------
     // Steuerung (Transfer-Proxy, gleiches Muster wie getDeviceStatus, aber
     // requestMethod POST mit einem einzelnen zu aendernden Feld je Aufruf --
