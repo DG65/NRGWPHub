@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 37) — 13.08.2026
+
+- **Geklärt: keine erzeugte (thermische) Energie verfügbar.** Die Diagnose aus Build 36 wurde am echten Konto ausgewertet: Die Verbrauchsantwort enthält je Stunde nur `heat-/cool-/tankConsumption` (elektrisch) + Kosten + Außentemperatur, kein Feld für erzeugte Wärmeenergie. Für eine echte Wärmemengenmessung (und damit eine COP-Berechnung) fehlen Vor-/Rücklauftemperatur und Durchfluss — der Standardadapter liefert offenbar nur den elektrischen Verbrauch. Diagnosefunktion `ProbeConsumption` wieder entfernt.
+
 ## 0.2.0 (Build 36) — 13.08.2026
 
 - **Diagnose `ProbeConsumption` (temporär).** Frage: Liefert die Cloud neben dem elektrischen Verbrauch (heat/cool/tankConsumption) auch die erzeugte thermische Energie (für eine COP-Berechnung)? Keine der drei geprüften Referenzimplementierungen wertet ein solches Feld aus — `ProbeConsumption` schreibt die rohe, unverarbeitete Verbrauchsantwort ins Systemprotokoll, um das direkt am echten Konto zu prüfen. Wird nach der Klärung wieder entfernt.

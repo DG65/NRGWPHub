@@ -340,33 +340,6 @@ class WPHub extends IPSModule
     }
 
     /**
-     * DIAGNOSE (temporaer): rohe Verbrauchsantwort ins Systemprotokoll --
-     * prueft, ob neben heat/cool/tankConsumption (elektrischer Verbrauch)
-     * noch Felder fuer erzeugte thermische Energie mitkommen.
-     */
-    public function ProbeConsumption()
-    {
-        $bundle = $this->ensureToken();
-        if ($bundle === null) {
-            $this->LogMessage('ProbeConsumption: keine gültige Anmeldung.', KL_WARNING);
-            return;
-        }
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
-        $guid = is_array($devices) && isset($devices[0]['guid']) ? (string)$devices[0]['guid'] : '';
-        if ($guid === '') {
-            $this->LogMessage('ProbeConsumption: kein Gerät bekannt.', KL_WARNING);
-            return;
-        }
-        $client = $this->ccClient();
-        $r = $client->debugConsumption($bundle, $guid);
-        $body = (string)$r['body'];
-        $this->LogMessage('ProbeConsumption HTTP ' . $r['status'] . ', Länge ' . strlen($body), KL_WARNING);
-        foreach (str_split($body, 1400) as $i => $chunk) {
-            $this->LogMessage('ProbeConsumption[' . $i . ']: ' . $chunk, KL_WARNING);
-        }
-    }
-
-    /**
      * Steuerung: WebFront/EMS aendert eine der per EnableAction() freige-
      * gebenen Variablen (Fluesterbetrieb, Leistungsbetrieb, Urlaubstimer,
      * Notbetriebe, Warmwasser-/Zonen-Sollwert). Der Praefix (9 Zeichen, siehe

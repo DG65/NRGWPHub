@@ -445,6 +445,12 @@ class WPHUB_ComfortCloudClient
     // Ausdruecklich NICHT als kumulativer Zaehler geeignet (springt um
     // Mitternacht auf 0) -- daher NICHT Teil des EMS-Vertrags (PowerID/
     // EnergyID bleiben 0), nur eine informative Zusatzgroesse.
+    // Am echten Konto geprueft (13.08.2026): Die Antwort enthaelt je Stunde
+    // NUR heat-/cool-/tankConsumption + Kosten + Aussentemperatur -- kein
+    // Feld fuer erzeugte thermische Energie. Fuer eine echte Waermemengen-
+    // messung (und damit COP) fehlen Vor-/Ruecklauftemperatur und Durchfluss;
+    // der Standardadapter (STD_ADP-TAW1) liefert offenbar nur den
+    // elektrischen Verbrauch.
     public function getDeviceConsumptionToday(array $bundle, string $guid): ?array
     {
         $this->lastError = '';
@@ -477,25 +483,6 @@ class WPHUB_ComfortCloudClient
             $tank += (float)($item['tankConsumption'] ?? 0);
         }
         return ['heat' => $heat, 'cool' => $cool, 'tank' => $tank, 'total' => $heat + $cool + $tank];
-    }
-
-    // Diagnose (temporaer): rohe, unverarbeitete Verbrauchsantwort -- prueft,
-    // ob die API mehr Felder liefert als heat/cool/tankConsumption (z.B.
-    // erzeugte thermische Energie neben dem elektrischen Verbrauch).
-    public function debugConsumption(array $bundle, string $guid): array
-    {
-        $body = [
-            'apiName'       => '/remote/v1/api/consumption',
-            'requestMethod' => 'POST',
-            'bodyParam'     => [
-                'gwid'       => $guid,
-                'dataMode'   => 0,
-                'date'       => date('Ymd'),
-                'osTimezone' => date('P'),
-            ],
-        ];
-        $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', $body);
-        return ['status' => $r['status'] ?? 0, 'body' => (string)($r['body'] ?? $this->lastError)];
     }
 
     // ------------------------------------------------------------------
