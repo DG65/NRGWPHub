@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 38) — 13.08.2026
+
+- **Diagnose `ProbeDeviceHistory` (temporär).** Fund im bereits bestehenden, aktiv gepflegten IP-Symcon-Modul `demel42/IPSymconPanasonicComfortCloud`: Es nutzt für die Verbrauchshistorie den direkten Endpunkt `/deviceHistoryData` statt des Transfer-Proxys — ein Weg, den WPHub noch nie mit dem korrigierten Content-Type-Header getestet hat. `ProbeDeviceHistory` schreibt die rohe Antwort ins Systemprotokoll, um zu prüfen, ob dieser Weg reichhaltigere Daten liefert. Wird nach der Klärung wieder entfernt.
+
 ## 0.2.0 (Build 37) — 13.08.2026
 
 - **Geklärt: keine erzeugte (thermische) Energie verfügbar.** Die Diagnose aus Build 36 wurde am echten Konto ausgewertet: Die Verbrauchsantwort enthält je Stunde nur `heat-/cool-/tankConsumption` (elektrisch) + Kosten + Außentemperatur, kein Feld für erzeugte Wärmeenergie. Für eine echte Wärmemengenmessung (und damit eine COP-Berechnung) fehlen Vor-/Rücklauftemperatur und Durchfluss — der Standardadapter liefert offenbar nur den elektrischen Verbrauch. Diagnosefunktion `ProbeConsumption` wieder entfernt.

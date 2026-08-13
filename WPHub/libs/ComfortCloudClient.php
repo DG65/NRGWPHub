@@ -485,6 +485,22 @@ class WPHUB_ComfortCloudClient
         return ['heat' => $heat, 'cool' => $cool, 'tank' => $tank, 'total' => $heat + $cool + $tank];
     }
 
+    // Diagnose (temporaer): direkter Endpunkt /deviceHistoryData (NICHT der
+    // Transfer-Proxy) -- Referenz demel42/IPSymconPanasonicComfortCloud nutzt
+    // ihn fuer denselben Zweck. Prueft, ob dieser andere Weg reichhaltigere
+    // Verbrauchsdaten liefert als /remote/v1/api/consumption.
+    public function debugDeviceHistory(array $bundle, string $guid): array
+    {
+        $body = [
+            'deviceGuid' => $guid,
+            'dataMode'   => 0,
+            'date'       => date('Ymd'),
+            'osTimezone' => date('P'),
+        ];
+        $r = $this->apiRequest($bundle, 'POST', '/deviceHistoryData', $body);
+        return ['status' => $r['status'] ?? 0, 'body' => (string)($r['body'] ?? $this->lastError)];
+    }
+
     // ------------------------------------------------------------------
     // Steuerung (Transfer-Proxy, gleiches Muster wie getDeviceStatus, aber
     // requestMethod POST mit einem einzelnen zu aendernden Feld je Aufruf --
