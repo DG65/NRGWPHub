@@ -338,7 +338,7 @@ class WPHub extends IPSModule
             $prefix = (string)($d['prefix'] ?? '');
             $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion'      => '1.3',
+                'contractVersion'      => '1.4',
                 'Type'                 => 'heatpump',
                 'Caption'              => $d['name'] ?? 'Waermepumpe',
                 'PowerID'              => 0,
@@ -356,6 +356,14 @@ class WPHub extends IPSModule
                 'quietModeID'          => $this->contractFieldID($prefix, 'Fluesterbetrieb'),
                 'ecoComfortModeID'     => $this->contractFieldID($prefix, 'EcoKomfort'),
                 'holidayTimerID'       => $this->contractFieldID($prefix, 'Urlaubstimer'),
+                // contractVersion 1.4 (EMS-Entscheid, mit HeishaMon abgestimmt
+                // 13.08.2026): operatingModeNormID zeigt auf eine modulgepflegte
+                // Variable mit dem Verbund-Enum (0=standby,1=heating,2=cooling,
+                // 3=dhw,4=heating+dhw,5=cooling+dhw,-1=unbekannt) -- Konsumenten
+                // muessen keine Herstellersemantik mehr kennen. operatingModeID
+                // ist das optionale rohe Diagnosefeld (unser ExtendedOperationMode).
+                'operatingModeNormID'  => $this->contractFieldID($prefix, 'BetriebsartNorm'),
+                'operatingModeID'      => $this->contractFieldID($prefix, 'Betriebsart'),
             ];
         }
         return $out;
@@ -366,6 +374,44 @@ class WPHub extends IPSModule
     {
         $id = @$this->GetIDForIdent($prefix . $ident);
         return ($id === false) ? 0 : (int)$id;
+    }
+
+    /**
+     * Bildet unseren ExtendedOperationMode (0=Aus,1=Heizen,2=Kühlen,
+     * 3=AutoHeizen,4=AutoKühlen) zusammen mit dem Warmwasser-Aktivstatus auf
+     * den Verbund-weiten Enum ab (EMS/SUITE.md, mit HeishaMon abgestimmt
+     * 13.08.2026): 0=standby,1=heating,2=cooling,3=dhw,4=heating+dhw,
+     * 5=cooling+dhw,-1=unbekannt. Auto-Modi zaehlen als ihre aktuell aktive
+     * Richtung (die API meldet AutoHeizen/AutoKuehlen bereits als konkrete
+     * Richtung, nicht als generisches "Auto").
+     */
+    private function normalizeOperatingMode(?int $operationMode, bool $dhwActive): int
+    {
+        if ($operationMode === null) {
+            return -1;
+        }
+        switch ($operationMode) {
+            case 0:
+                $direction = 0; // Aus -> standby
+                break;
+            case 1:
+            case 3:
+                $direction = 1; // Heizen / Auto Heizen -> heating
+                break;
+            case 2:
+            case 4:
+                $direction = 2; // Kühlen / Auto Kühlen -> cooling
+                break;
+            default:
+                return -1; // unbekannt
+        }
+        if (!$dhwActive) {
+            return $direction;
+        }
+        if ($direction === 0) {
+            return 3; // nur Warmwasser -> dhw
+        }
+        return ($direction === 1) ? 4 : 5; // heating+dhw / cooling+dhw
     }
 
     /**
@@ -642,6 +688,18 @@ class WPHub extends IPSModule
             }
         }
 
+        // Verbund-weit normierte Betriebsart (EMS/SUITE.md, mit HeishaMon
+        // abgestimmt 13.08.2026): jedes heatpump-Modul bildet seinen eigenen
+        // Hersteller-Enum auf diesen gemeinsamen Enum ab, Konsumenten (Dashboard/
+        // EMS) muessen keine Herstellersemantik mehr kennen. "Warmwasser aktiv"
+        // fliesst mit ein (kombinierte Zustaende 3-5), unser operationMode allein
+        // kennt nur die Heiz-/Kuehlrichtung.
+        if (isset($dev['operationMode'])) {
+            $dhwActive = is_array($tank) && isset($tank['operationStatus']) && (int)$tank['operationStatus'] === 1;
+            $this->MaintainVariable($prefix . 'BetriebsartNorm', $name . ': Betriebsart (normiert)', VARIABLETYPE_INTEGER, 'WPHUB.BetriebsartNorm', $pos++, true);
+            $this->SetValue($prefix . 'BetriebsartNorm', $this->normalizeOperatingMode((int)$dev['operationMode'], $dhwActive));
+        }
+
         // Ist-Temperaturen je Zone aus dem Transfer-Statusabruf, nach zoneId
         // zugeordnet (dort steckt auch der echte Zonenname, z.B. "HK1").
         $statusZones = [];
@@ -811,6 +869,18 @@ class WPHub extends IPSModule
             IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 2, 'Kühlen', '', -1);
             IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 3, 'Auto Heizen', '', -1);
             IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 4, 'Auto Kühlen', '', -1);
+        }
+        // Verbund-weiter normierter Betriebsart-Enum (EMS/SUITE.md, mit
+        // HeishaMon abgestimmt) -- Werte/Bedeutung modulübergreifend fest.
+        if (!IPS_VariableProfileExists('WPHUB.BetriebsartNorm')) {
+            IPS_CreateVariableProfile('WPHUB.BetriebsartNorm', VARIABLETYPE_INTEGER);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', -1, 'Unbekannt', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 0, 'Standby', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 1, 'Heizen', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 2, 'Kühlen', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 3, 'Warmwasser', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 4, 'Heizen + Warmwasser', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 5, 'Kühlen + Warmwasser', '', -1);
         }
         if (!IPS_VariableProfileExists('WPHUB.Fluesterbetrieb')) {
             IPS_CreateVariableProfile('WPHUB.Fluesterbetrieb', VARIABLETYPE_INTEGER);

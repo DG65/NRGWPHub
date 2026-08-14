@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.2.0 (Build 41) — 13.08.2026
+
+- **Verbund-weit normierte Betriebsart** (contractVersion 1.3 → 1.4, mit HeishaMon/EMS abgestimmt). Neue Variable „Betriebsart (normiert)" bildet unsere Panasonic-Betriebsart zusammen mit dem Warmwasser-Aktivstatus auf den gemeinsamen `heatpump`-Enum ab (0=Standby, 1=Heizen, 2=Kühlen, 3=Warmwasser, 4=Heizen+Warmwasser, 5=Kühlen+Warmwasser, -1=Unbekannt) — Dashboard/EMS müssen damit keine Herstellersemantik mehr kennen. Neue Vertragsfelder `operatingModeNormID` (normiert) und `operatingModeID` (unser rohes ExtendedOperationMode, optionales Diagnosefeld). Grund für die Umstellung: Dashboard hatte zu Recht eingewandt, dass rohe Hersteller-Enums (unser 0-4 vs. HeishaMons eigenes Schema) für Konsumenten nicht direkt vergleichbar sind.
+
 ## 0.2.0 (Build 40) — 13.08.2026
 
 - **`WPHUB_GetFunctions()` additiv erweitert (contractVersion 1.2 → 1.3).** Bisher gab der Vertrag nur die Basisfelder zurück (Betriebsart war z.B. nur als lose IPS-Variable erreichbar, nicht über den Vertrag) — Dashboard hätte für die geplante Anlagenschema-Visualisierung direkt auf Idents zugreifen müssen, was der Verbund-Konvention widerspricht. Neu: `outdoorTemperatureID`, `z1WaterTempID`, `z2WaterTempID`, `z1WaterTargetTempID`, `z2WaterTargetTempID`, `dhwTempID`, `dhwTargetTempID`, `quietModeID`, `ecoComfortModeID`, `holidayTimerID` — jeweils 0, wenn WPHub den Wert nicht liefert (z.B. Zone 2 nicht vorhanden). `z1WaterTempID`/`z2WaterTempID`/`dhwTempID` nutzen bewusst dieselben Feldnamen wie der mit HeishaMon abgestimmte gemeinsame `heatpump`-Vertragstyp (identisches Konzept: Zonen-/Warmwasser-Isttemperatur) — Dashboard liest denselben Feldnamen unabhängig vom liefernden Modul.

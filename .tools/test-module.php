@@ -520,7 +520,7 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.3', ($f['contractVersion'] ?? '') === '1.3');
+check('contractVersion = 1.4', ($f['contractVersion'] ?? '') === '1.4');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
@@ -542,6 +542,11 @@ check('dhwTargetTempID zeigt auf WarmwasserSoll-Variable', ($f['dhwTargetTempID'
 check('quietModeID zeigt auf Fluesterbetrieb-Variable', ($f['quietModeID'] ?? 0) === ($vars[$prefix . 'Fluesterbetrieb']['id'] ?? -1));
 check('ecoComfortModeID zeigt auf EcoKomfort-Variable', ($f['ecoComfortModeID'] ?? 0) === ($vars[$prefix . 'EcoKomfort']['id'] ?? -1));
 check('holidayTimerID zeigt auf Urlaubstimer-Variable', ($f['holidayTimerID'] ?? 0) === ($vars[$prefix . 'Urlaubstimer']['id'] ?? -1));
+check('operatingModeID zeigt auf Betriebsart-Variable', ($f['operatingModeID'] ?? 0) === ($vars[$prefix . 'Betriebsart']['id'] ?? -1));
+check('operatingModeNormID zeigt auf BetriebsartNorm-Variable', ($f['operatingModeNormID'] ?? 0) === ($vars[$prefix . 'BetriebsartNorm']['id'] ?? -1));
+// Fixture: operationMode=2 (Kühlen) + Warmwasser aktiv -> Verbund-Enum 5 (cooling+dhw).
+check('BetriebsartNorm = 5 (Kühlen + Warmwasser)', ($vars[$prefix . 'BetriebsartNorm']['value'] ?? null) === 5);
+check('BetriebsartNorm nutzt WPHUB.BetriebsartNorm-Profil', ($vars[$prefix . 'BetriebsartNorm']['profile'] ?? '') === 'WPHUB.BetriebsartNorm');
 
 // Cloud-Ausfall: alle Geraete unerreichbar, Variablen bleiben bestehen.
 $markAll = new ReflectionMethod(WPHub::class, 'markAllUnreachable');
@@ -550,6 +555,25 @@ $markAll->invoke($mod);
 $functions = $mod->GetFunctions();
 check('Nach Cloud-Ausfall: reachable = false', ($functions[0]['reachable'] ?? true) === false);
 check('Variablen bleiben nach Ausfall erhalten', isset($GLOBALS['ips']['variables'][$prefix . 'Warmwasser']));
+
+// ---------------------------------------------------------------------------
+echo "Block 3b: Verbund-weit normierte Betriebsart\n";
+// ---------------------------------------------------------------------------
+
+$norm = new ReflectionMethod(WPHub::class, 'normalizeOperatingMode');
+$norm->setAccessible(true);
+check('Aus, kein Warmwasser -> 0 (standby)', $norm->invoke($mod, 0, false) === 0);
+check('Heizen, kein Warmwasser -> 1 (heating)', $norm->invoke($mod, 1, false) === 1);
+check('Kühlen, kein Warmwasser -> 2 (cooling)', $norm->invoke($mod, 2, false) === 2);
+check('Auto Heizen -> 1 (heating, wie Heizen)', $norm->invoke($mod, 3, false) === 1);
+check('Auto Kühlen -> 2 (cooling, wie Kühlen)', $norm->invoke($mod, 4, false) === 2);
+check('Aus + Warmwasser aktiv -> 3 (dhw)', $norm->invoke($mod, 0, true) === 3);
+check('Heizen + Warmwasser aktiv -> 4 (heating+dhw)', $norm->invoke($mod, 1, true) === 4);
+check('Kühlen + Warmwasser aktiv -> 5 (cooling+dhw)', $norm->invoke($mod, 2, true) === 5);
+check('Auto Heizen + Warmwasser -> 4 (heating+dhw)', $norm->invoke($mod, 3, true) === 4);
+check('Auto Kühlen + Warmwasser -> 5 (cooling+dhw)', $norm->invoke($mod, 4, true) === 5);
+check('Unbekannter Rohwert -> -1 (unbekannt)', $norm->invoke($mod, 99, false) === -1);
+check('Kein Wert (null) -> -1 (unbekannt)', $norm->invoke($mod, null, false) === -1);
 
 // ---------------------------------------------------------------------------
 echo "Block 4: Client-Hilfsfunktionen (ohne Netz)\n";
