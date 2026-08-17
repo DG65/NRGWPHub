@@ -434,6 +434,24 @@ class WPHub extends IPSModule
     }
 
     /**
+     * Aktiviert die Archivierung (IPS-Archiv-Handler) fuer eine eigene
+     * Variable, falls noch nicht geschehen -- nur fuer Variablen, die WPHub
+     * selbst anlegt/besitzt. Externe, per SelectVariable verknuepfte
+     * Variablen (Ext_*) gehoeren einem anderen Modul; deren Archivierung
+     * bleibt bewusst dessen Sache, nicht unsere.
+     */
+    private function ensureArchived(string $ident): void
+    {
+        $id = @$this->GetIDForIdent($ident);
+        if ($id === false) {
+            return;
+        }
+        if (!function_exists('AC_GetLoggingStatus') || !@AC_GetLoggingStatus($id)) {
+            @AC_SetLoggingStatus($id, true);
+        }
+    }
+
+    /**
      * Bildet unseren ExtendedOperationMode (0=Aus,1=Heizen,2=Kühlen,
      * 3=AutoHeizen,4=AutoKühlen) zusammen mit dem Warmwasser-Aktivstatus auf
      * den Verbund-weiten Enum ab (EMS/SUITE.md, mit HeishaMon abgestimmt
@@ -801,6 +819,11 @@ class WPHub extends IPSModule
 
         if (is_array($status) && isset($status['outdoorNow']) && $this->isValidTemperature($status['outdoorNow'])) {
             $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': Außentemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            // Automatische Archivierung: eigene Variable (im Gegensatz zu den
+            // extern verknuepften Ext_*-Feldern, die WPHub nicht gehoeren --
+            // deren Archivierung bleibt Sache des jeweils besitzenden Moduls),
+            // gebraucht fuer die Verlaufsansichten (Dashboard-Anfrage 17.08.2026).
+            $this->ensureArchived($prefix . 'Aussentemperatur');
             $this->SetValue($prefix . 'Aussentemperatur', (float)$status['outdoorNow']);
         }
 

@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.3.0 (Build 44) — 17.08.2026
+
+- **Automatische Archivierung für die Außentemperatur.** Für Dashboards neue HeatMonitor-Verlaufskachel wird die Außentemperatur-Variable (`outsideTempID`) jetzt automatisch archiviert (IPS-Archiv-Handler), sobald sie angelegt wird. Bewusst **nur** für diese eigene Variable — die extern verknüpften Felder (`PowerID`/`mainInletTempID`/`mainOutletTempID`, siehe „Externe Sensoren & Zähler") zeigen auf Variablen anderer Module (z. B. eines Shellys); deren Archivierung bleibt Sache des jeweils besitzenden Moduls, WPHub schaltet dort nichts um.
+
 ## 0.3.0 (Build 43) — 17.08.2026
 
 - **Namenskonflikt behoben: `outsideTempID` ist jetzt der kanonische Feldname** für die Außentemperatur (EMS-Entscheid, SUITE.md-Feldregister Commit e0f219e — Stilkonsistenz mit den übrigen `*TempID`-Kurzformen im gemeinsamen `heatpump`-Vertragstyp). Unser bisheriger, abweichender Name `outdoorTemperatureID` (seit 1.3) gilt als deprecated, wird aber bruchfrei parallel weiterhin geliefert (zeigt auf dieselbe Variable), bis alle Konsumenten umgestellt haben.

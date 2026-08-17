@@ -79,6 +79,16 @@ function IPS_VariableExists(int $id): bool
     }
     return false;
 }
+// Archivierungsstatus je Variablen-ID (Standard: nicht archiviert).
+function AC_GetLoggingStatus(int $id): bool
+{
+    return $GLOBALS['ips']['archived'][$id] ?? false;
+}
+function AC_SetLoggingStatus(int $id, bool $active): bool
+{
+    $GLOBALS['ips']['archived'][$id] = $active;
+    return true;
+}
 function IPS_ApplyChanges(int $id): void
 {
     $GLOBALS['ips']['applied'] = true;
@@ -486,6 +496,7 @@ $devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 $vars = $GLOBALS['ips']['variables'];
 check('Außentemperatur = 25 °C', ($vars[$prefix . 'Aussentemperatur']['value'] ?? null) === 25.0);
 check('Außentemperatur nutzt NRG.Celsius', ($vars[$prefix . 'Aussentemperatur']['profile'] ?? '') === 'NRG.Celsius');
+check('Außentemperatur wird automatisch archiviert (eigene Variable)', ($GLOBALS['ips']['archived'][$vars[$prefix . 'Aussentemperatur']['id']] ?? false) === true);
 check('Zone 1 Ist = 18 °C (aus zoneStatus/temperatureNow)', ($vars[$prefix . 'Zone1Ist']['value'] ?? null) === 18.0);
 check('Zonenname aus Status uebernommen (HK1 statt "Zone 1")', ($vars[$prefix . 'Zone1Ist']['name'] ?? '') === 'Heizung: HK1 Isttemperatur');
 check('Flüsterbetrieb = 3 (Stufe 3)', ($vars[$prefix . 'Fluesterbetrieb']['value'] ?? null) === 3);
