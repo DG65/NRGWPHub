@@ -65,6 +65,20 @@ function IPS_SetProperty(int $id, string $name, $value): void
 {
     $GLOBALS['ips']['properties'][$name] = $value;
 }
+// Fuer externe SelectVariable-Verknuepfungen (z.B. Ext_PowerVariable): Tests
+// tragen simulierte fremde Variablen-IDs hier ein.
+function IPS_VariableExists(int $id): bool
+{
+    if (in_array($id, $GLOBALS['ips']['externalVariables'] ?? [], true)) {
+        return true;
+    }
+    foreach ($GLOBALS['ips']['variables'] as $v) {
+        if (($v['id'] ?? null) === $id) {
+            return true;
+        }
+    }
+    return false;
+}
 function IPS_ApplyChanges(int $id): void
 {
     $GLOBALS['ips']['applied'] = true;
@@ -520,7 +534,7 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.4', ($f['contractVersion'] ?? '') === '1.4');
+check('contractVersion = 1.5', ($f['contractVersion'] ?? '') === '1.5');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
@@ -547,6 +561,43 @@ check('operatingModeNormID zeigt auf BetriebsartNorm-Variable', ($f['operatingMo
 // Fixture: operationMode=2 (Kühlen) + Warmwasser aktiv -> Verbund-Enum 5 (cooling+dhw).
 check('BetriebsartNorm = 5 (Kühlen + Warmwasser)', ($vars[$prefix . 'BetriebsartNorm']['value'] ?? null) === 5);
 check('BetriebsartNorm nutzt WPHUB.BetriebsartNorm-Profil', ($vars[$prefix . 'BetriebsartNorm']['profile'] ?? '') === 'WPHUB.BetriebsartNorm');
+
+// Externe Sensoren/Zaehler: ohne Verknuepfung bleibt alles auf 0/false.
+check('Ohne externen Zaehler: PowerID = 0', ($f['PowerID'] ?? -1) === 0);
+check('Ohne externen Zaehler: EnergyID = 0', ($f['EnergyID'] ?? -1) === 0);
+check('Ohne externen Zaehler: Measured = false', ($f['Measured'] ?? true) === false);
+check('Ohne externen Fuehler: mainInletTempID = 0', ($f['mainInletTempID'] ?? -1) === 0);
+check('Ohne externen Fuehler: mainOutletTempID = 0', ($f['mainOutletTempID'] ?? -1) === 0);
+check('Ohne externen Fuehler: bufferTempID = 0', ($f['bufferTempID'] ?? -1) === 0);
+
+// Externe Variablen verknuepfen (z.B. Shelly, MeterHub) -- simuliert als
+// fremde IDs, die WPHub selbst nicht kennt/anlegt.
+$GLOBALS['ips']['externalVariables'] = [99001, 99002, 99003, 99004, 99005];
+$GLOBALS['ips']['properties']['Ext_PowerVariable'] = 99001;
+$GLOBALS['ips']['properties']['Ext_EnergyVariable'] = 99002;
+$GLOBALS['ips']['properties']['Ext_MainInletTempVariable'] = 99003;
+$GLOBALS['ips']['properties']['Ext_MainOutletTempVariable'] = 99004;
+$GLOBALS['ips']['properties']['Ext_BufferTempVariable'] = 99005;
+$f2 = $mod->GetFunctions()[0] ?? [];
+check('Mit externem Zaehler: PowerID = verknuepfte ID', ($f2['PowerID'] ?? 0) === 99001);
+check('Mit externem Zaehler: EnergyID = verknuepfte ID', ($f2['EnergyID'] ?? 0) === 99002);
+check('Mit externem Zaehler: Measured = true', ($f2['Measured'] ?? false) === true);
+check('Mit externem Fuehler: mainInletTempID = verknuepfte ID', ($f2['mainInletTempID'] ?? 0) === 99003);
+check('Mit externem Fuehler: mainOutletTempID = verknuepfte ID', ($f2['mainOutletTempID'] ?? 0) === 99004);
+check('Mit externem Fuehler: bufferTempID = verknuepfte ID', ($f2['bufferTempID'] ?? 0) === 99005);
+
+// Verknuepfte Variable wurde geloescht (nicht mehr in externalVariables) ->
+// faellt zurueck auf 0, statt eine tote ID zu melden.
+$GLOBALS['ips']['externalVariables'] = [];
+$f3 = $mod->GetFunctions()[0] ?? [];
+check('Geloeschte externe Variable: PowerID faellt auf 0 zurueck', ($f3['PowerID'] ?? -1) === 0);
+check('Geloeschte externe Variable: Measured = false', ($f3['Measured'] ?? true) === false);
+check('Geloeschte externe Variable: mainInletTempID faellt auf 0 zurueck', ($f3['mainInletTempID'] ?? -1) === 0);
+
+// Aufraeumen fuer nachfolgende Bloecke.
+foreach (['Ext_PowerVariable', 'Ext_EnergyVariable', 'Ext_MainInletTempVariable', 'Ext_MainOutletTempVariable', 'Ext_BufferTempVariable'] as $extProp) {
+    $GLOBALS['ips']['properties'][$extProp] = 0;
+}
 
 // Cloud-Ausfall: alle Geraete unerreichbar, Variablen bleiben bestehen.
 $markAll = new ReflectionMethod(WPHub::class, 'markAllUnreachable');

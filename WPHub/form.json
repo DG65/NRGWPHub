@@ -139,6 +139,61 @@
                     ]
                 }
             ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "caption": "🔌 Externe Sensoren & Zähler (optional)",
+            "expanded": false,
+            "items": [
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Label",
+                            "caption": "Die Comfort Cloud liefert keine echte Leistung/Energie und keine Vor-/Rücklauf-/Puffertemperatur. Hier lässt sich optional eine beliebige vorhandene Symcon-Variable verknüpfen (z. B. ein Shelly, MeterHub, ein eigener Fühler) -- WPHub meldet den Wert dann als echte Messung im Verbund-Vertrag statt ihn leer zu lassen."
+                        },
+                        {
+                            "type": "PopupButton",
+                            "caption": "?",
+                            "width": "70px",
+                            "popup": {
+                                "caption": "Wofür ist das gut?",
+                                "items": [
+                                    {
+                                        "type": "Label",
+                                        "caption": "WPHub braucht dafür kein bestimmtes anderes Modul -- jede Symcon-Variable geht (Shelly-Instanz, MeterHub, HeishaMon, eigener 1-Wire-Fühler). Verknüpfte Werte tauchen im Verbund-Vertrag (WPHUB_GetFunctions) als echte Messung auf und werden z. B. im Anlagenschema angezeigt. Keine COP-/Arbeitszahl-Berechnung: dafür fehlt WPHub strukturell die erzeugte Wärmemenge (kein Durchfluss, keine Wassermenge), auch mit Stromzähler nicht ableitbar."
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "Ext_PowerVariable",
+                    "caption": "Stromzähler: elektrische Leistung der Wärmepumpe (W)"
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "Ext_EnergyVariable",
+                    "caption": "Stromzähler: Energiezähler der Wärmepumpe (kWh)"
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "Ext_MainInletTempVariable",
+                    "caption": "Fühler: Rücklauftemperatur"
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "Ext_MainOutletTempVariable",
+                    "caption": "Fühler: Vorlauftemperatur"
+                },
+                {
+                    "type": "SelectVariable",
+                    "name": "Ext_BufferTempVariable",
+                    "caption": "Fühler: Puffertemperatur"
+                }
+            ]
         }
     ],
     "status": [

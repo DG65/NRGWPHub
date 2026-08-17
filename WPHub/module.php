@@ -9,14 +9,16 @@ require_once __DIR__ . '/libs/ComfortCloudClient.php';
 // sobald sich Nutzer mit passender Hardware zum Testen finden -- analog dazu,
 // wie Tessie/TibberGridReward auch mit einem Hersteller/Dienst gestartet sind.
 //
-// Vertrag WPHUB_GetFunctions() liefert Type=>'heatpump', konsistent zu
-// HeishaMons Form (siehe DG65/NRGHeishaMon, ems-integration-Branch,
-// HeishaMon/module.php::GetFunctions(), dort contractVersion 1.2) -- damit ist
-// fuer EMS die Datenquelle (lokal via HeishaMon vs. Cloud via WPHub)
-// austauschbar. PowerID/EnergyID sind derzeit 0: Die Comfort Cloud liefert
-// keine Momentanleistung, und ihre Verbrauchswerte sind Tageswerte (springen
-// auf 0 zurueck) -- nach Verbund-Regel "Energie nur aus kumulativen Zaehlern"
-// wird die Groesse dann weggelassen, nicht hochgerechnet.
+// Vertrag WPHUB_GetFunctions() liefert Type=>'heatpump', konsistent zum
+// gemeinsamen heatpump-Vertragstyp (siehe DG65/NRGHeishaMon, ems-integration-
+// Branch) -- damit ist fuer EMS die Datenquelle (lokal via HeishaMon vs.
+// Cloud via WPHub) austauschbar. PowerID/EnergyID sind 0, solange kein
+// externer Zaehler verknuepft ist (Ext_PowerVariable/Ext_EnergyVariable):
+// Die Comfort Cloud selbst liefert keine Momentanleistung, und ihre
+// Verbrauchswerte sind Tageswerte (springen auf 0 zurueck) -- nach Verbund-
+// Regel "Energie nur aus kumulativen Zaehlern" wird die Groesse dann
+// weggelassen, nicht hochgerechnet. Mit externem Zaehler (z.B. Shelly)
+// liefert der Vertrag die echte Messung -- siehe GetFunctions().
 //
 // Credentials-Konvention (SUITE.md): Handshake/Token bevorzugt, Passwort nur
 // einmalig fuer den Login-Handshake, danach NICHT speichern -- nur das
@@ -29,7 +31,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.2.0';
+    const NEWS_VERSION = '0.3.0';
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -55,6 +57,22 @@ class WPHub extends IPSModule
         // sich im Attribut CC_AppVersionAuto -- dieses Feld ist nur der
         // Notnagel, falls die automatische Ermittlung nicht funktioniert.
         $this->RegisterPropertyString('CC_AppVersion', '');
+
+        // Externe Sensoren/Zaehler (optional, freie Verknuepfung zu einer
+        // beliebigen bestehenden Variable -- Shelly, MeterHub, HeishaMon,
+        // eigener 1-Wire-Fuehler, egal). Schliesst die Luecken, die die
+        // Comfort Cloud nicht liefert (echte Leistung/Energie, Vor-/
+        // Ruecklauf-/Puffertemperatur). Jedes Modul muss eigenstaendig
+        // funktionieren -- WPHub setzt daher KEIN anderes Modul voraus,
+        // sondern nur irgendeine Symcon-Variable. Muster/Feldnamen von
+        // HeishaMon uebernommen (DG65/NRGHeishaMon, ems-integration).
+        // Gilt fuer das (einzige) Geraet des Kontos -- WPHub-Konten mit
+        // mehreren Waermepumpen sind bislang kein praktischer Fall.
+        $this->RegisterPropertyInteger('Ext_PowerVariable', 0);
+        $this->RegisterPropertyInteger('Ext_EnergyVariable', 0);
+        $this->RegisterPropertyInteger('Ext_MainInletTempVariable', 0);
+        $this->RegisterPropertyInteger('Ext_MainOutletTempVariable', 0);
+        $this->RegisterPropertyInteger('Ext_BufferTempVariable', 0);
 
         // Ergebnis des Handshakes -- NICHT das Passwort selbst.
         $this->RegisterAttributeString('CC_Token', '');
@@ -104,10 +122,9 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• Reichhaltige Betriebsdaten: Aussentemperatur, Ist-Temperatur je Heizzone, Fluester- und Leistungsbetrieb, Urlaubstimer, Notbetriebe Warmwasser/Heizung'],
-                    ['type' => 'Label', 'caption' => '• Diese Werte kommen zusaetzlich zu den bisherigen Basisdaten (Betriebsart, Warmwasser, Sollwerte); der Zusatzabruf kann in seltenen Faellen ausbleiben, dann bleibt der letzte bekannte Stand erhalten'],
-                    ['type' => 'Label', 'caption' => '• Steuerung: Fluester-/Leistungsbetrieb, Urlaubstimer, Notbetriebe sowie Warmwasser-/Zonen-Sollwerte lassen sich jetzt auch aus Symcon heraus setzen -- ein Fehlschlag wird protokolliert, die Variable bleibt dann auf dem letzten bestaetigten Cloud-Stand'],
-                    ['type' => 'Label', 'caption' => '• Weitere Betriebsdaten: Eco-/Komfortmodus, Betriebsrichtung, Abtaubetrieb, Fehlerstatus sowie Energieverbrauch des laufenden Tages (Heizen/Kuehlen/Warmwasser) -- Letzterer nur informativ, kein Bestandteil des EMS-Vertrags'],
+                    ['type' => 'Label', 'caption' => '• Neues Formularpanel "Externe Sensoren & Zähler": beliebige vorhandene Symcon-Variable (Shelly, MeterHub, eigener Fühler, ...) als echten Stromzähler oder Vor-/Rücklauf-/Puffertemperatur verknüpfen -- schliesst die Luecken, die die Comfort Cloud nicht liefert'],
+                    ['type' => 'Label', 'caption' => '• Verknuepfte Werte erscheinen als echte Messung im Verbund-Vertrag (WPHUB_GetFunctions) und damit z.B. im Anlagenschema -- ohne Verknuepfung bleibt alles wie bisher auf 0'],
+                    ['type' => 'Label', 'caption' => '• Verbund-weit normierte Betriebsart (operatingModeNormID): Standby/Heizen/Kuehlen/Warmwasser-Kombinationen einheitlich, unabhaengig vom Hersteller -- Konsumenten wie EMS/Dashboard muessen keine Panasonic-Spezifika mehr kennen'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
@@ -333,17 +350,27 @@ class WPHub extends IPSModule
             $devices = [];
         }
 
+        // Externe Sensoren/Zaehler (contractVersion 1.5, Muster von HeishaMon
+        // uebernommen, DG65/NRGHeishaMon): freie Verknuepfung zu einer
+        // beliebigen bestehenden Variable schliesst die Cloud-Luecken (echte
+        // Leistung/Energie, Vor-/Ruecklauf-/Puffertemperatur). Gilt fuer das
+        // (einzige) Geraet des Kontos. Kein COP/Arbeitszahl-Feld -- dafuer
+        // fehlt WPHub strukturell die thermische Erzeugung (kein Durchfluss,
+        // keine Wassermenge), auch mit externem Stromzaehler nicht ableitbar.
+        $extPowerID  = $this->extVariableID('Ext_PowerVariable');
+        $extEnergyID = $this->extVariableID('Ext_EnergyVariable');
+
         $out = [];
         foreach ($devices as $d) {
             $prefix = (string)($d['prefix'] ?? '');
             $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion'      => '1.4',
+                'contractVersion'      => '1.5',
                 'Type'                 => 'heatpump',
                 'Caption'              => $d['name'] ?? 'Waermepumpe',
-                'PowerID'              => 0,
-                'EnergyID'             => 0,
-                'Measured'             => false,
+                'PowerID'              => $extPowerID,
+                'EnergyID'             => $extEnergyID,
+                'Measured'             => ($extPowerID > 0),
                 'unit'                 => 'W',
                 'reachable'            => ($reachableID === false) ? (bool)($d['reachable'] ?? false) : (bool)GetValue($reachableID),
                 'outdoorTemperatureID' => $this->contractFieldID($prefix, 'Aussentemperatur'),
@@ -364,6 +391,13 @@ class WPHub extends IPSModule
                 // ist das optionale rohe Diagnosefeld (unser ExtendedOperationMode).
                 'operatingModeNormID'  => $this->contractFieldID($prefix, 'BetriebsartNorm'),
                 'operatingModeID'      => $this->contractFieldID($prefix, 'Betriebsart'),
+                // contractVersion 1.5: dieselben Feldnamen wie im gemeinsamen
+                // heatpump-Typ seit HeishaMons erster Erweiterung (13.08.2026),
+                // hier aus einer manuell verknuepften externen Variable statt
+                // aus der Cloud -- 0, solange nichts verknuepft ist.
+                'mainInletTempID'      => $this->extVariableID('Ext_MainInletTempVariable'),
+                'mainOutletTempID'     => $this->extVariableID('Ext_MainOutletTempVariable'),
+                'bufferTempID'         => $this->extVariableID('Ext_BufferTempVariable'),
             ];
         }
         return $out;
@@ -374,6 +408,20 @@ class WPHub extends IPSModule
     {
         $id = @$this->GetIDForIdent($prefix . $ident);
         return ($id === false) ? 0 : (int)$id;
+    }
+
+    /**
+     * Variablen-ID einer extern verknuepften Property (Ext_*), oder 0, wenn
+     * nichts verknuepft ist oder die verknuepfte Variable inzwischen geloescht
+     * wurde (SelectVariable haelt sonst eine tote ID).
+     */
+    private function extVariableID(string $property): int
+    {
+        $id = $this->ReadPropertyInteger($property);
+        if ($id <= 0 || !@IPS_VariableExists($id)) {
+            return 0;
+        }
+        return $id;
     }
 
     /**
