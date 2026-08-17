@@ -439,16 +439,41 @@ class WPHub extends IPSModule
      * selbst anlegt/besitzt. Externe, per SelectVariable verknuepfte
      * Variablen (Ext_*) gehoeren einem anderen Modul; deren Archivierung
      * bleibt bewusst dessen Sache, nicht unsere.
+     *
+     * AC_GetLoggingStatus/AC_SetLoggingStatus brauchen die Archiv-Instanz-ID
+     * als ersten Parameter (Vorfall 17.08.2026: frueherer Aufruf mit nur der
+     * Variablen-ID warf einen ArgumentCountError -- ein echter PHP-Error,
+     * den @ NICHT unterdrueckt, wodurch jeder Update()-Zyklus fatal abbrach).
+     * Archivierung ist ein Komfortfeature -- ein try/catch stellt sicher,
+     * dass ein kuenftiger Fehler hier nie wieder den ganzen Zyklus mitreisst.
      */
     private function ensureArchived(string $ident): void
     {
-        $id = @$this->GetIDForIdent($ident);
-        if ($id === false) {
-            return;
+        try {
+            $id = @$this->GetIDForIdent($ident);
+            if ($id === false) {
+                return;
+            }
+            $archiveID = $this->archiveInstanceID();
+            if ($archiveID === 0) {
+                return;
+            }
+            if (!AC_GetLoggingStatus($archiveID, $id)) {
+                AC_SetLoggingStatus($archiveID, $id, true);
+            }
+        } catch (\Throwable $e) {
+            $this->SendDebug('Archivierung', 'Fehler bei ' . $ident . ': ' . $e->getMessage(), 0);
         }
-        if (!function_exists('AC_GetLoggingStatus') || !@AC_GetLoggingStatus($id)) {
-            @AC_SetLoggingStatus($id, true);
+    }
+
+    /** Erste (i.d.R. einzige) Archiv-Control-Instanz im System, oder 0. */
+    private function archiveInstanceID(): int
+    {
+        if (!function_exists('IPS_GetInstanceListByModuleID')) {
+            return 0;
         }
+        $instances = @IPS_GetInstanceListByModuleID('{43192F0B-135B-4CE7-A0A7-1475603F3060}');
+        return (is_array($instances) && isset($instances[0])) ? (int)$instances[0] : 0;
     }
 
     /**

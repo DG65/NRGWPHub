@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.3.0 (Build 45) — 17.08.2026 — **Dringende Fehlerbehebung**
+
+- **Update()-Zyklus stürzte seit Build 44 bei jedem Durchlauf ab.** Die neue Archivierungsfunktion (`ensureArchived()`) rief `AC_GetLoggingStatus()` mit nur einem Parameter auf — die echte Funktion braucht zwei (`AC_GetLoggingStatus(int $ArchiveID, int $VariableID): bool`). Das führte zu einem `ArgumentCountError`, den `@` (Fehlerunterdrückung) NICHT abfängt, da es sich um einen echten PHP-Error handelt — jeder Update()-Zyklus brach seitdem fatal ab, bevor irgendetwas aktualisiert wurde. Von Dashboard per Live-Systemprüfung gefunden und gemeldet. Behoben: Archiv-Instanz-ID wird jetzt korrekt aufgelöst (`IPS_GetInstanceListByModuleID`) und als erster Parameter mitgegeben. Zusätzlich als Lehre daraus: `ensureArchived()` läuft jetzt in einem `try`/`catch` — ein künftiger Fehler in der Archivierung (Komfortfeature) kann den Update()-Zyklus nie wieder mitreißen. Die Test-Attrappen hatten dieselbe falsche Signaturannahme wie der Modulcode und hätten den Fehler dadurch nie aufgedeckt — jetzt korrigiert, erzwingen die echte Signatur.
+
 ## 0.3.0 (Build 44) — 17.08.2026
 
 - **Automatische Archivierung für die Außentemperatur.** Für Dashboards neue HeatMonitor-Verlaufskachel wird die Außentemperatur-Variable (`outsideTempID`) jetzt automatisch archiviert (IPS-Archiv-Handler), sobald sie angelegt wird. Bewusst **nur** für diese eigene Variable — die extern verknüpften Felder (`PowerID`/`mainInletTempID`/`mainOutletTempID`, siehe „Externe Sensoren & Zähler") zeigen auf Variablen anderer Module (z. B. eines Shellys); deren Archivierung bleibt Sache des jeweils besitzenden Moduls, WPHub schaltet dort nichts um.

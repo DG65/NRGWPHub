@@ -79,14 +79,32 @@ function IPS_VariableExists(int $id): bool
     }
     return false;
 }
-// Archivierungsstatus je Variablen-ID (Standard: nicht archiviert).
-function AC_GetLoggingStatus(int $id): bool
+// Archiv-Control-Instanz + Archivierungsstatus je Variablen-ID. Echte
+// IPS-Signatur: beide Funktionen brauchen die Archiv-Instanz-ID als
+// ERSTEN Parameter (Vorfall 17.08.2026 -- der Stub hatte urspruenglich
+// dieselbe falsche 1-Parameter-Annahme wie der Modulcode und haette den
+// Fehler dadurch nie aufgedeckt).
+const TEST_ARCHIVE_INSTANCE_ID = 55555;
+function IPS_GetInstanceListByModuleID(string $moduleID): array
 {
-    return $GLOBALS['ips']['archived'][$id] ?? false;
+    if ($moduleID === '{43192F0B-135B-4CE7-A0A7-1475603F3060}') {
+        return [TEST_ARCHIVE_INSTANCE_ID];
+    }
+    return [];
 }
-function AC_SetLoggingStatus(int $id, bool $active): bool
+function AC_GetLoggingStatus(int $archiveID, int $variableID): bool
 {
-    $GLOBALS['ips']['archived'][$id] = $active;
+    if ($archiveID !== TEST_ARCHIVE_INSTANCE_ID) {
+        throw new ArgumentCountError('Unerwartete Archiv-Instanz-ID im Test');
+    }
+    return $GLOBALS['ips']['archived'][$variableID] ?? false;
+}
+function AC_SetLoggingStatus(int $archiveID, int $variableID, bool $active): bool
+{
+    if ($archiveID !== TEST_ARCHIVE_INSTANCE_ID) {
+        throw new ArgumentCountError('Unerwartete Archiv-Instanz-ID im Test');
+    }
+    $GLOBALS['ips']['archived'][$variableID] = $active;
     return true;
 }
 function IPS_ApplyChanges(int $id): void
