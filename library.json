@@ -4,8 +4,8 @@
     "name": "NRG-Stack WPHub for IP-Symcon",
     "url": "https://github.com/DG65/WPHub",
     "version": "0.3.0",
-    "build": 42,
-    "date": 1786986000,
+    "build": 43,
+    "date": 1786989600,
     "compatibility": {
         "version": "9.0"
     }

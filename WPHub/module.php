@@ -365,7 +365,7 @@ class WPHub extends IPSModule
             $prefix = (string)($d['prefix'] ?? '');
             $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion'      => '1.5',
+                'contractVersion'      => '1.6',
                 'Type'                 => 'heatpump',
                 'Caption'              => $d['name'] ?? 'Waermepumpe',
                 'PowerID'              => $extPowerID,
@@ -373,7 +373,16 @@ class WPHub extends IPSModule
                 'Measured'             => ($extPowerID > 0),
                 'unit'                 => 'W',
                 'reachable'            => ($reachableID === false) ? (bool)($d['reachable'] ?? false) : (bool)GetValue($reachableID),
-                'outdoorTemperatureID' => $this->contractFieldID($prefix, 'Aussentemperatur'),
+                // contractVersion 1.6 (EMS-Entscheid 17.08.2026, SUITE.md-
+                // Feldregister Commit e0f219e): outsideTempID ist der
+                // kanonische Feldname (Stilkonsistenz mit den uebrigen
+                // *TempID-Kurzformen) -- outdoorTemperatureID war unser
+                // eigener, abweichender Name (seit 1.3) und gilt als
+                // deprecated. Beide zeigen auf dieselbe Variable, bis
+                // Konsumenten auf outsideTempID umgestellt haben; dann laeuft
+                // outdoorTemperatureID aus (siehe SUITE.md).
+                'outsideTempID'        => $this->contractFieldID($prefix, 'Aussentemperatur'),
+                'outdoorTemperatureID' => $this->contractFieldID($prefix, 'Aussentemperatur'), // deprecated, siehe oben
                 'z1WaterTempID'        => $this->contractFieldID($prefix, 'Zone1Ist'),
                 'z2WaterTempID'        => $this->contractFieldID($prefix, 'Zone2Ist'),
                 'z1WaterTargetTempID'  => $this->contractFieldID($prefix, 'Zone1Soll'),

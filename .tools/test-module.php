@@ -534,7 +534,7 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.5', ($f['contractVersion'] ?? '') === '1.5');
+check('contractVersion = 1.6', ($f['contractVersion'] ?? '') === '1.6');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
@@ -546,7 +546,8 @@ check('reachable = true (live aus Variable)', ($f['reachable'] ?? false) === tru
 // die echte Variablen-ID, fehlende (Zone 2 existiert bei diesem Geraet
 // nicht) liefern 0 -- nie einen falschen Ident raten.
 $vars = $GLOBALS['ips']['variables'];
-check('outdoorTemperatureID zeigt auf Aussentemperatur-Variable', ($f['outdoorTemperatureID'] ?? 0) === ($vars[$prefix . 'Aussentemperatur']['id'] ?? -1));
+check('outsideTempID zeigt auf Aussentemperatur-Variable (kanonisch)', ($f['outsideTempID'] ?? 0) === ($vars[$prefix . 'Aussentemperatur']['id'] ?? -1));
+check('outdoorTemperatureID zeigt auf dieselbe Variable (deprecated, parallel)', ($f['outdoorTemperatureID'] ?? 0) === ($vars[$prefix . 'Aussentemperatur']['id'] ?? -1));
 check('z1WaterTempID zeigt auf Zone1Ist-Variable', ($f['z1WaterTempID'] ?? 0) === ($vars[$prefix . 'Zone1Ist']['id'] ?? -1));
 check('z1WaterTargetTempID zeigt auf Zone1Soll-Variable', ($f['z1WaterTargetTempID'] ?? 0) === ($vars[$prefix . 'Zone1Soll']['id'] ?? -1));
 check('z2WaterTempID = 0 (Zone 2 nicht vorhanden)', ($f['z2WaterTempID'] ?? -1) === 0);

@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.3.0 (Build 43) — 17.08.2026
+
+- **Namenskonflikt behoben: `outsideTempID` ist jetzt der kanonische Feldname** für die Außentemperatur (EMS-Entscheid, SUITE.md-Feldregister Commit e0f219e — Stilkonsistenz mit den übrigen `*TempID`-Kurzformen im gemeinsamen `heatpump`-Vertragstyp). Unser bisheriger, abweichender Name `outdoorTemperatureID` (seit 1.3) gilt als deprecated, wird aber bruchfrei parallel weiterhin geliefert (zeigt auf dieselbe Variable), bis alle Konsumenten umgestellt haben.
+
 ## 0.3.0 (Build 42) — 17.08.2026
 
 - **Externe Sensoren & Zähler.** Neues, optionales Formularpanel: eine beliebige vorhandene Symcon-Variable (Shelly, MeterHub, HeishaMon, eigener 1-Wire-Fühler — WPHub setzt kein bestimmtes anderes Modul voraus) lässt sich als echter Stromzähler (`Ext_PowerVariable`/`Ext_EnergyVariable`) oder als Vor-/Rücklauf-/Puffertemperatur-Fühler (`Ext_MainInletTempVariable`/`Ext_MainOutletTempVariable`/`Ext_BufferTempVariable`) verknüpfen. Schließt die strukturellen Lücken der Comfort-Cloud-API (keine echte Leistung/Energie, keine Vor-/Rücklauftemperatur). Verknüpfte Werte erscheinen im Vertrag (contractVersion 1.4 → 1.5) als echte Messung: `PowerID`/`EnergyID` zeigen auf die verknüpfte Variable, `Measured` wird `true`, `mainInletTempID`/`mainOutletTempID`/`bufferTempID` (dieselben Feldnamen wie im gemeinsamen `heatpump`-Vertragstyp) werden befüllt. Ohne Verknüpfung bleibt alles wie bisher auf 0/false. Wird eine verknüpfte Variable gelöscht, fällt der Vertrag automatisch auf 0 zurück, statt eine tote ID zu melden. Muster von HeishaMon übernommen (DG65/NRGHeishaMon). **Bewusst nicht enthalten:** COP-/Arbeitszahl-Berechnung — dafür fehlt WPHub strukturell die erzeugte Wärmemenge (kein Durchfluss, keine Wassermenge), auch mit externem Stromzähler nicht ableitbar. 15 neue Tests.
