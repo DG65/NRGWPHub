@@ -533,6 +533,10 @@ check('Energie Heizen nutzt NRG.kWh', ($vars[$prefix . 'EnergieHeizenHeute']['pr
 check('Energie Kühlen heute = 0.0 kWh', ($vars[$prefix . 'EnergieKuehlenHeute']['value'] ?? null) === 0.0);
 check('Energie Warmwasser heute = 1.2 kWh', ($vars[$prefix . 'EnergieWarmwasserHeute']['value'] ?? null) === 1.2);
 check('Energie gesamt heute = 4.7 kWh', ($vars[$prefix . 'EnergieGesamtHeute']['value'] ?? null) === 4.7);
+check('Energie Heizen heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieHeizenHeute']['id']] ?? false) === true);
+check('Energie Kühlen heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieKuehlenHeute']['id']] ?? false) === true);
+check('Energie Warmwasser heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieWarmwasserHeute']['id']] ?? false) === true);
+check('Energie gesamt heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieGesamtHeute']['id']] ?? false) === true);
 
 // Keine Fehler: leere Liste -> Fehleranzahl 0, Fehlertext leer.
 $fake->statusResult['faultStatus'] = [];
@@ -563,7 +567,7 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.6', ($f['contractVersion'] ?? '') === '1.6');
+check('contractVersion = 1.11', ($f['contractVersion'] ?? '') === '1.11');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
@@ -588,6 +592,13 @@ check('ecoComfortModeID zeigt auf EcoKomfort-Variable', ($f['ecoComfortModeID'] 
 check('holidayTimerID zeigt auf Urlaubstimer-Variable', ($f['holidayTimerID'] ?? 0) === ($vars[$prefix . 'Urlaubstimer']['id'] ?? -1));
 check('operatingModeID zeigt auf Betriebsart-Variable', ($f['operatingModeID'] ?? 0) === ($vars[$prefix . 'Betriebsart']['id'] ?? -1));
 check('operatingModeNormID zeigt auf BetriebsartNorm-Variable', ($f['operatingModeNormID'] ?? 0) === ($vars[$prefix . 'BetriebsartNorm']['id'] ?? -1));
+// contractVersion 1.11: Tages-Energiezaehler (kein EnergyID-Ersatz, siehe
+// Grundregel -- eigene "daily"-Felder, damit kein Konsument sie wie einen
+// kumulativen Zaehler behandelt).
+check('dailyEnergyHeatingID zeigt auf EnergieHeizenHeute-Variable', ($f['dailyEnergyHeatingID'] ?? 0) === ($vars[$prefix . 'EnergieHeizenHeute']['id'] ?? -1));
+check('dailyEnergyCoolingID zeigt auf EnergieKuehlenHeute-Variable', ($f['dailyEnergyCoolingID'] ?? 0) === ($vars[$prefix . 'EnergieKuehlenHeute']['id'] ?? -1));
+check('dailyEnergyDHWID zeigt auf EnergieWarmwasserHeute-Variable', ($f['dailyEnergyDHWID'] ?? 0) === ($vars[$prefix . 'EnergieWarmwasserHeute']['id'] ?? -1));
+check('dailyEnergyTotalID zeigt auf EnergieGesamtHeute-Variable', ($f['dailyEnergyTotalID'] ?? 0) === ($vars[$prefix . 'EnergieGesamtHeute']['id'] ?? -1));
 // Fixture: operationMode=2 (Kühlen) + Warmwasser aktiv -> Verbund-Enum 5 (cooling+dhw).
 check('BetriebsartNorm = 5 (Kühlen + Warmwasser)', ($vars[$prefix . 'BetriebsartNorm']['value'] ?? null) === 5);
 check('BetriebsartNorm nutzt WPHUB.BetriebsartNorm-Profil', ($vars[$prefix . 'BetriebsartNorm']['profile'] ?? '') === 'WPHUB.BetriebsartNorm');

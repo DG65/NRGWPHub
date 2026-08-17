@@ -342,6 +342,13 @@ class WPHub extends IPSModule
      * vom liefernden Modul. Alle anderen additiven Felder sind neu (WPHub
      * hat keine Pumpen-/Ventildaten, HeishaMon deckt diese eigenen Konzepte
      * bislang nicht ab). 0, wenn WPHub den jeweiligen Wert nicht liefert.
+     *
+     * contractVersion 1.11 (Dashboard-Anfrage 17.08.2026, EMS-Registrierung
+     * vorgeschlagen): dailyEnergy{Heating,Cooling,DHW,Total}ID zeigen auf die
+     * Tages-Energiezaehler der Cloud (springen um Mitternacht auf 0) --
+     * bewusst NICHT als EnergyID (siehe Grundregel: nur echte kumulative
+     * Zaehler), sondern eigene informative Felder analog zu HeishaMons
+     * dailyPerformanceFactorID.
      */
     public function GetFunctions()
     {
@@ -365,7 +372,7 @@ class WPHub extends IPSModule
             $prefix = (string)($d['prefix'] ?? '');
             $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion'      => '1.6',
+                'contractVersion'      => '1.11',
                 'Type'                 => 'heatpump',
                 'Caption'              => $d['name'] ?? 'Waermepumpe',
                 'PowerID'              => $extPowerID,
@@ -407,6 +414,18 @@ class WPHub extends IPSModule
                 'mainInletTempID'      => $this->extVariableID('Ext_MainInletTempVariable'),
                 'mainOutletTempID'     => $this->extVariableID('Ext_MainOutletTempVariable'),
                 'bufferTempID'         => $this->extVariableID('Ext_BufferTempVariable'),
+                // contractVersion 1.11 (Dashboard-Anfrage 17.08.2026, EMS zur
+                // SUITE.md-Registrierung vorgeschlagen): die Panasonic Cloud
+                // liefert Tageswerte, die um Mitternacht auf 0 zurueckspringen
+                // -- laut Grundregel (SUITE.md) daher NICHT EnergyID-tauglich
+                // (kein kumulativer Zaehler). Trotzdem sind es echte kWh-Werte,
+                // nuetzlich fuer Verlaufsdarstellung -- eigene, klar als
+                // "daily" benannte Felder (Praezedenzfall: dailyPerformanceFactorID),
+                // damit kein Konsument sie faelschlich wie einen Zaehler diffed.
+                'dailyEnergyHeatingID' => $this->contractFieldID($prefix, 'EnergieHeizenHeute'),
+                'dailyEnergyCoolingID' => $this->contractFieldID($prefix, 'EnergieKuehlenHeute'),
+                'dailyEnergyDHWID'     => $this->contractFieldID($prefix, 'EnergieWarmwasserHeute'),
+                'dailyEnergyTotalID'   => $this->contractFieldID($prefix, 'EnergieGesamtHeute'),
             ];
         }
         return $out;
@@ -933,18 +952,22 @@ class WPHub extends IPSModule
         if (is_array($consumption)) {
             if (isset($consumption['heat'])) {
                 $this->MaintainVariable($prefix . 'EnergieHeizenHeute', $name . ': Energieverbrauch Heizen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->ensureArchived($prefix . 'EnergieHeizenHeute');
                 $this->SetValue($prefix . 'EnergieHeizenHeute', (float)$consumption['heat']);
             }
             if (isset($consumption['cool'])) {
                 $this->MaintainVariable($prefix . 'EnergieKuehlenHeute', $name . ': Energieverbrauch Kühlen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->ensureArchived($prefix . 'EnergieKuehlenHeute');
                 $this->SetValue($prefix . 'EnergieKuehlenHeute', (float)$consumption['cool']);
             }
             if (isset($consumption['tank'])) {
                 $this->MaintainVariable($prefix . 'EnergieWarmwasserHeute', $name . ': Energieverbrauch Warmwasser (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->ensureArchived($prefix . 'EnergieWarmwasserHeute');
                 $this->SetValue($prefix . 'EnergieWarmwasserHeute', (float)$consumption['tank']);
             }
             if (isset($consumption['total'])) {
                 $this->MaintainVariable($prefix . 'EnergieGesamtHeute', $name . ': Energieverbrauch gesamt (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->ensureArchived($prefix . 'EnergieGesamtHeute');
                 $this->SetValue($prefix . 'EnergieGesamtHeute', (float)$consumption['total']);
             }
         }
