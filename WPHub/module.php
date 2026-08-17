@@ -660,6 +660,83 @@ class WPHub extends IPSModule
         $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
         $this->SetValue($prefix . 'Erreichbar', $reachable);
 
+        // Ist-Temperaturen/Zonennamen aus dem Transfer-Statusabruf, nach
+        // zoneId zugeordnet (dort steckt auch der echte Zonenname, z.B.
+        // "HK1") -- wird unten von zwei Bloecken genutzt (erst die
+        // Prioritaets-Sollwerte, danach der Rest).
+        $statusZones = [];
+        foreach ((is_array($status) ? ($status['zoneStatus'] ?? []) : []) as $sz) {
+            if (is_array($sz) && isset($sz['zoneId'])) {
+                $statusZones[(int)$sz['zoneId']] = $sz;
+            }
+        }
+        $tank = $dev['tankStatus'] ?? null;
+
+        // ------------------------------------------------------------
+        // Prioritaets-Steuerelemente ZUERST im Objektbaum (aufgezogene
+        // Kachelansicht sortiert Instanz-Variablen nach dieser Positions-
+        // Zahl). Reihenfolge nach der HeishaMon-Referenzlogik
+        // (Examples/Rules/Jeisha-DHW-Radiators-Rowbuffer im offiziellen
+        // HeishaMon-GitHub-Repo, dort real-world-erprobt energiesparend fuer
+        // genau diese Waermepumpenart): Fluester-/Leistungsbetrieb + ein
+        // dynamisches Warmwasser-/Zonenziel + Urlaubslogik sind die
+        // wirksamsten Stellschrauben, danach die Notbetriebe, danach der
+        // Rest wie bisher. WPHub hat mangels Leistungsmessung keine eigene
+        // COP-Berechnung -- hier geht es nur um die Sichtbarkeit/Reihenfolge
+        // der vorhandenen Steuerelemente.
+        // ------------------------------------------------------------
+        if (is_array($status)) {
+            if (isset($status['quietMode'])) {
+                $this->MaintainVariable($prefix . 'Fluesterbetrieb', $name . ': Flüsterbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Fluesterbetrieb', $pos++, true);
+                $this->EnableAction($prefix . 'Fluesterbetrieb');
+                $this->SetValue($prefix . 'Fluesterbetrieb', (int)$status['quietMode']);
+            }
+            if (isset($status['powerful'])) {
+                $this->MaintainVariable($prefix . 'Leistungsbetrieb', $name . ': Leistungsbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Leistungsbetrieb', $pos++, true);
+                $this->EnableAction($prefix . 'Leistungsbetrieb');
+                $this->SetValue($prefix . 'Leistungsbetrieb', (int)$status['powerful']);
+            }
+        }
+
+        if (is_array($tank) && isset($tank['temperature']) && $this->isValidTemperature($tank['temperature'])) {
+            $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': Warmwasser Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->EnableAction($prefix . 'WarmwasserSoll');
+            $this->SetValue($prefix . 'WarmwasserSoll', (float)$tank['temperature']);
+        }
+
+        // Zonen-Sollwerte (Ist-Temperatur/Aktiv-Status folgen weiter unten
+        // zusammen mit dem uebrigen Zonenblock).
+        foreach (($dev['zoneStatus'] ?? []) as $zone) {
+            if (!is_array($zone) || !isset($zone['zoneId']) || !isset($zone['temperature']) || !$this->isValidTemperature($zone['temperature'])) {
+                continue;
+            }
+            $zid = (int)$zone['zoneId'];
+            $sz = $statusZones[$zid] ?? null;
+            $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : ('Zone ' . $zid);
+            $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . $zname . ' Solltemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->EnableAction($prefix . 'Zone' . $zid . 'Soll');
+            $this->SetValue($prefix . 'Zone' . $zid . 'Soll', (float)$zone['temperature']);
+        }
+
+        if (is_array($status) && isset($status['holidayTimer'])) {
+            $this->MaintainVariable($prefix . 'Urlaubstimer', $name . ': Urlaubstimer aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+            $this->EnableAction($prefix . 'Urlaubstimer');
+            $this->SetValue($prefix . 'Urlaubstimer', (int)$status['holidayTimer'] === 1);
+        }
+        if (is_array($status) && isset($status['forceDHW'])) {
+            $this->MaintainVariable($prefix . 'NotbetriebWarmwasser', $name . ': Notbetrieb Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+            $this->EnableAction($prefix . 'NotbetriebWarmwasser');
+            $this->SetValue($prefix . 'NotbetriebWarmwasser', (int)$status['forceDHW'] === 1);
+        }
+        if (is_array($status) && isset($status['forceHeater'])) {
+            $this->MaintainVariable($prefix . 'NotHeizbetrieb', $name . ': Not-Heizbetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+            $this->EnableAction($prefix . 'NotHeizbetrieb');
+            $this->SetValue($prefix . 'NotHeizbetrieb', (int)$status['forceHeater'] === 1);
+        }
+        // ------------------------------------------------------------
+        // Ende Prioritaetsblock -- ab hier alles Uebrige wie bisher.
+        // ------------------------------------------------------------
+
         if (isset($dev['operationMode'])) {
             $this->MaintainVariable($prefix . 'Betriebsart', $name . ': Betriebsart', VARIABLETYPE_INTEGER, 'WPHUB.Betriebsart', $pos++, true);
             $this->SetValue($prefix . 'Betriebsart', (int)$dev['operationMode']);
@@ -670,17 +747,12 @@ class WPHub extends IPSModule
             $this->SetValue($prefix . 'Aussentemperatur', (float)$status['outdoorNow']);
         }
 
-        // Warmwasserspeicher: temperatureNow = Ist, temperature = Sollwert.
-        $tank = $dev['tankStatus'] ?? null;
+        // Warmwasserspeicher: temperatureNow = Ist (Sollwert oben bereits
+        // im Prioritaetsblock behandelt).
         if (is_array($tank)) {
             if (isset($tank['temperatureNow']) && $this->isValidTemperature($tank['temperatureNow'])) {
                 $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
                 $this->SetValue($prefix . 'Warmwasser', (float)$tank['temperatureNow']);
-            }
-            if (isset($tank['temperature']) && $this->isValidTemperature($tank['temperature'])) {
-                $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': Warmwasser Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-                $this->EnableAction($prefix . 'WarmwasserSoll');
-                $this->SetValue($prefix . 'WarmwasserSoll', (float)$tank['temperature']);
             }
             if (isset($tank['operationStatus'])) {
                 $this->MaintainVariable($prefix . 'WarmwasserBetrieb', $name . ': Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
@@ -700,16 +772,8 @@ class WPHub extends IPSModule
             $this->SetValue($prefix . 'BetriebsartNorm', $this->normalizeOperatingMode((int)$dev['operationMode'], $dhwActive));
         }
 
-        // Ist-Temperaturen je Zone aus dem Transfer-Statusabruf, nach zoneId
-        // zugeordnet (dort steckt auch der echte Zonenname, z.B. "HK1").
-        $statusZones = [];
-        foreach ((is_array($status) ? ($status['zoneStatus'] ?? []) : []) as $sz) {
-            if (is_array($sz) && isset($sz['zoneId'])) {
-                $statusZones[(int)$sz['zoneId']] = $sz;
-            }
-        }
-
-        // Heizzonen: temperature = Solltemperatur der Zone, operationStatus = aktiv.
+        // Zonen: Ist-Temperatur/Aktiv-Status (Sollwert oben bereits im
+        // Prioritaetsblock behandelt).
         foreach (($dev['zoneStatus'] ?? []) as $zone) {
             if (!is_array($zone) || !isset($zone['zoneId'])) {
                 continue;
@@ -717,11 +781,6 @@ class WPHub extends IPSModule
             $zid = (int)$zone['zoneId'];
             $sz = $statusZones[$zid] ?? null;
             $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : ('Zone ' . $zid);
-            if (isset($zone['temperature']) && $this->isValidTemperature($zone['temperature'])) {
-                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . $zname . ' Solltemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-                $this->EnableAction($prefix . 'Zone' . $zid . 'Soll');
-                $this->SetValue($prefix . 'Zone' . $zid . 'Soll', (float)$zone['temperature']);
-            }
             if (is_array($sz) && isset($sz['temperatureNow']) && $this->isValidTemperature($sz['temperatureNow'])) {
                 $this->MaintainVariable($prefix . 'Zone' . $zid . 'Ist', $name . ': ' . $zname . ' Isttemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
                 $this->SetValue($prefix . 'Zone' . $zid . 'Ist', (float)$sz['temperatureNow']);
@@ -732,36 +791,9 @@ class WPHub extends IPSModule
             }
         }
 
-        // Betriebsmodi aus dem Transfer-Statusabruf (geraeteweit, nicht je
-        // Zone) -- alle hier steuerbar (EnableAction), Aenderungen laufen
-        // ueber RequestAction() in den entsprechenden ComfortCloudClient-
-        // Aufruf.
+        // Weitere Betriebsdaten aus dem Transfer-Statusabruf (Quiet-/Power-/
+        // Urlaubs-/Notbetriebe stehen bereits oben im Prioritaetsblock).
         if (is_array($status)) {
-            if (isset($status['quietMode'])) {
-                $this->MaintainVariable($prefix . 'Fluesterbetrieb', $name . ': Flüsterbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Fluesterbetrieb', $pos++, true);
-                $this->EnableAction($prefix . 'Fluesterbetrieb');
-                $this->SetValue($prefix . 'Fluesterbetrieb', (int)$status['quietMode']);
-            }
-            if (isset($status['powerful'])) {
-                $this->MaintainVariable($prefix . 'Leistungsbetrieb', $name . ': Leistungsbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Leistungsbetrieb', $pos++, true);
-                $this->EnableAction($prefix . 'Leistungsbetrieb');
-                $this->SetValue($prefix . 'Leistungsbetrieb', (int)$status['powerful']);
-            }
-            if (isset($status['holidayTimer'])) {
-                $this->MaintainVariable($prefix . 'Urlaubstimer', $name . ': Urlaubstimer aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
-                $this->EnableAction($prefix . 'Urlaubstimer');
-                $this->SetValue($prefix . 'Urlaubstimer', (int)$status['holidayTimer'] === 1);
-            }
-            if (isset($status['forceDHW'])) {
-                $this->MaintainVariable($prefix . 'NotbetriebWarmwasser', $name . ': Notbetrieb Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
-                $this->EnableAction($prefix . 'NotbetriebWarmwasser');
-                $this->SetValue($prefix . 'NotbetriebWarmwasser', (int)$status['forceDHW'] === 1);
-            }
-            if (isset($status['forceHeater'])) {
-                $this->MaintainVariable($prefix . 'NotHeizbetrieb', $name . ': Not-Heizbetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
-                $this->EnableAction($prefix . 'NotHeizbetrieb');
-                $this->SetValue($prefix . 'NotHeizbetrieb', (int)$status['forceHeater'] === 1);
-            }
             if (isset($status['deiceStatus'])) {
                 $this->MaintainVariable($prefix . 'Abtaubetrieb', $name . ': Abtaubetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
                 $this->SetValue($prefix . 'Abtaubetrieb', (int)$status['deiceStatus'] === 1);
