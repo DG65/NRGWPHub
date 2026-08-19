@@ -1,5 +1,11 @@
 # WPHub — Wärmepumpen-Cloud-Anbindung für IP-Symcon
 
+![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue)
+![Modul Version](https://img.shields.io/badge/Modul_Version-0.3.0-blue)
+![Symcon Version](https://img.shields.io/badge/Symcon_Version-9.0%2B-blue)
+![License](https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-lightgrey)
+[![PayPal](https://img.shields.io/badge/PayPal-Me-blue?logo=paypal)](https://paypal.me/DietmarGureth)
+
 ## Übersicht
 
 WPHub verbindet IP-Symcon mit Wärmepumpen-Herstellerclouds und stellt gefundene Geräte dem NRG-Stack-Verbund (z. B. EMS) über den `WPHUB_GetFunctions()`-Vertrag (`Type=>'heatpump'`) zur Verfügung — konsistent zu [HeishaMon](https://github.com/DG65/NRGHeishaMon), das dieselbe Vertragsform für die lokale/MQTT-Anbindung von Panasonic-Wärmepumpen mit HeishaMon-Platine liefert.
