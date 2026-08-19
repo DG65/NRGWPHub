@@ -11,7 +11,7 @@
                 },
                 {
                     "type": "Label",
-                    "caption": "Verbindet sich mit der Panasonic Comfort Cloud (gleiches Konto wie die offizielle App) und stellt gefundene Aquarea-Waermepumpen dem NRG-Stack-Verbund (z. B. EMS) zur Verfuegung. Klimageraete werden bewusst nicht eingebunden. Details: https://github.com/DG65/WPHub"
+                    "caption": "Verbindet sich mit der Panasonic Comfort Cloud (gleiches Konto wie die offizielle App) und stellt gefundene Aquarea-Waermepumpen dem NRG-Stack-Verbund (z. B. EMS) zur Verfuegung. Klimageraete werden bewusst nicht eingebunden. Details: https://github.com/DG65/NRGWPHub"
                 },
                 {
                     "type": "Label",

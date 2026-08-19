@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.3.0 (Build 47) — 18.08.2026
+
+- **Repo umbenannt: `DG65/WPHub` → `DG65/NRGWPHub`.** Alle anderen Verbund-Repos folgen dem Muster `NRG<Modulname>` (NRGEMS, NRGMeterHub, NRGModbusSlave, NRGTibberGridRewards, NRGPrognose) — bei WPHub war das bei der Repo-Anlage (10.08.2026) übersehen worden. Da noch nicht veröffentlicht (kein Store-Eintrag, keine Nutzerinstanzen außer Dietmars eigener), gefahrlos nachgeholt: GitHub-Repo per `gh repo rename` umbenannt (GitHub leitet die alte URL automatisch weiter), lokaler `origin`-Remote sowie `library.json→url` und der Link im Formular-Doku-Panel angepasst. **Kein Einfluss auf den PHP-Klassennamen** — der bleibt technisch weiterhin `WPHub` (SUITE.md/CLAUDE.md-Konvention: Klassenname ≠ Markenname).
+
 ## 0.3.0 (Build 46) — 17.08.2026
 
 - **Tages-Energiezähler jetzt archiviert + im Vertrag sichtbar (contractVersion 1.6 → 1.11).** Dashboard hat angefragt, ob die vier Tageszähler (`EnergieHeizenHeute`/`EnergieKuehlenHeute`/`EnergieWarmwasserHeute`/`EnergieGesamtHeute`) für HeatMonitor/HeatSchema als echte kWh-Datenquelle nutzbar gemacht werden können — bislang waren sie rein informativ, weder archiviert noch im `WPHUB_GetFunctions()`-Vertrag erreichbar. Zwei Änderungen: (1) alle vier Variablen werden jetzt automatisch archiviert (gleiches Muster wie `Aussentemperatur` seit Build 44); (2) vier neue Vertragsfelder `dailyEnergyHeatingID`/`dailyEnergyCoolingID`/`dailyEnergyDHWID`/`dailyEnergyTotalID`. **Bewusst nicht über `EnergyID`** — die Grundregel (SUITE.md, „Gemeinsame Variablenprofile") verlangt für `EnergyID` einen echten kumulativen Zähler, diese Werte springen aber um Mitternacht auf 0 zurück. Eigene, klar als „daily" benannte Felder analog zu HeishaMons `dailyPerformanceFactorID` verhindern, dass ein Konsument sie versehentlich wie einen Zähler diffed. Neuer Feldnamensvorschlag an EMS zur SUITE.md-Registrierung gemeldet. 8 neue Tests.
