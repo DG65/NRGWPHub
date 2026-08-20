@@ -84,6 +84,11 @@
                     "onClick": "WPHUB_Login($id);"
                 },
                 {
+                    "type": "Label",
+                    "name": "DiscoverySummary",
+                    "caption": "ℹ️ Noch nicht gesucht."
+                },
+                {
                     "type": "RowLayout",
                     "items": [
                         {

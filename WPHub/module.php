@@ -31,7 +31,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.4.0';
+    const NEWS_VERSION = '0.4.1';
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -86,6 +86,10 @@ class WPHub extends IPSModule
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt bestaetigter Stand des "Neu in Version"-Panels.
         $this->RegisterAttributeString('SeenNews', '');
+        // Zeitpunkt der letzten erfolgreichen Geraetesuche (Verbund-Konvention
+        // "Einheitliche Verbund-Status-Kopfzeile", SUITE.md 20.08.2026) --
+        // siehe discoverySummaryLine().
+        $this->RegisterAttributeInteger('LastDiscoveryTs', 0);
 
         $this->RegisterTimer('WPHUB_UpdateTimer', 0, 'WPHUB_Update($_IPS[\'TARGET\']);');
     }
@@ -128,10 +132,17 @@ class WPHub extends IPSModule
                 'expanded' => true,
                 'items'    => [
                     ['type' => 'Label', 'caption' => '• MeterHub-Zähler mit Funktionszuordnung "Wärmepumpe" wird jetzt automatisch erkannt und lässt sich per Klick übernehmen ("🔌 Externe Sensoren & Zähler") -- kein manuelles Heraussuchen der passenden Variable mehr noetig'],
+                    ['type' => 'Label', 'caption' => '• Einheitliche Status-Kopfzeile ueber dem Anmelden-Knopf: zeigt auf einen Blick, wie viele Waermepumpen gefunden wurden und wann zuletzt gesucht wurde'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
         }
+
+        // Einheitliche Verbund-Status-Kopfzeile (SUITE.md 20.08.2026): immer
+        // aktuell beim Formularaufbau berechnen, nicht erst nach einem Klick.
+        $this->updateFormElement($form['elements'], 'DiscoverySummary', [
+            'caption' => $this->discoverySummaryLine(),
+        ]);
 
         // MeterHub-Vorschlag: nur solange noch nichts verknuepft ist (0/0) --
         // wer schon manuell/per Uebernahme verknuepft hat, soll nicht bei
@@ -525,6 +536,26 @@ class WPHub extends IPSModule
         }
     }
 
+    /**
+     * Einheitliche Verbund-Status-Kopfzeile (SUITE.md, "Einheitliche Verbund-
+     * Status-Kopfzeile", 20.08.2026, Referenz EMS' getDiscoverySummaryLine()):
+     * <Icon> <Zahl> <Was> gefunden (zuletzt HH:MM:SS Uhr). WPHub hat keinen
+     * separaten "Jetzt suchen"-Knopf -- die Geraeteliste aktualisiert sich bei
+     * jedem erfolgreichen Login/Update()-Zyklus, LastDiscoveryTs spiegelt das.
+     */
+    private function discoverySummaryLine(): string
+    {
+        $ts = $this->ReadAttributeInteger('LastDiscoveryTs');
+        if ($ts <= 0) {
+            return 'ℹ️ Noch nicht gesucht.';
+        }
+        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $count = is_array($devices) ? count($devices) : 0;
+        $icon = $count > 0 ? '✅' : '⚠️';
+        $was = $count === 1 ? 'Wärmepumpe' : 'Wärmepumpen';
+        return $icon . ' ' . $count . ' ' . $was . ' gefunden (zuletzt ' . date('H:i:s', $ts) . ' Uhr).';
+    }
+
     /** Erste (i.d.R. einzige) Archiv-Control-Instanz im System, oder 0. */
     private function archiveInstanceID(): int
     {
@@ -883,6 +914,7 @@ class WPHub extends IPSModule
         }
 
         $this->WriteAttributeString('CC_DeviceList', json_encode($devices));
+        $this->WriteAttributeInteger('LastDiscoveryTs', time());
         return $devices;
     }
 

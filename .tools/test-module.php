@@ -172,6 +172,20 @@ class IPSModule
             $this->attributes[$name] = $default;
         }
     }
+    protected function RegisterAttributeInteger(string $name, int $default): void
+    {
+        if (!isset($this->attributes[$name])) {
+            $this->attributes[$name] = $default;
+        }
+    }
+    protected function ReadAttributeInteger(string $name): int
+    {
+        return (int)($this->attributes[$name] ?? 0);
+    }
+    protected function WriteAttributeInteger(string $name, int $value): void
+    {
+        $this->attributes[$name] = $value;
+    }
     protected function RegisterTimer(string $ident, int $interval, string $script): void
     {
         $this->timers[$ident] = $interval;
@@ -397,6 +411,13 @@ echo "Block 1: Lebenszyklus und Status\n";
 
 $mod = new WPHub();
 $mod->Create();
+
+// Einheitliche Verbund-Status-Kopfzeile (SUITE.md 20.08.2026): vor der
+// ersten Geraetesuche zeigt sie den "noch nicht gesucht"-Zustand.
+$discoverySummary = new ReflectionMethod(WPHub::class, 'discoverySummaryLine');
+$discoverySummary->setAccessible(true);
+check('Vor erster Suche: "noch nicht gesucht"', $discoverySummary->invoke($mod) === 'ℹ️ Noch nicht gesucht.');
+
 $mod->ApplyChanges();
 check('Inaktiv → Status 104', $mod->status === 104, 'Status ' . $mod->status);
 
@@ -469,6 +490,12 @@ $devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 check('Genau eine Waermepumpe erkannt (Klimageraet uebersprungen)', is_array($devices) && count($devices) === 1, json_encode($devices));
 check('Name aus deviceName uebernommen', $devices[0]['name'] === 'Heizung');
 check('Geraet als erreichbar markiert (in device/group vorhanden)', $devices[0]['reachable'] === true);
+
+// Nach erfolgreicher Suche: Kopfzeile zeigt Fund + aktuellen Zeitstempel,
+// GetConfigurationForm() spiegelt denselben Text im Label DiscoverySummary.
+check('Nach Suche: Kopfzeile "1 Wärmepumpe gefunden"', strpos($discoverySummary->invoke($mod), '✅ 1 Wärmepumpe gefunden (zuletzt ') === 0);
+$formAfterSearch = json_decode($mod->GetConfigurationForm(), true);
+check('Formular spiegelt dieselbe Kopfzeile', findFormElement($formAfterSearch['elements'], 'DiscoverySummary')['caption'] === $discoverySummary->invoke($mod));
 
 $prefix = $devices[0]['prefix'];
 $vars = $GLOBALS['ips']['variables'];
