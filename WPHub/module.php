@@ -245,6 +245,7 @@ class WPHub extends IPSModule
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Geräteliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
             return;
         }
+        $this->refreshDiscoverySummary();
         if (count($devices) === 0) {
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Im Konto wurde aber keine Aquarea-Wärmepumpe gefunden. Klimageräte bindet WPHub bewusst nicht ein.');
             return;
@@ -332,6 +333,7 @@ class WPHub extends IPSModule
             $say('⚠️ Zustimmung übermittelt (' . (count($accepted) ? implode(', ', $accepted) : 'nichts offen') . '), aber die Geräteliste lässt sich weiterhin nicht laden: ' . $client->getLastError() . ' — Details stehen im Systemprotokoll.');
             return;
         }
+        $this->refreshDiscoverySummary();
         $this->SetStatus(102);
         $lines = [count($accepted)
             ? '✅ Bestätigt: ' . implode(', ', $accepted) . '. Gefundene Wärmepumpen:'
@@ -374,6 +376,7 @@ class WPHub extends IPSModule
             $this->LogMessage('Aktualisierung fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
             return;
         }
+        $this->refreshDiscoverySummary();
         $this->SetStatus(102);
     }
 
@@ -554,6 +557,19 @@ class WPHub extends IPSModule
         $icon = $count > 0 ? '✅' : '⚠️';
         $was = $count === 1 ? 'Wärmepumpe' : 'Wärmepumpen';
         return $icon . ' ' . $count . ' ' . $was . ' gefunden (zuletzt ' . date('H:i:s', $ts) . ' Uhr).';
+    }
+
+    /**
+     * Schiebt die aktuelle discoverySummaryLine() in ein BEREITS GEOEFFNETES
+     * Formular (SUITE.md-Stolperfalle 12, 20.08.2026: GetConfigurationForm()
+     * wird nach einer Aktion NICHT automatisch neu ausgefuehrt -- ohne diesen
+     * Aufruf bliebe die Kopfzeile nach einem Login-/Zustimmungs-Klick auf dem
+     * alten Stand, obwohl die Suche serverseitig laengst aktualisiert hat).
+     * Bei geschlossenem Formular ein wirkungsloser Aufruf, kein Fehler.
+     */
+    private function refreshDiscoverySummary(): void
+    {
+        $this->UpdateFormField('DiscoverySummary', 'caption', $this->discoverySummaryLine());
     }
 
     /** Erste (i.d.R. einzige) Archiv-Control-Instanz im System, oder 0. */

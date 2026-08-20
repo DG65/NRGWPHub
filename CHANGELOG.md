@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.4.2 (Build 50) — 20.08.2026
+
+- **Fix: Status-Kopfzeile blieb im bereits geöffneten Formular stehen.** EMS fand bei sich denselben Fehler (jetzt SUITE.md „IP-Symcon-Stolperfallen" Punkt 12): `GetConfigurationForm()` wird nach einer Formular-Aktion NICHT automatisch neu ausgeführt — wer das Formular offen ließ und auf „Anmelden und Wärmepumpen suchen" bzw. „Aktualisierte Bedingungen akzeptieren" klickte, sah die neue Kopfzeile (Build 49) trotz erfolgreicher Suche erst nach Schließen und erneutem Öffnen des Formulars. Betraf bei uns denselben Code-Pfad wie bei EMS: `Login()`, `doAcceptAgreements()` und den laufenden `Update()`-Zyklus riefen `refreshDevices()` zwar korrekt auf, schoben das Ergebnis aber nie per `UpdateFormField()` ins offene Formular. Neue private Methode `refreshDiscoverySummary()` kapselt den fehlenden Aufruf, jetzt an allen drei Erfolgsstellen ergänzt. 1 neuer Test (Block 4c, deckt den `doAcceptAgreements()`-Pfad ab — `Login()`/`Update()` bleiben aus denselben Gründen wie bisher ungetestet: die öffentlichen Wrapper bauen einen echten Cloud-Client auf, den der Prüfstand bewusst nicht mockt).
+
 ## 0.4.1 (Build 49) — 20.08.2026
 
 - **Einheitliche Verbund-Status-Kopfzeile übernommen** (SUITE.md-Konvention vom 20.08.2026, Referenz EMS' `getDiscoverySummaryLine()`). Direkt unter dem Anmelden-Knopf steht jetzt eine einzige Zeile im Muster `<Icon> <Zahl> Wärmepumpe(n) gefunden (zuletzt HH:MM:SS Uhr).` — `✅` bei mindestens einem Fund, `⚠️` bei 0 trotz vorheriger Suche, `ℹ️` vor der ersten Suche. Neues Attribut `LastDiscoveryTs` wird bei jeder erfolgreichen Geräteabfrage (Login, Zustimmung, laufender Update()-Zyklus) aktualisiert — WPHub hat keinen separaten "Jetzt suchen"-Knopf, die Kopfzeile spiegelt daher den Stand der letzten erfolgreichen Aktualisierung statt eines einzelnen Klicks. Neue private Methode `discoverySummaryLine()`. 3 neue Tests.

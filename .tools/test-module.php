@@ -796,12 +796,17 @@ $fake4->documentsByType = [
     3 => [],
 ];
 $mod->status = 202;
+$GLOBALS['ips']['formFieldUpdates'] = [];
 $doAccept->invoke($mod, $fake4, ['accessToken' => 'x'], $say);
 check('Genau ein PUT mit beiden Dokumenten', count($fake4->putCalls) === 1 && count($fake4->putCalls[0]) === 2, json_encode($fake4->putCalls));
 check('PUT enthaelt die gelieferten Versionen', ($fake4->putCalls[0][0]['version'] ?? '') === '2026-05-01' && ($fake4->putCalls[0][1]['version'] ?? '') === '2026-05-02');
 check('Gleiche Sitzung nutzt Geraeteliste (keine Erneuerung)', $fake4->reauthCalls === 0, $fake4->reauthCalls . ' Aufrufe');
 check('Danach Status 102', $mod->status === 102, 'Status ' . $mod->status);
 check('Erfolgsmeldung mit Geraeteliste', strpos(end($sayMessages), 'Heizung') !== false, end($sayMessages));
+// SUITE.md-Stolperfalle 12 (20.08.2026): ein bereits geoeffnetes Formular
+// aktualisiert sich nicht von selbst -- doAcceptAgreements() muss die
+// Kopfzeile per UpdateFormField ins offene Formular schieben.
+check('Kopfzeile im offenen Formular aktualisiert', ($GLOBALS['ips']['formFieldUpdates']['DiscoverySummary']['caption'] ?? '') === $discoverySummary->invoke($mod));
 
 // Fallback: erste Geraeteliste nach PUT noch 4103 -> frische Sitzung, 2. Versuch klappt.
 $fakeFb = new FakeCC();
