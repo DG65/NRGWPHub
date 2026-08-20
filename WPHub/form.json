@@ -142,6 +142,7 @@
         },
         {
             "type": "ExpansionPanel",
+            "name": "ExtSensorsPanel",
             "caption": "🔌 Externe Sensoren & Zähler (optional)",
             "expanded": false,
             "items": [
@@ -150,7 +151,7 @@
                     "items": [
                         {
                             "type": "Label",
-                            "caption": "Die Comfort Cloud liefert keine echte Leistung/Energie und keine Vor-/Rücklauf-/Puffertemperatur. Hier lässt sich optional eine beliebige vorhandene Symcon-Variable verknüpfen (z. B. ein Shelly, MeterHub, ein eigener Fühler) -- WPHub meldet den Wert dann als echte Messung im Verbund-Vertrag statt ihn leer zu lassen."
+                            "caption": "Die Comfort Cloud liefert keine echte Leistung/Energie und keine Vor-/Rücklauf-/Puffertemperatur. Hier lässt sich optional eine beliebige vorhandene Symcon-Variable verknüpfen (z. B. ein Shelly, MeterHub, ein eigener Fühler) -- WPHub meldet den Wert dann als echte Messung im Verbund-Vertrag statt ihn leer zu lassen. Ist in MeterHub ein Zähler mit der Funktionszuordnung \"Wärmepumpe\" markiert, schlägt WPHub ihn hier automatisch vor."
                         },
                         {
                             "type": "PopupButton",
@@ -167,6 +168,25 @@
                             }
                         }
                     ]
+                },
+                {
+                    "type": "Label",
+                    "name": "MeterHubSuggestion",
+                    "caption": "",
+                    "visible": false
+                },
+                {
+                    "type": "Button",
+                    "name": "MeterHubAdoptButton",
+                    "caption": "🔗  Von MeterHub übernehmen",
+                    "visible": false,
+                    "onClick": "WPHUB_AdoptMeterHubAssignment($id);"
+                },
+                {
+                    "type": "Label",
+                    "name": "MeterHubResult",
+                    "caption": "",
+                    "visible": false
                 },
                 {
                     "type": "SelectVariable",

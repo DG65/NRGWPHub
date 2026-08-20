@@ -85,12 +85,23 @@ function IPS_VariableExists(int $id): bool
 // dieselbe falsche 1-Parameter-Annahme wie der Modulcode und haette den
 // Fehler dadurch nie aufgedeckt).
 const TEST_ARCHIVE_INSTANCE_ID = 55555;
+const TEST_METERHUB_MODULE_GUID = '{BAB8E05C-9150-43B9-9F2B-E5215FA54F0A}';
 function IPS_GetInstanceListByModuleID(string $moduleID): array
 {
     if ($moduleID === '{43192F0B-135B-4CE7-A0A7-1475603F3060}') {
         return [TEST_ARCHIVE_INSTANCE_ID];
     }
+    if ($moduleID === TEST_METERHUB_MODULE_GUID) {
+        return $GLOBALS['ips']['meterHubInstances'] ?? [];
+    }
     return [];
+}
+// Attrappe fuer den MeterHub-Vertrag (siehe MeterHub/module.php, MHUB_GetFunctions).
+// Tests befuellen $GLOBALS['ips']['meterHubFunctions'][$instanceID] mit der
+// JSON-Rueckgabe, die eine echte MeterHub-Instanz liefern wuerde.
+function MHUB_GetFunctions(int $id): string
+{
+    return $GLOBALS['ips']['meterHubFunctions'][$id] ?? json_encode(['assignments' => []]);
 }
 function AC_GetLoggingStatus(int $archiveID, int $variableID): bool
 {
@@ -210,6 +221,7 @@ class IPSModule
     }
     protected function UpdateFormField(string $field, string $key, $value): void
     {
+        $GLOBALS['ips']['formFieldUpdates'][$field][$key] = $value;
     }
     protected function MaintainVariable(string $ident, string $name, int $type, string $profile, int $pos, bool $keep): void
     {
@@ -854,6 +866,113 @@ $GLOBALS['ips']['log'] = [];
 $applyControl->invoke($mod, $prefix . 'UnbekanntesFeld', 'UnbekanntesFeld', 1, $devCool, $bundle, $ctrl);
 check('Unbekanntes Feld: kein Client-Aufruf', count($ctrl->controlCalls) === 0);
 check('Unbekanntes Feld: Protokollzeile', count($GLOBALS['ips']['log']) === 1);
+
+// ---------------------------------------------------------------------------
+echo "Block 4e: MeterHub-Erkennung (Funktionszuordnung \"Waermepumpe\")\n";
+// ---------------------------------------------------------------------------
+
+function findFormElement(array $items, string $name): ?array
+{
+    foreach ($items as $item) {
+        if (($item['name'] ?? null) === $name) {
+            return $item;
+        }
+        if (isset($item['items']) && is_array($item['items'])) {
+            $found = findFormElement($item['items'], $name);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+    }
+    return null;
+}
+
+$meterHubDetect = new ReflectionMethod(WPHub::class, 'meterHubHeatpumpAssignment');
+$meterHubDetect->setAccessible(true);
+
+// Kein MeterHub installiert -> keine Zuordnung.
+$GLOBALS['ips']['meterHubInstances'] = [];
+$GLOBALS['ips']['meterHubFunctions'] = [];
+check('Ohne MeterHub-Instanz: keine Zuordnung', $meterHubDetect->invoke($mod) === null);
+
+// MeterHub installiert, aber kein Zaehler mit Funktion "heatpump" zugeordnet.
+$GLOBALS['ips']['meterHubInstances'] = [77001];
+$GLOBALS['ips']['meterHubFunctions'][77001] = json_encode([
+    'instanceID'  => 77001,
+    'assignments' => [
+        ['function' => 'pv', 'label' => 'PV-Erzeugung', 'powerID' => 88001, 'energyImportID' => 0, 'energyExportID' => 88002],
+    ],
+]);
+check('MeterHub ohne Waermepumpen-Zuordnung: keine Zuordnung', $meterHubDetect->invoke($mod) === null);
+
+// MeterHub mit Waermepumpen-Zuordnung (Leistung + Energie).
+$GLOBALS['ips']['meterHubFunctions'][77001] = json_encode([
+    'instanceID'  => 77001,
+    'assignments' => [
+        ['function' => 'pv', 'label' => 'PV-Erzeugung', 'powerID' => 88001, 'energyImportID' => 0, 'energyExportID' => 88002],
+        ['function' => 'heatpump', 'label' => 'Wärmepumpe — Wirkarbeit Bezug', 'powerID' => 88010, 'energyImportID' => 88011, 'energyExportID' => 0],
+    ],
+]);
+$found = $meterHubDetect->invoke($mod);
+check('MeterHub-Zuordnung gefunden', $found !== null);
+check('Gefundene powerID stimmt', ($found['powerID'] ?? null) === 88010);
+check('Gefundene energyID stimmt (energyImportID)', ($found['energyID'] ?? null) === 88011);
+check('Gefundenes label stimmt', ($found['label'] ?? '') === 'Wärmepumpe — Wirkarbeit Bezug');
+check('Gefundene instanceID stimmt', ($found['instanceID'] ?? null) === 77001);
+
+// GetConfigurationForm() zeigt den Vorschlag an, solange Ext_PowerVariable/
+// Ext_EnergyVariable noch 0 sind (kein Ueberreden nach manueller Verknuepfung).
+$formJson = json_decode($mod->GetConfigurationForm(), true);
+$suggestion = findFormElement($formJson['elements'], 'MeterHubSuggestion');
+$adoptBtn   = findFormElement($formJson['elements'], 'MeterHubAdoptButton');
+check('Vorschlag sichtbar', ($suggestion['visible'] ?? false) === true);
+check('Vorschlag nennt den MeterHub-Zaehlernamen', strpos($suggestion['caption'] ?? '', 'Wärmepumpe — Wirkarbeit Bezug') !== false);
+check('Uebernehmen-Schaltflaeche sichtbar', ($adoptBtn['visible'] ?? false) === true);
+
+// Uebernahme per Klick -> Properties gesetzt, Formular-Rueckmeldung, Vorschlag ausgeblendet.
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$mod->AdoptMeterHubAssignment();
+check('Ext_PowerVariable uebernommen', ($GLOBALS['ips']['properties']['Ext_PowerVariable'] ?? 0) === 88010);
+check('Ext_EnergyVariable uebernommen', ($GLOBALS['ips']['properties']['Ext_EnergyVariable'] ?? 0) === 88011);
+check('Aenderungen angewendet (IPS_ApplyChanges)', ($GLOBALS['ips']['applied'] ?? false) === true);
+check('Erfolgsmeldung im Formular', strpos($GLOBALS['ips']['formFieldUpdates']['MeterHubResult']['caption'] ?? '', '✅') === 0);
+check('Vorschlag nach Uebernahme ausgeblendet', ($GLOBALS['ips']['formFieldUpdates']['MeterHubSuggestion']['visible'] ?? true) === false);
+
+// Formular zeigt den Vorschlag danach nicht mehr an (schon verknuepft).
+$formJson2 = json_decode($mod->GetConfigurationForm(), true);
+$suggestion2 = findFormElement($formJson2['elements'], 'MeterHubSuggestion');
+check('Kein erneuter Vorschlag nach Uebernahme', ($suggestion2['visible'] ?? false) === false);
+
+// Aufraeumen fuer nachfolgende Bloecke.
+foreach (['Ext_PowerVariable', 'Ext_EnergyVariable'] as $extProp) {
+    $GLOBALS['ips']['properties'][$extProp] = 0;
+}
+
+// Nur Energie zugeordnet (kein Momentanleistungs-Kanal) -> nur EnergyID uebernommen.
+$GLOBALS['ips']['meterHubFunctions'][77001] = json_encode([
+    'instanceID'  => 77001,
+    'assignments' => [
+        ['function' => 'heatpump', 'label' => 'Wärmepumpe', 'powerID' => 0, 'energyImportID' => 88020, 'energyExportID' => 0],
+    ],
+]);
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$mod->AdoptMeterHubAssignment();
+check('Nur Energie: Ext_PowerVariable bleibt 0', ($GLOBALS['ips']['properties']['Ext_PowerVariable'] ?? -1) === 0);
+check('Nur Energie: Ext_EnergyVariable uebernommen', ($GLOBALS['ips']['properties']['Ext_EnergyVariable'] ?? 0) === 88020);
+foreach (['Ext_PowerVariable', 'Ext_EnergyVariable'] as $extProp) {
+    $GLOBALS['ips']['properties'][$extProp] = 0;
+}
+
+// Keine Zuordnung (mehr) gefunden -> Fehlermeldung statt Aenderung.
+$GLOBALS['ips']['meterHubInstances'] = [];
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$mod->AdoptMeterHubAssignment();
+check('Ohne Fund: keine Property geaendert', ($GLOBALS['ips']['properties']['Ext_PowerVariable'] ?? 0) === 0);
+check('Ohne Fund: Fehlermeldung im Formular', strpos($GLOBALS['ips']['formFieldUpdates']['MeterHubResult']['caption'] ?? '', '❌') === 0);
+
+// Aufraeumen fuer nachfolgende Bloecke.
+$GLOBALS['ips']['meterHubInstances'] = [];
+$GLOBALS['ips']['meterHubFunctions'] = [];
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";

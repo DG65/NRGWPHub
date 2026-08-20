@@ -31,7 +31,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.3.0';
+    const NEWS_VERSION = '0.4.0';
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -39,6 +39,11 @@ class WPHub extends IPSModule
     // Zustimmungstypen der Comfort Cloud (Typ 3 = Servicevertrag nur Tuerkei).
     const AGREEMENT_TERMS   = 1;
     const AGREEMENT_PRIVACY = 2;
+
+    // MeterHub-Modul-GUID (DG65/NRGMeterHub, MeterHub/module.json) -- fuer die
+    // optionale Auto-Uebernahme einer per Funktionszuordnung "Waermepumpe"
+    // markierten Zaehlerzuordnung, siehe meterHubHeatpumpAssignment().
+    const METERHUB_MODULE_GUID = '{BAB8E05C-9150-43B9-9F2B-E5215FA54F0A}';
 
     public function Create()
     {
@@ -122,15 +127,50 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• Neues Formularpanel "Externe Sensoren & Zähler": beliebige vorhandene Symcon-Variable (Shelly, MeterHub, eigener Fühler, ...) als echten Stromzähler oder Vor-/Rücklauf-/Puffertemperatur verknüpfen -- schliesst die Luecken, die die Comfort Cloud nicht liefert'],
-                    ['type' => 'Label', 'caption' => '• Verknuepfte Werte erscheinen als echte Messung im Verbund-Vertrag (WPHUB_GetFunctions) und damit z.B. im Anlagenschema -- ohne Verknuepfung bleibt alles wie bisher auf 0'],
-                    ['type' => 'Label', 'caption' => '• Verbund-weit normierte Betriebsart (operatingModeNormID): Standby/Heizen/Kuehlen/Warmwasser-Kombinationen einheitlich, unabhaengig vom Hersteller -- Konsumenten wie EMS/Dashboard muessen keine Panasonic-Spezifika mehr kennen'],
+                    ['type' => 'Label', 'caption' => '• MeterHub-Zähler mit Funktionszuordnung "Wärmepumpe" wird jetzt automatisch erkannt und lässt sich per Klick übernehmen ("🔌 Externe Sensoren & Zähler") -- kein manuelles Heraussuchen der passenden Variable mehr noetig'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
         }
 
+        // MeterHub-Vorschlag: nur solange noch nichts verknuepft ist (0/0) --
+        // wer schon manuell/per Uebernahme verknuepft hat, soll nicht bei
+        // jedem Formularaufruf erneut beworben werden.
+        $assignment = $this->meterHubHeatpumpAssignment();
+        if ($assignment !== null
+            && $this->ReadPropertyInteger('Ext_PowerVariable') <= 0
+            && $this->ReadPropertyInteger('Ext_EnergyVariable') <= 0) {
+            $this->updateFormElement($form['elements'], 'MeterHubSuggestion', [
+                'caption' => 'ℹ️ MeterHub hat einen Zähler „' . $assignment['label'] . '" mit Funktionszuordnung „Wärmepumpe" gefunden.',
+                'visible' => true,
+            ]);
+            $this->updateFormElement($form['elements'], 'MeterHubAdoptButton', ['visible' => true]);
+        }
+
         return json_encode($form);
+    }
+
+    /**
+     * Sucht rekursiv ein Formularelement mit passendem 'name' (auch in
+     * verschachtelten 'items', z.B. innerhalb ExpansionPanel/RowLayout) und
+     * mischt $patch in dessen Felder. Fuer die statische Rueckgabe von
+     * GetConfigurationForm() -- UpdateFormField wirkt nur auf ein bereits
+     * geoeffnetes Formular, nicht auf dessen Anfangszustand.
+     */
+    private function updateFormElement(array &$items, string $name, array $patch): bool
+    {
+        foreach ($items as &$item) {
+            if (($item['name'] ?? null) === $name) {
+                $item = array_merge($item, $patch);
+                return true;
+            }
+            if (isset($item['items']) && is_array($item['items'])) {
+                if ($this->updateFormElement($item['items'], $name, $patch)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // Bestaetigt das "Neu in Version"-Panel fuer die aktuelle Version.
@@ -493,6 +533,85 @@ class WPHub extends IPSModule
         }
         $instances = @IPS_GetInstanceListByModuleID('{43192F0B-135B-4CE7-A0A7-1475603F3060}');
         return (is_array($instances) && isset($instances[0])) ? (int)$instances[0] : 0;
+    }
+
+    /**
+     * Sucht ueber alle installierten MeterHub-Instanzen nach einer Funktions-
+     * zuordnung "Waermepumpe" (Vertrag MHUB_GetFunctions($id), Feld
+     * 'function' === 'heatpump' -- MeterHub fuehrt dafuer bereits ein festes
+     * Vokabular, siehe dessen eigene Doku). Rein lesend, MeterHub ist optional
+     * (function_exists-Wache) und WPHub aendert an dessen Zuordnung nichts.
+     * Liefert die erste gefundene Zuordnung mit mindestens einer Groesse
+     * (Leistung oder Energie) als ['powerID','energyID','label','instanceID'],
+     * oder null, wenn kein MeterHub installiert ist oder keine Waermepumpe
+     * zugeordnet wurde.
+     */
+    private function meterHubHeatpumpAssignment(): ?array
+    {
+        if (!function_exists('MHUB_GetFunctions') || !function_exists('IPS_GetInstanceListByModuleID')) {
+            return null;
+        }
+        try {
+            $instances = @IPS_GetInstanceListByModuleID(self::METERHUB_MODULE_GUID);
+            if (!is_array($instances)) {
+                return null;
+            }
+            foreach ($instances as $instanceID) {
+                $raw = @MHUB_GetFunctions((int)$instanceID);
+                $data = is_string($raw) ? json_decode($raw, true) : null;
+                if (!is_array($data) || !isset($data['assignments']) || !is_array($data['assignments'])) {
+                    continue;
+                }
+                foreach ($data['assignments'] as $a) {
+                    if (!is_array($a) || ($a['function'] ?? '') !== 'heatpump') {
+                        continue;
+                    }
+                    $powerID  = (int)($a['powerID'] ?? 0);
+                    $energyID = (int)($a['energyImportID'] ?? 0);
+                    if ($powerID <= 0 && $energyID <= 0) {
+                        continue;
+                    }
+                    return [
+                        'powerID'    => $powerID,
+                        'energyID'   => $energyID,
+                        'label'      => (string)($a['label'] ?? 'Wärmepumpe'),
+                        'instanceID' => (int)$instanceID,
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->SendDebug('MeterHub-Erkennung', $e->getMessage(), 0);
+        }
+        return null;
+    }
+
+    /**
+     * Uebernimmt eine per meterHubHeatpumpAssignment() gefundene Zuordnung in
+     * Ext_PowerVariable/Ext_EnergyVariable -- ausschliesslich auf Klick der
+     * Formular-Schaltflaeche (siehe GetConfigurationForm), nie automatisch im
+     * Update()-Zyklus: die Verknuepfung ist eine Entscheidung des Nutzers,
+     * kein stiller Hintergrundabgleich (gleiches Prinzip wie AcceptAgreements).
+     */
+    public function AdoptMeterHubAssignment(): void
+    {
+        $found = $this->meterHubHeatpumpAssignment();
+        if ($found === null) {
+            $this->UpdateFormField('MeterHubResult', 'caption', '❌ Keine MeterHub-Zuordnung "Wärmepumpe" (mehr) gefunden.');
+            $this->UpdateFormField('MeterHubResult', 'visible', true);
+            return;
+        }
+        if ($found['powerID'] > 0) {
+            IPS_SetProperty($this->InstanceID, 'Ext_PowerVariable', $found['powerID']);
+        }
+        if ($found['energyID'] > 0) {
+            IPS_SetProperty($this->InstanceID, 'Ext_EnergyVariable', $found['energyID']);
+        }
+        IPS_ApplyChanges($this->InstanceID);
+        $this->UpdateFormField('Ext_PowerVariable', 'value', $found['powerID']);
+        $this->UpdateFormField('Ext_EnergyVariable', 'value', $found['energyID']);
+        $this->UpdateFormField('MeterHubResult', 'caption', '✅ Von MeterHub „' . $found['label'] . '" übernommen.');
+        $this->UpdateFormField('MeterHubResult', 'visible', true);
+        $this->UpdateFormField('MeterHubSuggestion', 'visible', false);
     }
 
     /**
