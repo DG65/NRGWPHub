@@ -3,8 +3,8 @@
     "author": "DG65",
     "name": "NRG-Stack WPHub for IP-Symcon",
     "url": "https://github.com/DG65/NRGWPHub",
-    "version": "0.4.2",
-    "build": 50,
+    "version": "0.4.3",
+    "build": 51,
     "date": 1787184000,
     "compatibility": {
         "version": "9.0"

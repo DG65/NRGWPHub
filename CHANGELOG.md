@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.4.3 (Build 51) — 20.08.2026
+
+- **Neuer Knopf „🔄 Übernehmen erzwingen (ohne Formularänderung)"** im Doku-Panel (Angebot von EMS, keine Pflicht-Konvention). Ruft direkt `IPS_ApplyChanges($id)` mit Bestätigungs-Popup auf — praktisch nach einem Modul-Update über die Modulverwaltung, ohne extra ein Feld anfassen und speichern zu müssen, damit z. B. neu registrierte Attribute/Properties sofort greifen. Reiner `form.json`-Zusatz (natives `onClick`, kein neuer Modulcode).
+
 ## 0.4.2 (Build 50) — 20.08.2026
 
 - **Fix: Status-Kopfzeile blieb im bereits geöffneten Formular stehen.** EMS fand bei sich denselben Fehler (jetzt SUITE.md „IP-Symcon-Stolperfallen" Punkt 12): `GetConfigurationForm()` wird nach einer Formular-Aktion NICHT automatisch neu ausgeführt — wer das Formular offen ließ und auf „Anmelden und Wärmepumpen suchen" bzw. „Aktualisierte Bedingungen akzeptieren" klickte, sah die neue Kopfzeile (Build 49) trotz erfolgreicher Suche erst nach Schließen und erneutem Öffnen des Formulars. Betraf bei uns denselben Code-Pfad wie bei EMS: `Login()`, `doAcceptAgreements()` und den laufenden `Update()`-Zyklus riefen `refreshDevices()` zwar korrekt auf, schoben das Ergebnis aber nie per `UpdateFormField()` ins offene Formular. Neue private Methode `refreshDiscoverySummary()` kapselt den fehlenden Aufruf, jetzt an allen drei Erfolgsstellen ergänzt. 1 neuer Test (Block 4c, deckt den `doAcceptAgreements()`-Pfad ab — `Login()`/`Update()` bleiben aus denselben Gründen wie bisher ungetestet: die öffentlichen Wrapper bauen einen echten Cloud-Client auf, den der Prüfstand bewusst nicht mockt).

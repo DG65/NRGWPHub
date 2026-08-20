@@ -16,6 +16,12 @@
                 {
                     "type": "Label",
                     "caption": "Ablauf: 1. E-Mail und Passwort eintragen → 2. Übernehmen → 3. „Anmelden und Wärmepumpen suchen“ → 4. „WPHub aktiv“ einschalten und Übernehmen."
+                },
+                {
+                    "type": "Button",
+                    "caption": "🔄 Übernehmen erzwingen (ohne Formularänderung)",
+                    "confirm": "Wirklich ApplyChanges() erzwingen? Praktisch direkt nach einem Modul-Update über die Modulverwaltung.",
+                    "onClick": "IPS_ApplyChanges($id); echo '✅ ApplyChanges() ausgeführt.';"
                 }
             ]
         },
