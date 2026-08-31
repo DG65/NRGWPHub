@@ -26,7 +26,7 @@ Offen: Verifikation am echten Konto, Verbrauchsdaten-Endpunkt (experimentell vor
 
 ## Verbund
 
-Teil des [NRG-Stack](https://github.com/DG65/NRGEMS) — verbindliche Konventionen (Marke, Lizenz, Formular-Stil, Vertragsversionierung, Credentials-Handhabung) stehen in [EMS/SUITE.md](https://github.com/DG65/NRGEMS/blob/main/SUITE.md).
+Teil des **NRG-Stack** — dem Energie-Modulverbund von DG65 (Marke, Lizenz, Formular-Stil, Vertragsversionierung und weitere verbindliche Konventionen sind intern dokumentiert).
 
 ## Lizenz
 

@@ -3,7 +3,7 @@
 Dieses Repo wurde am 10.08.2026 von der EMS-Koordinationssitzung angelegt, auf
 Basis einer Übergabe von HeishaMon (die den fachlichen Panasonic-Comfort-Cloud-
 Vorschlag gemacht hat) und Dietmars Zustimmung. **Primärquelle für alle
-Verbund-Konventionen ist [EMS/SUITE.md](https://github.com/DG65/NRGEMS/blob/main/SUITE.md)**
+Verbund-Konventionen ist die lokale SUITE.md (siehe unten)**
 — bei Zweifeln dort zuerst grep'en, nicht Code zwischen Modulen vergleichen.
 Das Folgende ist eine kondensierte Zusammenfassung, kein Ersatz.
 
