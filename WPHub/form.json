@@ -28,6 +28,7 @@
         },
         {
             "type": "ExpansionPanel",
+            "name": "GeneralPanel",
             "caption": "🔧 Allgemein",
             "expanded": true,
             "items": [

@@ -31,7 +31,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.6.0';
+    const NEWS_VERSION = '0.8.0';
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -52,6 +52,18 @@ class WPHub extends IPSModule
     // Eigenschaft; InstanceStatus 102 ("Aktiv") ist der naechstliegende
     // verfuegbare Signal-Ersatz.
     const HEISHAMON_MODULE_GUID = '{1919151A-3C0F-4C09-B906-291638EC1469}';
+
+    // Vokabular fuer die Geraete-Steuerhoheit (managedBy, contractVersion 1.15,
+    // mit EMS abgestimmt 13.09.2026 -- Dietmars Praezisierung "je Geraet, nicht
+    // global"). Muster ChargerHubs managedBy, NICHT InverterHubs
+    // controlAuthority: dort geht es um EMS-Zugriff, hier um "welches Modul
+    // steuert dasselbe physische Geraet" -- das EMS schreibt nie an die
+    // Waermepumpe. 'wphub' ist der Standard, damit eine frische Installation
+    // ohne HeishaMon unveraendert funktioniert. Zuordnung ist bewusst
+    // Nutzerangabe (siehe deviceManagedBy()), nie automatisch aus
+    // heishaMonCoexistenceWarning() abgeleitet.
+    const MANAGED_BY_VALUES = ['wphub', 'heishamon', 'other', 'none'];
+    const MANAGED_BY_DEFAULT = 'wphub';
 
     public function Create()
     {
@@ -86,6 +98,12 @@ class WPHub extends IPSModule
         $this->RegisterPropertyInteger('Ext_MainInletTempVariable', 0);
         $this->RegisterPropertyInteger('Ext_MainOutletTempVariable', 0);
         $this->RegisterPropertyInteger('Ext_BufferTempVariable', 0);
+
+        // Steuerhoheit je Geraet (managedBy, contractVersion 1.15) -- JSON-
+        // Objekt Praefix=>Wert (siehe MANAGED_BY_VALUES), damit mehrere
+        // erkannte Geraete unabhaengig zugeordnet werden koennen. Nutzer-
+        // angabe, siehe deviceManagedBy()/SetManagedBy().
+        $this->RegisterPropertyString('DeviceManagedBy', '{}');
 
         // Ergebnis des Handshakes -- NICHT das Passwort selbst.
         $this->RegisterAttributeString('CC_Token', '');
@@ -149,7 +167,7 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• Existiert eine aktive HeishaMon-Instanz, steuert WPHub jetzt gar nicht mehr (Flüsterbetrieb/Leistungsbetrieb/Warmwasser-/Zonen-Sollwert/Urlaubstimer/Notbetriebe deaktiviert) -- Dietmars Entscheidung: HeishaMon hat Vorrang, wenn beide dieselbe Wärmepumpe im Zugriff haben. Messwerte werden weiterhin angezeigt.'],
+                    ['type' => 'Label', 'caption' => '• Neues Panel "🔀 Steuerhoheit": je gefundener Wärmepumpe festlegen, wer sie regelt (WPHub / HeishaMon / anderes Modul / niemand) -- praktisch, falls eine andere Software (z. B. HeishaMon) dieselbe Anlage lokal steuert. Standard bleibt "WPHub", ändert also nichts an einer frischen Installation. WPHub warnt zusätzlich, wenn eine aktive HeishaMon-Instanz gefunden wird.'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
@@ -175,16 +193,69 @@ class WPHub extends IPSModule
             $this->updateFormElement($form['elements'], 'MeterHubAdoptButton', ['visible' => true]);
         }
 
-        // Koexistenz-Warnung HeishaMon (13.09.2026, Verbund-Konfliktpruefung
+        // Koexistenz-Hinweis HeishaMon (13.09.2026, Verbund-Konfliktpruefung
         // ueber ChargerHub/HeishaMon): rein informativ, ganz oben im Formular
         // (letzter array_unshift gewinnt die Spitzenposition, daher nach dem
-        // NewsPanel-Unshift), siehe heishaMonCoexistenceWarning().
+        // NewsPanel-Unshift), siehe heishaMonCoexistenceWarning(). Die
+        // eigentliche Steuerhoheit wird weiter unten je Geraet abgefragt.
         $heishaWarning = $this->heishaMonCoexistenceWarning();
         if ($heishaWarning !== null) {
             array_unshift($form['elements'], [
                 'type'    => 'Label',
                 'caption' => $heishaWarning,
             ]);
+        }
+
+        // Steuerhoheit je Geraet (managedBy, contractVersion 1.15): eigenes
+        // Panel, nur sichtbar, sobald mindestens ein Geraet bekannt ist (vor
+        // der ersten Anmeldung gibt es nichts zuzuordnen). Direkt nach dem
+        // "Allgemein"-Panel eingefuegt (GeneralPanel-Name in form.json).
+        $devicesForForm = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
+        if (is_array($devicesForForm) && count($devicesForForm) > 0) {
+            $rows = [];
+            foreach ($devicesForForm as $d) {
+                $devPrefix = (string)($d['prefix'] ?? '');
+                if ($devPrefix === '') {
+                    continue;
+                }
+                $fieldName = 'ManagedBy_' . $devPrefix;
+                $rows[] = [
+                    'type'     => 'Select',
+                    'name'     => $fieldName,
+                    'caption'  => (string)($d['name'] ?? 'Wärmepumpe') . ': Wer regelt diese Wärmepumpe?',
+                    'value'    => $this->deviceManagedBy($devPrefix),
+                    'options'  => [
+                        ['caption' => 'WPHub (Comfort Cloud, Standard)', 'value' => 'wphub'],
+                        ['caption' => 'HeishaMon (lokal, WPHub liest nur)', 'value' => 'heishamon'],
+                        ['caption' => 'Anderes Modul', 'value' => 'other'],
+                        ['caption' => 'Niemand -- nur lesen', 'value' => 'none'],
+                    ],
+                    'onChange' => 'WPHUB_SetManagedBy($id, "' . $devPrefix . '", $' . $fieldName . ');',
+                ];
+            }
+            if (count($rows) > 0) {
+                $panel = [
+                    'type'     => 'ExpansionPanel',
+                    'name'     => 'ManagedByPanel',
+                    'caption'  => '🔀 Steuerhoheit',
+                    'expanded' => ($heishaWarning !== null),
+                    'items'    => array_merge([
+                        ['type' => 'Label', 'caption' => 'Steuert eine andere Wärmepumpen-Software (z. B. HeishaMon) dieselbe Anlage, hier je Gerät festlegen -- WPHub schreibt dann für dieses Gerät nichts mehr, zeigt aber weiterhin alle Messwerte.'],
+                    ], $rows),
+                ];
+                $generalIndex = null;
+                foreach ($form['elements'] as $i => $el) {
+                    if (($el['name'] ?? null) === 'GeneralPanel') {
+                        $generalIndex = $i;
+                        break;
+                    }
+                }
+                if ($generalIndex === null) {
+                    $form['elements'][] = $panel;
+                } else {
+                    array_splice($form['elements'], $generalIndex + 1, 0, [$panel]);
+                }
+            }
         }
 
         return json_encode($form);
@@ -455,7 +526,7 @@ class WPHub extends IPSModule
             $prefix = (string)($d['prefix'] ?? '');
             $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion'      => '1.14',
+                'contractVersion'      => '1.15',
                 'Type'                 => 'heatpump',
                 'Caption'              => $d['name'] ?? 'Wärmepumpe',
                 'PowerID'              => $extPowerID,
@@ -529,6 +600,18 @@ class WPHub extends IPSModule
                 // Boden wie in ApplyChanges(), damit der gemeldete Wert immer
                 // dem tatsaechlich gesetzten Timer-Intervall entspricht.
                 'pollInterval'         => max(30, $this->ReadPropertyInteger('WPHUB_Interval')),
+                // contractVersion 1.15 (mit EMS abgestimmt 13.09.2026, Muster
+                // ChargerHubs managedBy -- bewusst NICHT InverterHubs
+                // controlAuthority, da das EMS nie an die Waermepumpe
+                // schreibt): welches Modul hat die Steuerhoheit ueber DIESES
+                // Geraet. 'wphub' (Standard) = WPHub steuert selbst,
+                // 'heishamon' = HeishaMon steuert lokal, WPHub liest nur,
+                // 'other'/'none' siehe MANAGED_BY_VALUES. Bewusste
+                // Nutzerangabe je Geraet (SetManagedBy()), nie automatisch
+                // aus einer erkannten HeishaMon-Instanz abgeleitet -- die
+                // Geraeteidentitaet laesst sich zwischen beiden Vertraegen
+                // nicht beweisen.
+                'managedBy'            => $this->deviceManagedBy($prefix),
             ];
         }
         return $out;
@@ -682,22 +765,18 @@ class WPHub extends IPSModule
     }
 
     /**
-     * Koexistenz-Check (13.09.2026, Verbund-Konfliktpruefung ueber
-     * ChargerHub/HeishaMon angestossen, seit Dietmars Vorrang-Entscheidung
-     * 13.09.2026 verbindlich): HeishaMon bridged Panasonic-Aquarea-
-     * Waermepumpen lokal per MQTT -- existiert eine aktive HeishaMon-
-     * Instanz, hat sie Vorrang. WPHub steuert dann gar nicht mehr
-     * (applyControl()/EnableAction() in maintainDeviceVariables()), zeigt
-     * aber weiterhin alle Messwerte (Update()/refreshDevices() bleiben
-     * unangetastet) -- nur das Schreiben wird abgeschaltet, nicht das Lesen.
-     * HeishaMon hat keine eigene "aktiv"-Eigenschaft; InstanceStatus 102
-     * ("Aktiv") ist der von HeishaMon selbst genannte naechstliegende
-     * Signal-Ersatz. Bewusst ohne Geraete-Identitaetspruefung: die laesst
-     * sich zwischen beiden Vertraegen nicht beweisen (kein gemeinsames
-     * Seriennummer-Feld) -- Dietmar hat ohnehin nur eine Panasonic-Anlage,
-     * jede installierte HeishaMon-Instanz ist also praktisch immer dieselbe.
-     * HeishaMons eigene Warnung vor einer aktiven WPHub-Instanz bleibt rein
-     * informativ (HeishaMon ist ja die Vorrang-Seite, muss nichts blockieren).
+     * Koexistenz-HINWEIS (13.09.2026, Verbund-Konfliktpruefung ueber
+     * ChargerHub/HeishaMon angestossen -- seit der EMS-Praezisierung vom
+     * selben Tag NUR NOCH ein Vorschlag im Formular, KEINE eigene Blockade
+     * mehr). HeishaMon bridged Panasonic-Aquarea-Waermepumpen lokal per MQTT
+     * -- existiert eine aktive HeishaMon-Instanz, KANN sie dasselbe Geraet
+     * meinen, muss aber nicht (Dietmar hat aktuell nur eine Anlage, aber die
+     * Regel soll auch bei einer zweiten, nur-WPHub-Waermepumpe nicht
+     * faelschlich blockieren). Die eigentliche Steuerhoheit steht deshalb
+     * NICHT hier, sondern in deviceManagedBy() -- eine bewusste Nutzerangabe
+     * je Geraet, siehe MANAGED_BY_VALUES. HeishaMon hat keine eigene "aktiv"-
+     * Eigenschaft; InstanceStatus 102 ("Aktiv") ist der von HeishaMon selbst
+     * genannte naechstliegende Signal-Ersatz.
      */
     private function heishaMonCoexistenceWarning(): ?string
     {
@@ -712,13 +791,51 @@ class WPHub extends IPSModule
             foreach ($instances as $instanceID) {
                 $inst = @IPS_GetInstance((int)$instanceID);
                 if (is_array($inst) && (int)($inst['InstanceStatus'] ?? 0) === 102) {
-                    return '⚠️ Eine aktive HeishaMon-Instanz (#' . (int)$instanceID . ') steuert diese Wärmepumpe bereits lokal. WPHub steuert deshalb nicht mehr (Flüsterbetrieb/Leistungsbetrieb/Warmwasser-/Zonen-Sollwert/Urlaubstimer/Notbetriebe sind deaktiviert) -- Messwerte werden weiterhin angezeigt.';
+                    return 'ℹ️ Eine aktive HeishaMon-Instanz (#' . (int)$instanceID . ') wurde gefunden. Falls sie dieselbe Wärmepumpe steuert: unten bei „Wer regelt diese Wärmepumpe?" „HeishaMon" auswählen, damit WPHub nicht parallel schreibt.';
                 }
             }
         } catch (\Throwable $e) {
             $this->SendDebug('HeishaMon-Koexistenz', $e->getMessage(), 0);
         }
         return null;
+    }
+
+    /**
+     * Steuerhoheit fuer ein Geraet (managedBy, contractVersion 1.15) --
+     * bewusste Nutzerangabe, NIE automatisch aus heishaMonCoexistenceWarning()
+     * abgeleitet (EMS-Entscheid 13.09.2026: die Geraete-Identitaet zwischen
+     * WPHub und HeishaMon laesst sich nicht beweisen). Unbekannte/fehlende
+     * Werte fallen sicher auf MANAGED_BY_DEFAULT ('wphub') zurueck, damit
+     * eine frische Installation ohne HeishaMon sich durch dieses Feld nicht
+     * aendert.
+     */
+    private function deviceManagedBy(string $prefix): string
+    {
+        $map = json_decode((string)$this->ReadPropertyString('DeviceManagedBy'), true);
+        $value = is_array($map) ? (string)($map[$prefix] ?? '') : '';
+        return in_array($value, self::MANAGED_BY_VALUES, true) ? $value : self::MANAGED_BY_DEFAULT;
+    }
+
+    /**
+     * Setzt die Steuerhoheit fuer ein Geraet -- ausschliesslich auf Klick/
+     * Auswahl im Formular (dynamisch je Geraet erzeugtes Select, siehe
+     * GetConfigurationForm()), nie automatisch. Gleiches Muster wie
+     * AdoptMeterHubAssignment(): IPS_SetProperty+ApplyChanges ist hier
+     * zulaessig, weil es eine echte, vom Nutzer ausgeloeste Konfigurations-
+     * aenderung ist, keine stille Selbstpersistenz (Store-Review-Regel 1).
+     */
+    public function SetManagedBy(string $prefix, string $value): void
+    {
+        if (!in_array($value, self::MANAGED_BY_VALUES, true)) {
+            $value = self::MANAGED_BY_DEFAULT;
+        }
+        $map = json_decode((string)$this->ReadPropertyString('DeviceManagedBy'), true);
+        if (!is_array($map)) {
+            $map = [];
+        }
+        $map[$prefix] = $value;
+        IPS_SetProperty($this->InstanceID, 'DeviceManagedBy', json_encode($map));
+        IPS_ApplyChanges($this->InstanceID);
     }
 
     /**
@@ -835,12 +952,16 @@ class WPHub extends IPSModule
      */
     private function applyControl(string $ident, string $field, $value, array $dev, array $bundle, WPHUB_ComfortCloudClient $client): void
     {
-        // Dietmars Vorrang-Entscheidung (13.09.2026): existiert eine aktive
-        // HeishaMon-Instanz, steuert WPHub gar nicht mehr -- unabhaengig vom
-        // Aufrufweg (WebFront-Klick, EMS, Skript). Variable bleibt auf dem
-        // letzten bestaetigten Stand, wie bei jedem anderen Fehlschlag auch.
-        if ($this->heishaMonCoexistenceWarning() !== null) {
-            $this->LogMessage('Steuerbefehl (' . $field . ') blockiert: eine aktive HeishaMon-Instanz steuert diese Anlage bereits, WPHub steuert nicht parallel.', KL_WARNING);
+        // Dietmars Vorrang-Entscheidung (13.09.2026, mit EMS auf "je Geraet"
+        // praezisiert): steht die Steuerhoheit dieses Geraets nicht auf
+        // 'wphub' (managedBy, Nutzerangabe -- siehe deviceManagedBy()),
+        // steuert WPHub fuer GENAU DIESES Geraet nicht, unabhaengig vom
+        // Aufrufweg (WebFront-Klick, EMS, Skript). Andere Geraete desselben
+        // Kontos bleiben davon unberuehrt. Variable bleibt auf dem letzten
+        // bestaetigten Stand, wie bei jedem anderen Fehlschlag auch.
+        $managedBy = $this->deviceManagedBy((string)($dev['prefix'] ?? ''));
+        if ($managedBy !== self::MANAGED_BY_DEFAULT) {
+            $this->LogMessage('Steuerbefehl (' . $field . ') blockiert: Steuerhoheit dieses Geraets steht auf "' . $managedBy . '", nicht "wphub".', KL_WARNING);
             return;
         }
 
@@ -1044,12 +1165,12 @@ class WPHub extends IPSModule
      */
     private function maintainDeviceVariables(string $prefix, string $name, array $dev, bool $reachable, ?array $status = null, ?array $consumption = null): void
     {
-        // Dietmars Vorrang-Entscheidung (13.09.2026, Verbund-Konfliktpruefung
-        // ueber ChargerHub/HeishaMon): existiert eine aktive HeishaMon-
-        // Instanz, steuert WPHub gar nicht mehr -- die Steuerelemente werden
-        // dann bewusst deaktiviert (DisableAction) statt nur beworben und
-        // im Hintergrund abgelehnt, siehe applyControl().
-        $controlBlocked = ($this->heishaMonCoexistenceWarning() !== null);
+        // Dietmars Vorrang-Entscheidung (13.09.2026, mit EMS auf "je Geraet"
+        // praezisiert): steht die Steuerhoheit DIESES Geraets nicht auf
+        // 'wphub' (managedBy), werden die Steuerelemente bewusst deaktiviert
+        // (DisableAction) statt nur beworben und im Hintergrund abgelehnt,
+        // siehe applyControl().
+        $controlBlocked = ($this->deviceManagedBy($prefix) !== self::MANAGED_BY_DEFAULT);
 
         $pos = 0;
         $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);

@@ -630,7 +630,7 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.14', ($f['contractVersion'] ?? '') === '1.14');
+check('contractVersion = 1.15', ($f['contractVersion'] ?? '') === '1.15');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
@@ -886,8 +886,8 @@ $applyControl = new ReflectionMethod(WPHub::class, 'applyControl');
 $applyControl->setAccessible(true);
 $ctrl = new FakeCC();
 $bundle = ['accessToken' => 'x'];
-$devHeat = ['guid' => 'B270592026', 'operationMode' => 1]; // Heizen -> heatSet
-$devCool = ['guid' => 'B270592026', 'operationMode' => 2]; // Kuehlen -> coolSet
+$devHeat = ['guid' => 'B270592026', 'operationMode' => 1, 'prefix' => $prefix]; // Heizen -> heatSet
+$devCool = ['guid' => 'B270592026', 'operationMode' => 2, 'prefix' => $prefix]; // Kuehlen -> coolSet
 
 $applyControl->invoke($mod, $prefix . 'Fluesterbetrieb', 'Fluesterbetrieb', 2, $devCool, $bundle, $ctrl);
 check('Flüsterbetrieb: Variable auf neuen Wert gesetzt', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['value'] ?? null) === 2);
@@ -933,19 +933,29 @@ $applyControl->invoke($mod, $prefix . 'UnbekanntesFeld', 'UnbekanntesFeld', 1, $
 check('Unbekanntes Feld: kein Client-Aufruf', count($ctrl->controlCalls) === 0);
 check('Unbekanntes Feld: Protokollzeile', count($GLOBALS['ips']['log']) === 1);
 
-// Dietmars Vorrang-Entscheidung (13.09.2026): aktive HeishaMon-Instanz ->
-// WPHub steuert gar nicht mehr, unabhaengig vom Feld. Variable bleibt auf
-// dem letzten Stand (2, aus dem allerersten Aufruf oben), kein Cloud-Aufruf.
-$GLOBALS['ips']['heishaMonInstances'] = [99401];
-$GLOBALS['ips']['heishaMonInstanceStatus'] = [99401 => 102];
+// Dietmars Vorrang-Entscheidung (13.09.2026, mit EMS auf "je Geraet"
+// praezisiert): steht managedBy fuer DIESES Geraet auf 'heishamon', steuert
+// WPHub nicht mehr, unabhaengig vom Feld. Variable bleibt auf dem letzten
+// Stand (2, aus dem allerersten Aufruf oben), kein Cloud-Aufruf.
+$GLOBALS['ips']['properties']['DeviceManagedBy'] = json_encode([$prefix => 'heishamon']);
 $ctrl->controlCalls = [];
 $GLOBALS['ips']['log'] = [];
 $applyControl->invoke($mod, $prefix . 'Fluesterbetrieb', 'Fluesterbetrieb', 0, $devCool, $bundle, $ctrl);
-check('HeishaMon aktiv: kein Cloud-Aufruf', count($ctrl->controlCalls) === 0);
-check('HeishaMon aktiv: Variable bleibt auf altem Wert (2, nicht 0)', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['value'] ?? null) === 2);
-check('HeishaMon aktiv: Protokollzeile erklärt Blockade', count($GLOBALS['ips']['log']) === 1 && strpos($GLOBALS['ips']['log'][0], 'blockiert') !== false);
-$GLOBALS['ips']['heishaMonInstances'] = [];
-$GLOBALS['ips']['heishaMonInstanceStatus'] = [];
+check('managedBy=heishamon: kein Cloud-Aufruf', count($ctrl->controlCalls) === 0);
+check('managedBy=heishamon: Variable bleibt auf altem Wert (2, nicht 0)', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['value'] ?? null) === 2);
+check('managedBy=heishamon: Protokollzeile erklärt Blockade', count($GLOBALS['ips']['log']) === 1 && strpos($GLOBALS['ips']['log'][0], 'blockiert') !== false);
+
+// Ein ANDERES Geraet (anderer Praefix) desselben Kontos bleibt unberuehrt --
+// genau der Kern von "je Geraet, nicht global".
+$devOtherUnit = ['guid' => 'OTHER-GUID', 'operationMode' => 1, 'prefix' => 'HPOTHER_'];
+$GLOBALS['ips']['variables']['HPOTHER_Fluesterbetrieb'] = ['name' => 'Andere WP: Flüsterbetrieb', 'type' => VARIABLETYPE_INTEGER, 'profile' => 'WPHUB.Fluesterbetrieb', 'value' => 0, 'id' => 88888];
+$ctrl->controlCalls = [];
+$ctrl->controlResult = true;
+$applyControl->invoke($mod, 'HPOTHER_Fluesterbetrieb', 'Fluesterbetrieb', 1, $devOtherUnit, $bundle, $ctrl);
+check('Anderes Geraet (managedBy weiterhin wphub): Cloud-Aufruf geht durch', count($ctrl->controlCalls) === 1);
+check('Anderes Geraet: Variable wird gesetzt', ($GLOBALS['ips']['variables']['HPOTHER_Fluesterbetrieb']['value'] ?? null) === 1);
+
+$GLOBALS['ips']['properties']['DeviceManagedBy'] = '{}';
 
 // ---------------------------------------------------------------------------
 echo "Block 4e: MeterHub-Erkennung (Funktionszuordnung \"Waermepumpe\")\n";
@@ -1071,29 +1081,78 @@ $GLOBALS['ips']['heishaMonInstances'] = [99401];
 $GLOBALS['ips']['heishaMonInstanceStatus'] = [99401 => 104];
 check('Inaktive HeishaMon-Instanz: kein Hinweis', $heishaWarning->invoke($mod) === null);
 
-// HeishaMon-Instanz aktiv (InstanceStatus 102) -> Hinweis mit Instanz-ID.
+// HeishaMon-Instanz aktiv (InstanceStatus 102) -> reiner Vorschlag (ℹ️, seit
+// der EMS-Praezisierung KEINE eigene Blockade mehr) mit Instanz-ID.
 $GLOBALS['ips']['heishaMonInstanceStatus'] = [99401 => 102];
 $warning = $heishaWarning->invoke($mod);
-check('Aktive HeishaMon-Instanz: Hinweis erscheint', $warning !== null && strpos($warning, '⚠️') === 0, $warning ?? 'null');
+check('Aktive HeishaMon-Instanz: Hinweis erscheint', $warning !== null && strpos($warning, 'ℹ️') === 0, $warning ?? 'null');
 check('Hinweis nennt die Instanz-ID', strpos($warning ?? '', '#99401') !== false, $warning ?? 'null');
 
 // GetConfigurationForm() zeigt den Hinweis ganz oben (vor allen anderen Elementen).
 $formWithWarning = json_decode($mod->GetConfigurationForm(), true);
 check('Hinweis steht an erster Stelle im Formular', ($formWithWarning['elements'][0]['caption'] ?? '') === $warning);
+$GLOBALS['ips']['heishaMonInstances'] = [];
+$GLOBALS['ips']['heishaMonInstanceStatus'] = [];
+
+// ---------------------------------------------------------------------------
+echo "Block 4g: Steuerhoheit je Geraet (managedBy, contractVersion 1.15)\n";
+// ---------------------------------------------------------------------------
+
+$deviceManagedBy = new ReflectionMethod(WPHub::class, 'deviceManagedBy');
+$deviceManagedBy->setAccessible(true);
+
+// Unbekannt/leer -> Standard 'wphub'.
+$GLOBALS['ips']['properties']['DeviceManagedBy'] = '{}';
+check('deviceManagedBy() ohne Eintrag: Standard wphub', $deviceManagedBy->invoke($mod, $prefix) === 'wphub');
+
+// Ungueltiger Wert -> faellt sicher auf Standard zurueck (kein Fremdwort haengt fest).
+$GLOBALS['ips']['properties']['DeviceManagedBy'] = json_encode([$prefix => 'irgendwas']);
+check('deviceManagedBy() mit ungueltigem Wert: Standard wphub', $deviceManagedBy->invoke($mod, $prefix) === 'wphub');
+
+// SetManagedBy() persistiert einen gueltigen Wert.
+$mod->SetManagedBy($prefix, 'heishamon');
+check('SetManagedBy() persistiert gueltigen Wert', $deviceManagedBy->invoke($mod, $prefix) === 'heishamon');
+check('SetManagedBy() ruft ApplyChanges auf', ($GLOBALS['ips']['applied'] ?? false) === true);
+
+// SetManagedBy() mit ungueltigem Wert faellt auf den Standard zurueck, statt
+// Muell in die Property zu schreiben.
+$mod->SetManagedBy($prefix, 'quatsch');
+check('SetManagedBy() mit ungueltigem Wert: faellt auf Standard zurueck', $deviceManagedBy->invoke($mod, $prefix) === 'wphub');
+
+// GetFunctions() liefert managedBy je Geraet, contractVersion 1.15.
+$mod->SetManagedBy($prefix, 'heishamon');
+$fManaged = $mod->GetFunctions()[0] ?? [];
+check('contractVersion = 1.15', ($fManaged['contractVersion'] ?? '') === '1.15');
+check('GetFunctions() liefert managedBy=heishamon', ($fManaged['managedBy'] ?? '') === 'heishamon');
+$mod->SetManagedBy($prefix, 'wphub');
+$fDefault = $mod->GetFunctions()[0] ?? [];
+check('GetFunctions() liefert managedBy=wphub (Standard)', ($fDefault['managedBy'] ?? '') === 'wphub');
 
 // Steuersperre: maintainDeviceVariables() deaktiviert die Steuerelemente
-// (DisableAction statt EnableAction), solange HeishaMon aktiv ist, und
-// aktiviert sie wieder, sobald HeishaMon verschwindet.
+// (DisableAction statt EnableAction), wenn managedBy != 'wphub' fuer DIESES
+// Geraet, und aktiviert sie wieder, sobald es zurueckgesetzt wird.
 $maintainVars = new ReflectionMethod(WPHub::class, 'maintainDeviceVariables');
 $maintainVars->setAccessible(true);
 $statusFixture = ['quietMode' => 1, 'powerful' => 0];
+$mod->SetManagedBy($prefix, 'heishamon');
 $maintainVars->invoke($mod, $prefix, 'Heizung', ['tankStatus' => null], true, $statusFixture, null);
-check('HeishaMon aktiv: Flüsterbetrieb-Steuerung deaktiviert', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['actionEnabled'] ?? true) === false);
+check('managedBy=heishamon: Flüsterbetrieb-Steuerung deaktiviert', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['actionEnabled'] ?? true) === false);
 
-$GLOBALS['ips']['heishaMonInstances'] = [];
-$GLOBALS['ips']['heishaMonInstanceStatus'] = [];
+$mod->SetManagedBy($prefix, 'wphub');
 $maintainVars->invoke($mod, $prefix, 'Heizung', ['tankStatus' => null], true, $statusFixture, null);
-check('Ohne HeishaMon: Flüsterbetrieb-Steuerung wieder aktiviert', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['actionEnabled'] ?? false) === true);
+check('managedBy=wphub: Flüsterbetrieb-Steuerung wieder aktiviert', ($GLOBALS['ips']['variables'][$prefix . 'Fluesterbetrieb']['actionEnabled'] ?? false) === true);
+
+// GetConfigurationForm() zeigt das Steuerhoheit-Panel je bekanntem Geraet,
+// mit dem aktuellen Wert vorausgewaehlt und korrektem onChange-Aufruf.
+$formManaged = json_decode($mod->GetConfigurationForm(), true);
+$managedByPanel = findFormElement($formManaged['elements'], 'ManagedByPanel');
+check('Steuerhoheit-Panel erscheint, sobald ein Geraet bekannt ist', $managedByPanel !== null);
+$managedBySelect = findFormElement($formManaged['elements'], 'ManagedBy_' . $prefix);
+check('Select fuer das bekannte Geraet vorhanden', $managedBySelect !== null);
+check('Select zeigt den aktuellen Wert (wphub)', ($managedBySelect['value'] ?? null) === 'wphub');
+check('Select-onChange ruft SetManagedBy mit dem richtigen Praefix', strpos($managedBySelect['onChange'] ?? '', 'WPHUB_SetManagedBy($id, "' . $prefix . '"') === 0, $managedBySelect['onChange'] ?? 'null');
+
+$GLOBALS['ips']['properties']['DeviceManagedBy'] = '{}';
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";
