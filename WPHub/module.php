@@ -455,7 +455,7 @@ class WPHub extends IPSModule
             $prefix = (string)($d['prefix'] ?? '');
             $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion'      => '1.13',
+                'contractVersion'      => '1.14',
                 'Type'                 => 'heatpump',
                 'Caption'              => $d['name'] ?? 'Wärmepumpe',
                 'PowerID'              => $extPowerID,
@@ -520,6 +520,15 @@ class WPHub extends IPSModule
                 // unterscheiden, ohne dass WPHub selbst "reachable" ueberladen
                 // muesste (das bleibt reiner Cloud-Erreichbarkeits-Status).
                 'lastSeenAt'           => (int)($d['lastSeenAt'] ?? 0),
+                // contractVersion 1.14 (Dashboard-Nachfrage 13.09.2026, im
+                // Zuge der lastSeenAt-Einfuehrung: "wie weit darf das
+                // Frische-Fenster gesetzt werden?"): reale Abfragerate in
+                // Sekunden statt dass Konsumenten einen Sicherheitsfaktor auf
+                // einen geratenen Wert draufschlagen muessen -- Vorbild
+                // MeterHub-Vertrag ("pollInterval"). Derselbe max(30, ...)-
+                // Boden wie in ApplyChanges(), damit der gemeldete Wert immer
+                // dem tatsaechlich gesetzten Timer-Intervall entspricht.
+                'pollInterval'         => max(30, $this->ReadPropertyInteger('WPHUB_Interval')),
             ];
         }
         return $out;

@@ -630,7 +630,7 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.13', ($f['contractVersion'] ?? '') === '1.13');
+check('contractVersion = 1.14', ($f['contractVersion'] ?? '') === '1.14');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
@@ -638,6 +638,13 @@ check('Measured = false', ($f['Measured'] ?? true) === false);
 check('unit = W', ($f['unit'] ?? '') === 'W');
 check('reachable = true (live aus Variable)', ($f['reachable'] ?? false) === true);
 check('lastSeenAt ist ein frischer Zeitstempel (contractVersion 1.13)', ($f['lastSeenAt'] ?? 0) > (time() - 5), $f['lastSeenAt'] ?? 'null');
+check('pollInterval = 60 (Standardwert, contractVersion 1.14)', ($f['pollInterval'] ?? 0) === 60);
+
+// pollInterval spiegelt denselben max(30, ...)-Boden wie ApplyChanges().
+$GLOBALS['ips']['properties']['WPHUB_Interval'] = 10;
+$fUnclamped = $mod->GetFunctions()[0] ?? [];
+check('pollInterval nie unter 30 (gleicher Boden wie der echte Timer)', ($fUnclamped['pollInterval'] ?? 0) === 30);
+$GLOBALS['ips']['properties']['WPHUB_Interval'] = 60;
 
 // Additive Vertragsfelder (contractVersion 1.3): vorhandene Werte liefern
 // die echte Variablen-ID, fehlende (Zone 2 existiert bei diesem Geraet

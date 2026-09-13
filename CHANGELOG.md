@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.7.1 (Build 60) — 13.09.2026
+
+- **Neues Vertragsfeld `pollInterval` (contractVersion 1.13 → 1.14).** Dashboard fragte im Zuge von `lastSeenAt` nach, wie groß das Frische-Fenster für eine Wärmepumpen-Anzeige sein sollte, um WPHubs Abfragerate sicher zu überdecken. Statt einen Sicherheitsfaktor auf einen geratenen Wert draufschlagen zu müssen, liefert der Vertrag jetzt die reale Abfragerate in Sekunden (Vorbild MeterHub-Vertrag) — Standard 60 s, per Formular 30–600 s einstellbar, mit demselben `max(30, ...)`-Boden wie der echte Timer in `ApplyChanges()`, damit der gemeldete Wert nie vom tatsächlichen abweicht. 2 neue Tests.
+
 ## 0.7.0 (Build 59) — 13.09.2026
 
 - **Neues Vertragsfeld `lastSeenAt` (contractVersion 1.11 → 1.13).** Dashboard-Anfrage: die Energiefluss-Kachel zeigt seit ChargerHub/OCPPHub-Vertrag 1.3 „keine aktuelle Messung" statt eines eingefrorenen Werts, wenn `lastSeenAt` älter als 5 Minuten ist — additiv jetzt auch bei uns. Unix-Zeitstempel der letzten erfolgreichen Cloud-Antwort je Gerät, gesetzt in `refreshDevices()` bei jedem erfolgreichen Abruf (nicht nur bei Wertänderung, wie von Dashboard gefordert), bleibt bei einem Cloud-Ausfall bewusst eingefroren (`markAllUnreachable()` fasst ihn nicht an) statt auf 0 zurückzufallen — Konsumenten können damit echte Aktualität von einem bloßen Erreichbarkeits-Flag unterscheiden. 2 neue Tests.
