@@ -630,13 +630,14 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.11', ($f['contractVersion'] ?? '') === '1.11');
+check('contractVersion = 1.13', ($f['contractVersion'] ?? '') === '1.13');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
 check('Measured = false', ($f['Measured'] ?? true) === false);
 check('unit = W', ($f['unit'] ?? '') === 'W');
 check('reachable = true (live aus Variable)', ($f['reachable'] ?? false) === true);
+check('lastSeenAt ist ein frischer Zeitstempel (contractVersion 1.13)', ($f['lastSeenAt'] ?? 0) > (time() - 5), $f['lastSeenAt'] ?? 'null');
 
 // Additive Vertragsfelder (contractVersion 1.3): vorhandene Werte liefern
 // die echte Variablen-ID, fehlende (Zone 2 existiert bei diesem Geraet
@@ -704,11 +705,13 @@ foreach (['Ext_PowerVariable', 'Ext_EnergyVariable', 'Ext_MainInletTempVariable'
 }
 
 // Cloud-Ausfall: alle Geraete unerreichbar, Variablen bleiben bestehen.
+$lastSeenBeforeOutage = $mod->GetFunctions()[0]['lastSeenAt'] ?? 0;
 $markAll = new ReflectionMethod(WPHub::class, 'markAllUnreachable');
 $markAll->setAccessible(true);
 $markAll->invoke($mod);
 $functions = $mod->GetFunctions();
 check('Nach Cloud-Ausfall: reachable = false', ($functions[0]['reachable'] ?? true) === false);
+check('Nach Cloud-Ausfall: lastSeenAt bleibt eingefroren (letzter echter Wert)', ($functions[0]['lastSeenAt'] ?? 0) === $lastSeenBeforeOutage && $lastSeenBeforeOutage > 0);
 check('Variablen bleiben nach Ausfall erhalten', isset($GLOBALS['ips']['variables'][$prefix . 'Warmwasser']));
 
 // ---------------------------------------------------------------------------

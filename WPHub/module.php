@@ -455,7 +455,7 @@ class WPHub extends IPSModule
             $prefix = (string)($d['prefix'] ?? '');
             $reachableID = @$this->GetIDForIdent($prefix . 'Erreichbar');
             $out[] = [
-                'contractVersion'      => '1.11',
+                'contractVersion'      => '1.13',
                 'Type'                 => 'heatpump',
                 'Caption'              => $d['name'] ?? 'Wärmepumpe',
                 'PowerID'              => $extPowerID,
@@ -509,6 +509,17 @@ class WPHub extends IPSModule
                 'dailyEnergyCoolingID' => $this->contractFieldID($prefix, 'EnergieKuehlenHeute'),
                 'dailyEnergyDHWID'     => $this->contractFieldID($prefix, 'EnergieWarmwasserHeute'),
                 'dailyEnergyTotalID'   => $this->contractFieldID($prefix, 'EnergieGesamtHeute'),
+                // contractVersion 1.13 (Dashboard-Anfrage 13.09.2026, Vorbild
+                // ChargerHub/OCPPHub-Vertrag 1.3): Unix-Zeitstempel der letzten
+                // ECHTEN, erfolgreichen Cloud-Antwort fuer dieses Geraet -- 0,
+                // wenn noch nie erfolgreich gelesen. Wird NUR bei erfolgreichem
+                // Abruf gesetzt (refreshDevices()), bleibt bei einem Cloud-
+                // Ausfall unangetastet (markAllUnreachable() aendert nur
+                // 'reachable', nie diesen Wert) -- Konsumenten wie Dashboard
+                // koennen damit eingefrorene alte Werte von echten aktuellen
+                // unterscheiden, ohne dass WPHub selbst "reachable" ueberladen
+                // muesste (das bleibt reiner Cloud-Erreichbarkeits-Status).
+                'lastSeenAt'           => (int)($d['lastSeenAt'] ?? 0),
             ];
         }
         return $out;
@@ -1003,6 +1014,10 @@ class WPHub extends IPSModule
                     // je nach aktueller Betriebsart heatSet oder coolSet
                     // gesetzt werden (siehe setZoneTemperature()).
                     'operationMode' => isset($entry['operationMode']) ? (int)$entry['operationMode'] : null,
+                    // Dashboard-Vertragsfeld lastSeenAt (contractVersion 1.13):
+                    // dieser Zweig laeuft nur bei erfolgreicher Cloud-Antwort,
+                    // also ist genau hier der richtige Stempelzeitpunkt.
+                    'lastSeenAt'    => time(),
                 ];
             }
         }

@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.7.0 (Build 59) — 13.09.2026
+
+- **Neues Vertragsfeld `lastSeenAt` (contractVersion 1.11 → 1.13).** Dashboard-Anfrage: die Energiefluss-Kachel zeigt seit ChargerHub/OCPPHub-Vertrag 1.3 „keine aktuelle Messung" statt eines eingefrorenen Werts, wenn `lastSeenAt` älter als 5 Minuten ist — additiv jetzt auch bei uns. Unix-Zeitstempel der letzten erfolgreichen Cloud-Antwort je Gerät, gesetzt in `refreshDevices()` bei jedem erfolgreichen Abruf (nicht nur bei Wertänderung, wie von Dashboard gefordert), bleibt bei einem Cloud-Ausfall bewusst eingefroren (`markAllUnreachable()` fasst ihn nicht an) statt auf 0 zurückzufallen — Konsumenten können damit echte Aktualität von einem bloßen Erreichbarkeits-Flag unterscheiden. 2 neue Tests.
+
 ## 0.6.4 (Build 58) — 13.09.2026
 
 - **Store-Review-Durchgang (InverterHub-Anstoß, Dietmars Zeitrahmen für den ersten Store-Start).** Komplette Checkliste in SUITE.md durchgeprüft, besonders die neuen Punkte 9b–9d. Einziger echter Fund: **Punkt 9c** (`ReadPropertyXXX()`/`ReadAttributeXXX()` nie ungecastet an `json_decode()` weiterreichen — dreimal unabhängig bei Tibber/OCPPHub/Dashboard aufgetreten). WPHub hat kein `declare(strict_types=1)`, daher aktuell kein akuter Absturz möglich, aber alle fünf Stellen (`GetFunctions()`, `discoverySummaryLine()`, `RequestAction()`, `ensureToken()`, `markAllUnreachable()`) vorsorglich auf `(string)`-Cast umgestellt. Alle übrigen Punkte bereits konform: 9d (IS_INACTIVE 104 statt Fehlercode, WPHub legt ohnehin nie eigene Instanzen an), 9b (in Build 57 behoben), 13/Sichtbare-Rückmeldung (alle vier Muster bereits korrekt umgesetzt), 1/5/6/8/10 (Selbstpersistenz, Variablenprofile, Modulname, library.json, `$id` statt `$_IPS['TARGET']`) ohne Befund.
