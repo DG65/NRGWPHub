@@ -219,10 +219,16 @@ class WPHub extends IPSModule
                     continue;
                 }
                 $fieldName = 'ManagedBy_' . $devPrefix;
+                // HeishaMon-Fund 13.09.2026: aktive HeishaMon-Instanz + noch
+                // nicht explizit gesetzte Steuerhoheit ist eine stille
+                // Luecke (Standard 'wphub' greift unbemerkt weiter) -- hier
+                // deutlich markieren statt nur allgemein im Formular oben.
+                $needsAttentionHere = ($heishaWarning !== null && !$this->deviceManagedByIsExplicit($devPrefix));
+                $captionPrefix = $needsAttentionHere ? '⚠️ Noch nicht zugeordnet -- ' : '';
                 $rows[] = [
                     'type'     => 'Select',
                     'name'     => $fieldName,
-                    'caption'  => (string)($d['name'] ?? 'Wärmepumpe') . ': Wer regelt diese Wärmepumpe?',
+                    'caption'  => $captionPrefix . (string)($d['name'] ?? 'Wärmepumpe') . ': Wer regelt diese Wärmepumpe?',
                     'value'    => $this->deviceManagedBy($devPrefix),
                     'options'  => [
                         ['caption' => 'WPHub (Comfort Cloud, Standard)', 'value' => 'wphub'],
@@ -477,6 +483,21 @@ class WPHub extends IPSModule
             return;
         }
         $this->refreshDiscoverySummary();
+
+        // HeishaMon-Fund 13.09.2026 (live an Instanz #57727 bestaetigt): eine
+        // aktive HeishaMon-Instanz ohne gesetzte Steuerhoheit ist eine stille
+        // Luecke -- WPHub wuerde sonst unbemerkt weiter schreiben, obwohl
+        // Dietmars Vorrang-Entscheidung greifen sollte. Weiche Warnung (2xx,
+        // hohe Zahl = "inactive"-Icon), kein Fehler: die Funktion ist nicht
+        // gestoert, nur die Zuordnung fehlt noch.
+        $needsAttention = $this->managedByNeedsAttention();
+        if (count($needsAttention) > 0) {
+            if ($this->GetStatus() !== 203) {
+                $this->LogMessage('Steuerhoheit noch nicht zugeordnet, obwohl eine aktive HeishaMon-Instanz gefunden wurde: ' . implode(', ', $needsAttention) . ' — im WPHub-Formular unter „🔀 Steuerhoheit“ festlegen, sonst steuert WPHub weiterhin mit (Standard „WPHub“).', KL_WARNING);
+            }
+            $this->SetStatus(203);
+            return;
+        }
         $this->SetStatus(102);
     }
 
@@ -814,6 +835,49 @@ class WPHub extends IPSModule
         $map = json_decode((string)$this->ReadPropertyString('DeviceManagedBy'), true);
         $value = is_array($map) ? (string)($map[$prefix] ?? '') : '';
         return in_array($value, self::MANAGED_BY_VALUES, true) ? $value : self::MANAGED_BY_DEFAULT;
+    }
+
+    /**
+     * Wurde die Steuerhoheit fuer dieses Geraet tatsaechlich vom Nutzer
+     * gesetzt, oder greift nur der stille Standard 'wphub'? Unterscheidung
+     * noetig fuer managedByNeedsAttention() -- ein leerer Eintrag ist bei
+     * fehlendem HeishaMon voellig normal, aber bei aktiver HeishaMon-Instanz
+     * eine echte Luecke (HeishaMon-Fund 13.09.2026, live an Dietmars Instanz
+     * #57727 bestaetigt: DeviceManagedBy stand nach dem Umbau auf '{}',
+     * WPHub haette damit stillschweigend wieder parallel geschrieben).
+     */
+    private function deviceManagedByIsExplicit(string $prefix): bool
+    {
+        $map = json_decode((string)$this->ReadPropertyString('DeviceManagedBy'), true);
+        $value = is_array($map) ? (string)($map[$prefix] ?? '') : '';
+        return in_array($value, self::MANAGED_BY_VALUES, true);
+    }
+
+    /**
+     * Liste der Geraete-Namen, deren Steuerhoheit noch nicht gesetzt ist,
+     * OBWOHL eine aktive HeishaMon-Instanz gefunden wurde -- genau die
+     * stille Luecke aus dem HeishaMon-Fund 13.09.2026. Leer, wenn HeishaMon
+     * nicht aktiv ist (dann ist der Standard 'wphub' der Normalfall, keine
+     * Warnung noetig) oder jedes bekannte Geraet bereits explizit zugeordnet
+     * ist.
+     */
+    private function managedByNeedsAttention(): array
+    {
+        if ($this->heishaMonCoexistenceWarning() === null) {
+            return [];
+        }
+        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
+        if (!is_array($devices)) {
+            return [];
+        }
+        $names = [];
+        foreach ($devices as $d) {
+            $devPrefix = (string)($d['prefix'] ?? '');
+            if ($devPrefix !== '' && !$this->deviceManagedByIsExplicit($devPrefix)) {
+                $names[] = (string)($d['name'] ?? 'Wärmepumpe');
+            }
+        }
+        return $names;
     }
 
     /**

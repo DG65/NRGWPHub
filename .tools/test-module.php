@@ -1152,6 +1152,44 @@ check('Select fuer das bekannte Geraet vorhanden', $managedBySelect !== null);
 check('Select zeigt den aktuellen Wert (wphub)', ($managedBySelect['value'] ?? null) === 'wphub');
 check('Select-onChange ruft SetManagedBy mit dem richtigen Praefix', strpos($managedBySelect['onChange'] ?? '', 'WPHUB_SetManagedBy($id, "' . $prefix . '"') === 0, $managedBySelect['onChange'] ?? 'null');
 
+// HeishaMon-Fund 13.09.2026 (live an Instanz #57727 bestaetigt): aktive
+// HeishaMon-Instanz + noch nicht explizit gesetzte Steuerhoheit ist eine
+// stille Luecke -- muss deutlich markiert werden, nicht nur intern auf
+// 'wphub' zurueckfallen.
+$deviceManagedByIsExplicit = new ReflectionMethod(WPHub::class, 'deviceManagedByIsExplicit');
+$deviceManagedByIsExplicit->setAccessible(true);
+$managedByNeedsAttention = new ReflectionMethod(WPHub::class, 'managedByNeedsAttention');
+$managedByNeedsAttention->setAccessible(true);
+
+$GLOBALS['ips']['properties']['DeviceManagedBy'] = '{}';
+check('Ohne gesetzten Wert: deviceManagedByIsExplicit() = false', $deviceManagedByIsExplicit->invoke($mod, $prefix) === false);
+$mod->SetManagedBy($prefix, 'wphub');
+check('Nach explizitem Setzen (auch auf Standard): deviceManagedByIsExplicit() = true', $deviceManagedByIsExplicit->invoke($mod, $prefix) === true);
+$GLOBALS['ips']['properties']['DeviceManagedBy'] = '{}';
+
+// Ohne aktive HeishaMon-Instanz: keine Luecke, auch wenn nichts gesetzt ist.
+check('managedByNeedsAttention() ohne HeishaMon: leer', $managedByNeedsAttention->invoke($mod) === []);
+
+// Aktive HeishaMon-Instanz + ungesetzte Steuerhoheit -> Geraet erscheint in der Liste.
+$GLOBALS['ips']['heishaMonInstances'] = [99401];
+$GLOBALS['ips']['heishaMonInstanceStatus'] = [99401 => 102];
+$attention = $managedByNeedsAttention->invoke($mod);
+check('managedByNeedsAttention() findet das ungesetzte Geraet', $attention === ['Heizung'], json_encode($attention));
+
+// Formular markiert genau dieses Geraet sichtbar.
+$formAttention = json_decode($mod->GetConfigurationForm(), true);
+$selectAttention = findFormElement($formAttention['elements'], 'ManagedBy_' . $prefix);
+check('Select-Caption warnt bei ungesetzter Steuerhoheit', strpos($selectAttention['caption'] ?? '', '⚠️ Noch nicht zugeordnet') === 0, $selectAttention['caption'] ?? 'null');
+
+// Explizit gesetzt (auch auf 'wphub') -> keine Luecke mehr, keine Markierung.
+$mod->SetManagedBy($prefix, 'wphub');
+check('Nach explizitem Setzen: managedByNeedsAttention() leer', $managedByNeedsAttention->invoke($mod) === []);
+$formResolved = json_decode($mod->GetConfigurationForm(), true);
+$selectResolved = findFormElement($formResolved['elements'], 'ManagedBy_' . $prefix);
+check('Select-Caption ohne Warnung nach explizitem Setzen', strpos($selectResolved['caption'] ?? '', '⚠️') === false, $selectResolved['caption'] ?? 'null');
+
+$GLOBALS['ips']['heishaMonInstances'] = [];
+$GLOBALS['ips']['heishaMonInstanceStatus'] = [];
 $GLOBALS['ips']['properties']['DeviceManagedBy'] = '{}';
 
 // ---------------------------------------------------------------------------

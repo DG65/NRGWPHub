@@ -239,6 +239,11 @@
             "code": 202,
             "icon": "error",
             "caption": "Zustimmung erforderlich -- Panasonic hat die Bedingungen aktualisiert (Formular)"
+        },
+        {
+            "code": 203,
+            "icon": "inactive",
+            "caption": "Steuerhoheit prüfen -- HeishaMon aktiv gefunden, aber im Formular noch nicht je Gerät zugeordnet (Panel „🔀 Steuerhoheit“)"
         }
     ]
 }
