@@ -435,7 +435,7 @@ class WPHub extends IPSModule
      */
     public function GetFunctions()
     {
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
         if (!is_array($devices)) {
             $devices = [];
         }
@@ -581,7 +581,7 @@ class WPHub extends IPSModule
         if ($ts <= 0) {
             return 'ℹ️ Noch nicht gesucht.';
         }
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
         $count = is_array($devices) ? count($devices) : 0;
         $icon = $count > 0 ? '✅' : '⚠️';
         $was = $count === 1 ? 'Wärmepumpe' : 'Wärmepumpen';
@@ -786,7 +786,7 @@ class WPHub extends IPSModule
         $prefix = substr($Ident, 0, 9);
         $field = substr($Ident, 9);
 
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
         $dev = null;
         foreach ((is_array($devices) ? $devices : []) as $d) {
             if (($d['prefix'] ?? '') === $prefix) {
@@ -898,7 +898,7 @@ class WPHub extends IPSModule
     /** Token-Buendel aus dem Attribut, null wenn (noch) keines da ist. */
     private function tokenBundle(): ?array
     {
-        $bundle = json_decode($this->ReadAttributeString('CC_Token'), true);
+        $bundle = json_decode((string)$this->ReadAttributeString('CC_Token'), true);
         if (!is_array($bundle) || ($bundle['accessToken'] ?? '') === '') {
             return null;
         }
@@ -1228,7 +1228,7 @@ class WPHub extends IPSModule
     /** Bei Cloud-Ausfall: alle bekannten Geraete als unerreichbar markieren. */
     private function markAllUnreachable(): void
     {
-        $devices = json_decode($this->ReadAttributeString('CC_DeviceList'), true);
+        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
         if (!is_array($devices)) {
             return;
         }

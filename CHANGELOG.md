@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.6.4 (Build 58) — 13.09.2026
+
+- **Store-Review-Durchgang (InverterHub-Anstoß, Dietmars Zeitrahmen für den ersten Store-Start).** Komplette Checkliste in SUITE.md durchgeprüft, besonders die neuen Punkte 9b–9d. Einziger echter Fund: **Punkt 9c** (`ReadPropertyXXX()`/`ReadAttributeXXX()` nie ungecastet an `json_decode()` weiterreichen — dreimal unabhängig bei Tibber/OCPPHub/Dashboard aufgetreten). WPHub hat kein `declare(strict_types=1)`, daher aktuell kein akuter Absturz möglich, aber alle fünf Stellen (`GetFunctions()`, `discoverySummaryLine()`, `RequestAction()`, `ensureToken()`, `markAllUnreachable()`) vorsorglich auf `(string)`-Cast umgestellt. Alle übrigen Punkte bereits konform: 9d (IS_INACTIVE 104 statt Fehlercode, WPHub legt ohnehin nie eigene Instanzen an), 9b (in Build 57 behoben), 13/Sichtbare-Rückmeldung (alle vier Muster bereits korrekt umgesetzt), 1/5/6/8/10 (Selbstpersistenz, Variablenprofile, Modulname, library.json, `$id` statt `$_IPS['TARGET']`) ohne Befund.
+
 ## 0.6.3 (Build 57) — 13.09.2026
 
 - **Echte Umlaute statt ae/oe/ue in nutzersichtbaren Texten** (EMS-Hinweis auf Verbund-Regel 9b, SUITE.md-Store-Checkliste). Betraf sechs alte, noch nie überarbeitete Textstellen im Doku-Panel und in den Hilfe-Popups (Sicherheitshinweis, Zustimmungs-Erklärung, App-Version-Erklärung) sowie den Vertrags-Fallback `Caption` in `WPHUB_GetFunctions()` und einen `SendDebug`-Themennamen. Datumsformat war bereits unauffällig (`discoverySummaryLine()` zeigt nur die Uhrzeit, keine Datums-ISO-Notation).
