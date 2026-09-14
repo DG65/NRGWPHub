@@ -15,14 +15,15 @@ WPHub verbindet IP-Symcon mit Wärmepumpen-Herstellerclouds und stellt gefundene
 
 ## Status
 
-Erster funktionsfähiger Stand (0.1.0, 10.08.2026), noch nicht am echten Konto verifiziert:
+Seit mehreren Builds live an Dietmars echtem Panasonic-Konto (Aquarea, Standardadapter STD_ADP-TAW1) verifiziert, aktuell 0.9.1:
 
 - **Anmeldung** an der Panasonic Comfort Cloud (Auth0/PKCE-Handshake wie die offizielle App; Konto wie in der App). Das Passwort dient nur der einmaligen Anmeldung und wird danach automatisch geleert — gespeichert bleibt nur der Zugangsschlüssel (Hinweis: IP-Symcon verschlüsselt Attribute nicht at rest). Konten mit Zwei-Faktor-Authentifizierung werden noch nicht unterstützt.
 - **Gerätesuche:** Aquarea-Wärmepumpen des Kontos werden automatisch gefunden; Klimageräte bindet WPHub bewusst nicht ein.
-- **Variablen je Wärmepumpe:** Erreichbarkeit, Betrieb, Außentemperatur, Warmwasser (Ist/Soll), Heizzonen (Ist/Soll).
-- **EMS-Vertrag:** `WPHUB_GetFunctions()` liefert je Gerät einen `Type=>'heatpump'`-Eintrag (contractVersion 1.2). `PowerID`/`EnergyID` sind derzeit 0 — die Comfort Cloud liefert keine Momentanleistung und keine kumulativen Zähler, und nach Verbund-Regel wird Energie nie aus Tageswerten hochgerechnet.
+- **Reichhaltige Variablen je Wärmepumpe:** Erreichbarkeit, Betrieb (roh + normiertes Verbund-Enum), Außentemperatur, Warmwasser (Ist/Soll), Heizzonen (Ist/Soll), Flüsterbetrieb, Leistungsbetrieb, Eco-/Komfortmodus, Abtaubetrieb, Urlaubstimer, Notbetrieb, Fehleranzahl/-text sowie Tagesenergie (Heizen/Kühlen/Warmwasser/Gesamt, rein informativ).
+- **Steuerhoheit je Gerät** (`managedBy`): koexistiert bewusst mit [HeishaMon](https://github.com/DG65/NRGHeishaMon) an derselben Anlage — je Wärmepumpe wählbar, wer tatsächlich regelt.
+- **EMS-Vertrag:** `WPHUB_GetFunctions()` liefert je Gerät einen `Type=>'heatpump'`-Eintrag (contractVersion 1.15). `PowerID`/`EnergyID` bleiben 0, sofern nicht manuell mit einer externen Zähler-Variable (z. B. aus MeterHub) verknüpft — die Comfort Cloud selbst liefert keine Momentanleistung und keine kumulativen Zähler, und nach Verbund-Regel wird Energie nie aus Tageswerten hochgerechnet.
 
-Offen: Verifikation am echten Konto, Verbrauchsdaten-Endpunkt (experimentell vorbereitet), 2FA. Siehe [CLAUDE.md](CLAUDE.md) für den vollständigen Übergabe-Kontext.
+Offen: 2FA-Unterstützung, Forum-Hinweis-Panel (folgt mit dem ersten Forumsthread). Siehe [CLAUDE.md](CLAUDE.md) für den vollständigen Übergabe-Kontext.
 
 ## Verbund
 

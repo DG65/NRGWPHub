@@ -143,21 +143,30 @@ Erledigt (siehe CHANGELOG 0.1.0 Build 2):
 
 ## Was noch offen ist
 
-1. **Verifikation am echten Konto** — der komplette Login-/Abruf-Pfad ist
-   gegen die Python-Referenz gebaut, aber noch nie gegen die echte Cloud
-   gelaufen. Erster Test an Dietmars Anlage nötig (SendDebug der Instanz
-   liefert die HTTP-Stationen).
-2. **Leistung/Energie:** `getAquareaConsumption()` ist experimentell
-   vorbereitet (Pfad aus aioaquarea, über den Transfer-Proxy ungeprüft).
-   Wenn am echten Konto verifiziert: klären, ob daraus eine vertragstaugliche
-   Größe wird (kumulativ zählen? → mit EMS abstimmen), erst dann
-   `PowerID`/`EnergyID` befüllen.
-3. **2FA-Unterstützung** (Auth0 mfa_token-Flow, in der Python-Referenz
+**Update 14.09.2026:** Punkt 1 (Verifikation am echten Konto) war hier
+faelschlich noch als offen gefuehrt, obwohl das laengst erledigt ist — Login,
+Geraetesuche und der Transfer-Proxy-Datenabruf laufen seit Build 14 (12.09.2026)
+live an Dietmars echter Anlage (Standardadapter STD_ADP-TAW1), inkl. mehrerer
+darauf aufbauender Klaerungen direkt am Konto (Consumption-Endpunkt, gesperrte
+`/deviceHistoryData`, keine thermische Energiegroesse verfuegbar). Diese
+CLAUDE.md-Liste wurde beim laufenden Ausbau nicht mitgepflegt — bei
+Status-Fragen daher immer zusaetzlich das CHANGELOG.md gegenpruefen, nicht
+allein auf diese Liste verlassen.
+
+1. **Leistung/Energie:** Die Cloud liefert nachweislich keine
+   vertragstaugliche (kumulative) Groesse — nur Tageswerte, die um
+   Mitternacht auf 0 zurueckspringen (`dailyEnergy*ID`, contractVersion 1.11,
+   bewusst NICHT `PowerID`/`EnergyID`). `PowerID`/`EnergyID` bleiben daher
+   strukturell 0, es sei denn der Nutzer verknuepft manuell eine externe
+   Zaehler-Variable (`Ext_PowerVariable`/`Ext_EnergyVariable`, z. B. aus
+   MeterHub) — kein weiterer Klaerungsbedarf am Konto.
+2. **2FA-Unterstützung** (Auth0 mfa_token-Flow, in der Python-Referenz
    vorhanden) — nur bei Bedarf.
-4. **Forum-Hinweis-Panel** folgt, sobald es einen WPHub-Forumsthread gibt
+3. **Forum-Hinweis-Panel** folgt, sobald es einen WPHub-Forumsthread gibt
    (gleiche Begründung wie bei MeterHub).
-5. Punkt-12-Checkliste ("Neuinstallations-Simulation") vor dem ersten
-   beta/main-Wechsel durchgehen.
+4. Punkt-12-Checkliste ("Neuinstallations-Simulation") vor dem ersten
+   beta/main-Wechsel durchgehen; davor `migrationsvergleich.php`
+   (SUITE.md 9e) einmal gegen den ersten Vergleichsstand laufen lassen.
 
 ## Verbund-Kontakt
 
