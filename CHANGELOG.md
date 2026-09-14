@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.9.1 (Build 64) — 14.09.2026
+
+- **Fix: Steuerhoheit-Auswahl blieb nach dem Klick im offenen Formular auf dem alten Stand.** Selbst-Audit gegen die Store-Review-Checkliste (Punkt 13, „Sichtbare Rückmeldung bei jeder Aktion") fand: `SetManagedBy()` hat die Auswahl gespeichert, aber das ⚠️-Präfix des betroffenen Select-Felds („Noch nicht zugeordnet") verschwand erst beim nächsten frischen Öffnen des Formulars, nicht sofort nach der Auswahl — gleicher Fehlertyp wie der ursprüngliche `DiscoverySummary`-Bug (Build 50). Jetzt zieht `SetManagedBy()` die Caption per `UpdateFormField()` sofort nach; die Berechnung ist in `managedBySelectCaption()` ausgelagert und wird von `GetConfigurationForm()` und `SetManagedBy()` gemeinsam genutzt. 1 neuer Test.
+
 ## 0.9.0 (Build 63) — 14.09.2026
 
 - **Verbundweite Formular-Konvention nachgezogen: "👋 Wozu dieses Modul?" und "🧡 Über dieses Modul".** EMS-Store-Konventionsprüfung fand zwei Lücken gegenüber SUITE.md "Einheitliche Formular-Optik" (Referenz MeterHub). Neu ganz oben, VOR dem "Neu in Version"-Panel: „👋 Wozu dieses Modul?" — kurzer Zweck-/Nutzentext, standardmäßig aufgeklappt, einmalig ausblendbar (`PurposeIntroGone`-Attribut, nicht versionsgebunden — der Zweck eines Moduls ändert sich nicht mit jedem Release). Neu ganz unten: „🧡 Über dieses Modul" — Lizenzhinweis (PolyForm Noncommercial 1.0.0) + Spendenlink, verbundweit wortgleich, bewusst NICHT dismissible. Beide Link-Knöpfe nutzen `onClick: "echo '<URL>';", link: true` statt `link` direkt auf die URL zu setzen (bekannte Stolperfalle, sonst tut der Klick nichts). **„📖 Dokumentation & Hilfe" hatten wir entgegen einer ersten EMS-Einschätzung schon** (nur nicht als eigenständiges PHP wie bei MeterHub, sondern direkt in `form.json`) — der Forum-Hinweis fehlt weiterhin bewusst, da es noch keinen WPHub-Forumsthread gibt (unverändert seit Projektstart). 13 neue Tests.

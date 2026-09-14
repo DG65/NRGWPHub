@@ -233,16 +233,10 @@ class WPHub extends IPSModule
                     continue;
                 }
                 $fieldName = 'ManagedBy_' . $devPrefix;
-                // HeishaMon-Fund 13.09.2026: aktive HeishaMon-Instanz + noch
-                // nicht explizit gesetzte Steuerhoheit ist eine stille
-                // Luecke (Standard 'wphub' greift unbemerkt weiter) -- hier
-                // deutlich markieren statt nur allgemein im Formular oben.
-                $needsAttentionHere = ($heishaWarning !== null && !$this->deviceManagedByIsExplicit($devPrefix));
-                $captionPrefix = $needsAttentionHere ? '⚠️ Noch nicht zugeordnet -- ' : '';
                 $rows[] = [
                     'type'     => 'Select',
                     'name'     => $fieldName,
-                    'caption'  => $captionPrefix . (string)($d['name'] ?? 'Wärmepumpe') . ': Wer regelt diese Wärmepumpe?',
+                    'caption'  => $this->managedBySelectCaption($devPrefix, (string)($d['name'] ?? 'Wärmepumpe'), $heishaWarning !== null),
                     'value'    => $this->deviceManagedBy($devPrefix),
                     'options'  => [
                         ['caption' => 'WPHub (Comfort Cloud, Standard)', 'value' => 'wphub'],
@@ -909,6 +903,21 @@ class WPHub extends IPSModule
      * eine frische Installation ohne HeishaMon sich durch dieses Feld nicht
      * aendert.
      */
+    /**
+     * Beschriftung des je Geraet dynamisch erzeugten "Steuerhoheit"-Select
+     * (GetConfigurationForm()) -- als eigene Methode ausgelagert, damit
+     * SetManagedBy() dieselbe Berechnung fuer den Live-Refresh per
+     * UpdateFormField() nutzen kann (SUITE.md-Stolperfalle 12, siehe
+     * refreshDiscoverySummary(): ein bereits offenes Formular liest sich
+     * nach einer Aktion nicht von selbst neu ein).
+     */
+    private function managedBySelectCaption(string $prefix, string $deviceName, bool $heishaMonActive): string
+    {
+        $needsAttention = ($heishaMonActive && !$this->deviceManagedByIsExplicit($prefix));
+        $captionPrefix = $needsAttention ? '⚠️ Noch nicht zugeordnet -- ' : '';
+        return $captionPrefix . $deviceName . ': Wer regelt diese Wärmepumpe?';
+    }
+
     private function deviceManagedBy(string $prefix): string
     {
         $map = json_decode((string)$this->ReadPropertyString('DeviceManagedBy'), true);
@@ -966,6 +975,12 @@ class WPHub extends IPSModule
      * AdoptMeterHubAssignment(): IPS_SetProperty+ApplyChanges ist hier
      * zulaessig, weil es eine echte, vom Nutzer ausgeloeste Konfigurations-
      * aenderung ist, keine stille Selbstpersistenz (Store-Review-Regel 1).
+     * Store-Review Punkt 13 ("Sichtbare Rueckmeldung bei jeder Aktion"):
+     * nach ApplyChanges() zusaetzlich per UpdateFormField() die eigene
+     * Select-Beschriftung live nachziehen -- sonst bliebe das ⚠️-Praefix bis
+     * zum naechsten frischen Oeffnen des Formulars bestehen, obwohl die
+     * Zuordnung laengst gesetzt ist (gleicher Fehlertyp wie der urspruengliche
+     * DiscoverySummary-Bug, siehe refreshDiscoverySummary()).
      */
     public function SetManagedBy(string $prefix, string $value): void
     {
@@ -979,6 +994,22 @@ class WPHub extends IPSModule
         $map[$prefix] = $value;
         IPS_SetProperty($this->InstanceID, 'DeviceManagedBy', json_encode($map));
         IPS_ApplyChanges($this->InstanceID);
+
+        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
+        $deviceName = 'Wärmepumpe';
+        if (is_array($devices)) {
+            foreach ($devices as $d) {
+                if ((string)($d['prefix'] ?? '') === $prefix) {
+                    $deviceName = (string)($d['name'] ?? $deviceName);
+                    break;
+                }
+            }
+        }
+        $this->UpdateFormField(
+            'ManagedBy_' . $prefix,
+            'caption',
+            $this->managedBySelectCaption($prefix, $deviceName, $this->heishaMonCoexistenceWarning() !== null)
+        );
     }
 
     /**

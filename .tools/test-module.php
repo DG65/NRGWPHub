@@ -1196,11 +1196,19 @@ $selectAttention = findFormElement($formAttention['elements'], 'ManagedBy_' . $p
 check('Select-Caption warnt bei ungesetzter Steuerhoheit', strpos($selectAttention['caption'] ?? '', '⚠️ Noch nicht zugeordnet') === 0, $selectAttention['caption'] ?? 'null');
 
 // Explizit gesetzt (auch auf 'wphub') -> keine Luecke mehr, keine Markierung.
+$GLOBALS['ips']['formFieldUpdates'] = [];
 $mod->SetManagedBy($prefix, 'wphub');
 check('Nach explizitem Setzen: managedByNeedsAttention() leer', $managedByNeedsAttention->invoke($mod) === []);
 $formResolved = json_decode($mod->GetConfigurationForm(), true);
 $selectResolved = findFormElement($formResolved['elements'], 'ManagedBy_' . $prefix);
 check('Select-Caption ohne Warnung nach explizitem Setzen', strpos($selectResolved['caption'] ?? '', '⚠️') === false, $selectResolved['caption'] ?? 'null');
+
+// Store-Review Punkt 13: SetManagedBy() muss die Select-Caption im BEREITS
+// OFFENEN Formular per UpdateFormField() live nachziehen, nicht erst beim
+// naechsten frischen GetConfigurationForm()-Aufruf (gleicher Fehlertyp wie
+// der urspruengliche DiscoverySummary-Bug).
+$liveCaption = $GLOBALS['ips']['formFieldUpdates']['ManagedBy_' . $prefix]['caption'] ?? null;
+check('SetManagedBy() aktualisiert die Select-Caption live per UpdateFormField', $liveCaption !== null && strpos($liveCaption, '⚠️') === false, $liveCaption ?? 'null');
 
 $GLOBALS['ips']['heishaMonInstances'] = [];
 $GLOBALS['ips']['heishaMonInstanceStatus'] = [];
