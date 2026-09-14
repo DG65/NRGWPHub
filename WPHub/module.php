@@ -31,7 +31,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.8.0';
+    const NEWS_VERSION = '0.9.0';
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -112,6 +112,11 @@ class WPHub extends IPSModule
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt bestaetigter Stand des "Neu in Version"-Panels.
         $this->RegisterAttributeString('SeenNews', '');
+        // Einmalig dismissible "Wozu dieses Modul?"-Panel (SUITE.md
+        // "Einheitliche Formular-Optik" Punkt 0, EMS-Anstoss 14.09.2026) --
+        // bool statt versioniert, weil sich der Zweck eines Moduls nicht mit
+        // jedem Release aendert.
+        $this->RegisterAttributeBoolean('PurposeIntroGone', false);
         // Zeitpunkt der letzten erfolgreichen Geraetesuche (Verbund-Konvention
         // "Einheitliche Verbund-Status-Kopfzeile", SUITE.md 20.08.2026) --
         // siehe discoverySummaryLine().
@@ -167,10 +172,19 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• Neues Panel "🔀 Steuerhoheit": je gefundener Wärmepumpe festlegen, wer sie regelt (WPHub / HeishaMon / anderes Modul / niemand) -- praktisch, falls eine andere Software (z. B. HeishaMon) dieselbe Anlage lokal steuert. Standard bleibt "WPHub", ändert also nichts an einer frischen Installation. WPHub warnt zusätzlich, wenn eine aktive HeishaMon-Instanz gefunden wird.'],
+                    ['type' => 'Label', 'caption' => '• Neu ganz oben: "👋 Wozu dieses Modul?" erklärt kurz Sinn und Nutzen von WPHub (einmalig ausblendbar). Neu ganz unten: "🧡 Über dieses Modul" mit Lizenzhinweis und Spendenlink -- verbundweit einheitliche Formularstruktur (SUITE.md).'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
+        }
+
+        // "Wozu dieses Modul?" -- ganz oben, VOR dem News-Panel (siehe
+        // PurposeIntro()). Nach dem NewsPanel-Unshift eingehaengt, damit es
+        // darueber landet; der HeishaMon-Sicherheitshinweis weiter unten
+        // wird zuletzt eingehaengt und bleibt damit ganz oben, wenn aktiv.
+        $purposeIntro = $this->PurposeIntro();
+        if ($purposeIntro !== null) {
+            array_unshift($form['elements'], $purposeIntro);
         }
 
         // Einheitliche Verbund-Status-Kopfzeile (SUITE.md 20.08.2026): immer
@@ -264,6 +278,10 @@ class WPHub extends IPSModule
             }
         }
 
+        // "Über dieses Modul" -- ganz unten (SUITE.md "Einheitliche
+        // Formular-Optik" Punkt 5), nicht dismissible.
+        $form['elements'][] = $this->LicenseHint();
+
         return json_encode($form);
     }
 
@@ -295,6 +313,67 @@ class WPHub extends IPSModule
     {
         $this->WriteAttributeString('SeenNews', self::NEWS_VERSION);
         $this->UpdateFormField('NewsPanel', 'visible', false);
+    }
+
+    /**
+     * "Wozu dieses Modul?" -- SUITE.md "Einheitliche Formular-Optik" Punkt 0
+     * (EMS-Anstoss 14.09.2026, urspruenglicher Auslöser: ein Beta-Tester
+     * wusste am Anfang nicht, wozu ein Modul gut ist). Ganz oben im
+     * Formular, VOR dem "Neu in Version"-Panel, einmalig dismissible (bool-
+     * Attribut, NICHT versioniert -- der Zweck eines Moduls aendert sich
+     * nicht mit jedem Release). Referenz: MeterHub.
+     */
+    private function PurposeIntro(): ?array
+    {
+        if ($this->ReadAttributeBoolean('PurposeIntroGone')) {
+            return null;
+        }
+        return [
+            'type'     => 'ExpansionPanel',
+            'name'     => 'PurposeIntroPanel',
+            'expanded' => true,
+            'caption'  => '👋  Wozu dieses Modul?',
+            'items'    => [
+                ['type' => 'Label', 'caption' => 'WPHub meldet Panasonic-Aquarea-Wärmepumpen (Comfort-Cloud-Konto) beim NRG-Stack-Verbund an -- Betriebsdaten, Temperaturen und Steuerung (Flüsterbetrieb, Warmwasser-/Zonen-Sollwert, Urlaubstimer) direkt in Symcon, ohne HeishaMon-Zusatzplatine.'],
+                ['type' => 'Label', 'caption' => 'Nützlich für Auswertungen (z. B. NRGDashboard), Energiemanagement (EMS) und als Cloud-Alternative, wenn HeishaMons lokale MQTT-Bridge nicht infrage kommt. Hat WPHub UND HeishaMon dieselbe Wärmepumpe im Zugriff, regelt HeishaMon (siehe Panel „🔀 Steuerhoheit").'],
+                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckPurposeIntro($id);'],
+            ],
+        ];
+    }
+
+    public function AckPurposeIntro()
+    {
+        $this->WriteAttributeBoolean('PurposeIntroGone', true);
+        $this->UpdateFormField('PurposeIntroPanel', 'visible', false);
+    }
+
+    /**
+     * "Über dieses Modul" -- SUITE.md "Einheitliche Formular-Optik" Punkt 5.
+     * Ganz unten, NICHT dismissible (Lizenzhinweis, kein einmaliger Tipp),
+     * eingeklappt. Wortlaut verbundweit identisch ("Variante A"), nur
+     * LICENSE_URL modul-eigen. LICENSE_URL zeigt auf ems-integration -- das
+     * ist bislang der einzige Branch dieses Repos (noch kein main/beta-
+     * Release), enthaelt bereits den PolyForm-Text (gegengeprueft, siehe
+     * SUITE.md-Stolperfalle 01.09.2026: nicht blind auf main verlinken).
+     */
+    private const LICENSE_URL = 'https://github.com/DG65/NRGWPHub/blob/ems-integration/LICENSE';
+    private const PAYPAL_URL = 'https://paypal.me/DietmarGureth';
+
+    private function LicenseHint(): array
+    {
+        return [
+            'type'     => 'ExpansionPanel',
+            'expanded' => false,
+            'caption'  => '🧡  Über dieses Modul',
+            'items'    => [
+                ['type' => 'Label', 'caption' => 'Entstanden aus echter Begeisterung für die eigene Anlage — und ein paar durchgetippten Abenden. Trotzdem: Software-Hobby hin oder her, das hier ist geistiges Eigentum und echte Arbeit steckt drin.'],
+                ['type' => 'Label', 'caption' => 'Lizenz: PolyForm Noncommercial 1.0.0 — privat und nicht-kommerziell frei nutzbar, für den gewerblichen Einsatz braucht es eine gesonderte Lizenz vom Rechteinhaber.'],
+                ['type' => 'Button', 'caption' => 'Lizenztext ansehen', 'onClick' => "echo '" . self::LICENSE_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => 'Gewerbliche Nutzung oder Fragen zur Lizenz? Einfach melden: dietmar@gureth.eu'],
+                ['type' => 'Label', 'caption' => 'Gefällt dir das Modul und du möchtest trotzdem etwas dalassen? Über eine kleine Spende freue ich mich — völlig freiwillig, keine Gegenleistung nötig.'],
+                ['type' => 'Button', 'caption' => '☕  Spenden via PayPal', 'onClick' => "echo '" . self::PAYPAL_URL . "';", 'link' => true],
+            ],
+        ];
     }
 
     /**

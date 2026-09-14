@@ -197,6 +197,20 @@ class IPSModule
     {
         $this->attributes[$name] = $value;
     }
+    protected function RegisterAttributeBoolean(string $name, bool $default): void
+    {
+        if (!isset($this->attributes[$name])) {
+            $this->attributes[$name] = $default;
+        }
+    }
+    protected function ReadAttributeBoolean(string $name): bool
+    {
+        return (bool)($this->attributes[$name] ?? false);
+    }
+    protected function WriteAttributeBoolean(string $name, bool $value): void
+    {
+        $this->attributes[$name] = $value;
+    }
     protected function RegisterTimer(string $ident, int $interval, string $script): void
     {
         $this->timers[$ident] = $interval;
@@ -1191,6 +1205,46 @@ check('Select-Caption ohne Warnung nach explizitem Setzen', strpos($selectResolv
 $GLOBALS['ips']['heishaMonInstances'] = [];
 $GLOBALS['ips']['heishaMonInstanceStatus'] = [];
 $GLOBALS['ips']['properties']['DeviceManagedBy'] = '{}';
+
+// ---------------------------------------------------------------------------
+echo "Block 4h: Formular-Konvention (\"Wozu dieses Modul?\" + \"Über dieses Modul\")\n";
+// ---------------------------------------------------------------------------
+// SUITE.md "Einheitliche Formular-Optik" Punkt 0 + 5, EMS-Anstoss 14.09.2026.
+
+$formPurpose = json_decode($mod->GetConfigurationForm(), true);
+$purposePanel = findFormElement($formPurpose['elements'], 'PurposeIntroPanel');
+check('"Wozu dieses Modul?"-Panel vorhanden', $purposePanel !== null);
+check('Panel ist standardmaessig aufgeklappt', ($purposePanel['expanded'] ?? false) === true);
+check('Panel-Caption korrekt', ($purposePanel['caption'] ?? '') === '👋  Wozu dieses Modul?');
+check('Panel steht vor dem "Neu in Version"-Panel', array_search('PurposeIntroPanel', array_column($formPurpose['elements'], 'name'), true)
+    < array_search('NewsPanel', array_column($formPurpose['elements'], 'name'), true));
+
+$mod->AckPurposeIntro();
+$getAttrBool = new ReflectionMethod(WPHub::class, 'ReadAttributeBoolean');
+$getAttrBool->setAccessible(true);
+check('AckPurposeIntro() setzt PurposeIntroGone', $getAttrBool->invoke($mod, 'PurposeIntroGone') === true);
+$formAfterAck = json_decode($mod->GetConfigurationForm(), true);
+check('Panel erscheint nach Bestaetigen nicht mehr', findFormElement($formAfterAck['elements'], 'PurposeIntroPanel') === null);
+
+// "Über dieses Modul" -- ganz unten, nicht dismissible, eingeklappt.
+$licenseHint = end($formAfterAck['elements']);
+check('"Über dieses Modul" steht ganz unten', ($licenseHint['caption'] ?? '') === '🧡  Über dieses Modul');
+check('"Über dieses Modul" ist eingeklappt', ($licenseHint['expanded'] ?? true) === false);
+check('"Über dieses Modul" hat kein "name" (nicht dismissible)', !isset($licenseHint['name']));
+$licenseButton = null;
+$paypalButton = null;
+foreach ($licenseHint['items'] as $item) {
+    if (($item['caption'] ?? '') === 'Lizenztext ansehen') {
+        $licenseButton = $item;
+    }
+    if (($item['caption'] ?? '') === '☕  Spenden via PayPal') {
+        $paypalButton = $item;
+    }
+}
+check('Lizenz-Knopf vorhanden mit link=true (Stolperfalle 01.09.2026)', $licenseButton !== null && ($licenseButton['link'] ?? false) === true);
+check('Lizenz-Knopf-onClick ist ein echo (nicht die URL direkt in link)', strpos($licenseButton['onClick'] ?? '', "echo 'https://github.com/DG65/NRGWPHub/blob/ems-integration/LICENSE'") === 0, $licenseButton['onClick'] ?? 'null');
+check('PayPal-Knopf vorhanden mit link=true', $paypalButton !== null && ($paypalButton['link'] ?? false) === true);
+check('PayPal-Knopf-onClick ist ein echo', strpos($paypalButton['onClick'] ?? '', "echo 'https://paypal.me/DietmarGureth'") === 0, $paypalButton['onClick'] ?? 'null');
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";
