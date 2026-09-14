@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/libs/ComfortCloudClient.php';
+require_once __DIR__ . '/libs/VaillantClient.php';
 
 // NRG-Stack WPHub -- Waermepumpen-Cloud-Anbindungen, Start mit Panasonic
 // Comfort Cloud (Cloud-Alternative zu HeishaMon fuer Nutzer ohne HeishaMon-
@@ -31,7 +32,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.9.0';
+    const NEWS_VERSION = '0.10.0';
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -65,12 +66,43 @@ class WPHub extends IPSModule
     const MANAGED_BY_VALUES = ['wphub', 'heishamon', 'other', 'none'];
     const MANAGED_BY_DEFAULT = 'wphub';
 
+    // Unterstuetzte Hersteller (Manufacturer-Property, Muster InverterHub:
+    // eine Select-Property schaltet Formular-Panel UND Treiber-Logik um,
+    // Dietmar-Anstoss 14.09.2026 "andere WP-Hersteller mitnehmen"). Panasonic
+    // bleibt Standard, damit jede bestehende Installation unveraendert
+    // funktioniert. Vaillant ist Stand 14.09.2026 ungeprueft (kein Testkonto),
+    // siehe VaillantClient.php und CHANGELOG.
+    const MANUFACTURER_VALUES = ['panasonic', 'vaillant'];
+    const MANUFACTURER_DEFAULT = 'panasonic';
+
+    // Laender, in denen die myVAILLANT-App die Marke "Vaillant" fuehrt
+    // (Realm vaillant-{land}-b2c) -- Auswahl aus signalkraft/myPyllant
+    // const.py COUNTRIES['vaillant'], auf den DACH-/West-EU-Kern beschraenkt.
+    const VAILLANT_COUNTRIES = [
+        'germany' => 'Deutschland', 'austria' => 'Österreich', 'switzerland' => 'Schweiz',
+        'netherlands' => 'Niederlande', 'belgium' => 'Belgien', 'france' => 'Frankreich',
+        'luxembourg' => 'Luxemburg', 'italy' => 'Italien', 'spain' => 'Spanien',
+        'poland' => 'Polen', 'denmark' => 'Dänemark', 'unitedkingdom' => 'Vereinigtes Königreich',
+    ];
+
     public function Create()
     {
         parent::Create();
 
         $this->RegisterPropertyBoolean('WPHUB_Active', false);
         $this->RegisterPropertyInteger('WPHUB_Interval', 60);
+
+        // Hersteller-Auswahl (Dietmar-Anstoss 14.09.2026, Muster InverterHub):
+        // schaltet Formular-Panel und Treiber-Logik um, siehe MANUFACTURER_VALUES.
+        // Panasonic bleibt Standard -- bestehende Installationen unveraendert.
+        $this->RegisterPropertyString('Manufacturer', self::MANUFACTURER_DEFAULT);
+
+        // myVAILLANT-Login (E-Mail + Passwort NUR fuer den einmaligen
+        // Handshake, siehe loginVaillant(), danach geleert -- gleiches Muster
+        // wie CC_Email/CC_Password unten). Land bestimmt den Keycloak-Realm.
+        $this->RegisterPropertyString('VAI_Email', '');
+        $this->RegisterPropertyString('VAI_Password', '');
+        $this->RegisterPropertyString('VAI_Country', 'germany');
 
         // Panasonic Comfort Cloud Login (E-Mail + Passwort NUR fuer den
         // einmaligen Handshake-Aufruf, siehe Login(), danach geleert).
@@ -108,6 +140,11 @@ class WPHub extends IPSModule
         // Ergebnis des Handshakes -- NICHT das Passwort selbst.
         $this->RegisterAttributeString('CC_Token', '');
         $this->RegisterAttributeString('CC_DeviceList', '[]');
+        // Eigenes Token-/Geraetelisten-Paar fuer Vaillant -- ein Konto pro
+        // Manufacturer-Auswahl, beide Staende bleiben beim Umschalten separat
+        // erhalten (kein Datenverlust bei Hin-/Herschalten zum Ausprobieren).
+        $this->RegisterAttributeString('VAI_Token', '');
+        $this->RegisterAttributeString('VAI_DeviceList', '[]');
         // Zuletzt automatisch ermittelte App-Version (hat Vorrang).
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt bestaetigter Stand des "Neu in Version"-Panels.
@@ -133,7 +170,7 @@ class WPHub extends IPSModule
 
         $active   = $this->ReadPropertyBoolean('WPHUB_Active');
         $interval = max(30, $this->ReadPropertyInteger('WPHUB_Interval'));
-        $hasToken = $this->tokenBundle() !== null;
+        $hasToken = $this->isVaillant() ? ($this->vaillantTokenBundle() !== null) : ($this->tokenBundle() !== null);
 
         if (!$active) {
             $this->SetTimerInterval('WPHUB_UpdateTimer', 0);
@@ -159,7 +196,7 @@ class WPHub extends IPSModule
         $libraryInfo = @json_decode((string)@file_get_contents(__DIR__ . '/../library.json'), true);
         $libraryVersion = (is_array($libraryInfo) && isset($libraryInfo['version'])) ? (string)$libraryInfo['version'] : '?';
         $this->updateFormElement($form['elements'], 'VersionInfo', [
-            'caption' => 'ℹ️ WPHub Version ' . $libraryVersion . ' -- Wärmepumpen-Cloud-Anbindung, Start mit Panasonic Comfort Cloud.',
+            'caption' => 'ℹ️ WPHub Version ' . $libraryVersion . ' -- Wärmepumpen-Cloud-Anbindung, Panasonic Comfort Cloud und (neu, ungeprüft) Vaillant myVAILLANT.',
         ]);
 
         // "Neu in Version"-Panel vorn einhaengen, solange diese Version noch
@@ -172,7 +209,7 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• Neu ganz oben: "👋 Wozu dieses Modul?" erklärt kurz Sinn und Nutzen von WPHub (einmalig ausblendbar). Neu ganz unten: "🧡 Über dieses Modul" mit Lizenzhinweis und Spendenlink -- verbundweit einheitliche Formularstruktur (SUITE.md).'],
+                    ['type' => 'Label', 'caption' => '• Neu: Panel "🏭 Hersteller" -- WPHub kann jetzt auch Vaillant-Wärmepumpen über myVAILLANT anbinden (zweiter Hersteller neben Panasonic Comfort Cloud). Vaillant ist bewusst nur lesend und noch ungeprüft an einem echten Konto -- Rückmeldungen willkommen.'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
@@ -192,6 +229,13 @@ class WPHub extends IPSModule
         $this->updateFormElement($form['elements'], 'DiscoverySummary', [
             'caption' => $this->discoverySummaryLine(),
         ]);
+
+        // Hersteller-Auswahl (Manufacturer): nur das passende Anmelde-Panel
+        // zeigen -- beide Panels stehen fest in form.json, hier wird nur
+        // umgeschaltet (Muster MeterHubSuggestion/-AdoptButton weiter unten).
+        $manufacturer = $this->ReadPropertyString('Manufacturer');
+        $this->updateFormElement($form['elements'], 'PanasonicPanel', ['visible' => ($manufacturer !== 'vaillant')]);
+        $this->updateFormElement($form['elements'], 'VaillantPanel', ['visible' => ($manufacturer === 'vaillant')]);
 
         // MeterHub-Vorschlag: nur solange noch nichts verknuepft ist (0/0) --
         // wer schon manuell/per Uebernahme verknuepft hat, soll nicht bei
@@ -224,8 +268,8 @@ class WPHub extends IPSModule
         // Panel, nur sichtbar, sobald mindestens ein Geraet bekannt ist (vor
         // der ersten Anmeldung gibt es nichts zuzuordnen). Direkt nach dem
         // "Allgemein"-Panel eingefuegt (GeneralPanel-Name in form.json).
-        $devicesForForm = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
-        if (is_array($devicesForForm) && count($devicesForForm) > 0) {
+        $devicesForForm = $this->readDeviceList();
+        if (count($devicesForForm) > 0) {
             $rows = [];
             foreach ($devicesForForm as $d) {
                 $devPrefix = (string)($d['prefix'] ?? '');
@@ -322,6 +366,34 @@ class WPHub extends IPSModule
             }
         }
         return false;
+    }
+
+    /** Aktuell gewaehlter Hersteller ist Vaillant statt des Standards Panasonic. */
+    private function isVaillant(): bool
+    {
+        return $this->ReadPropertyString('Manufacturer') === 'vaillant';
+    }
+
+    /**
+     * Attribut-Name der Geraetliste des aktuell gewaehlten Herstellers --
+     * ein WPHub-Konto ist immer genau EIN Hersteller (Manufacturer-Select),
+     * daher genuegt eine einzige gemeinsame Stelle statt jeden Lese-/
+     * Schreibzugriff einzeln zu verzweigen.
+     */
+    private function deviceListAttribute(): string
+    {
+        return $this->isVaillant() ? 'VAI_DeviceList' : 'CC_DeviceList';
+    }
+
+    private function readDeviceList(): array
+    {
+        $devices = json_decode((string)$this->ReadAttributeString($this->deviceListAttribute()), true);
+        return is_array($devices) ? $devices : [];
+    }
+
+    private function writeDeviceList(array $devices): void
+    {
+        $this->WriteAttributeString($this->deviceListAttribute(), json_encode($devices));
     }
 
     // Bestaetigt das "Neu in Version"-Panel fuer die aktuelle Version.
@@ -557,6 +629,10 @@ class WPHub extends IPSModule
         if (!$this->ReadPropertyBoolean('WPHUB_Active')) {
             return;
         }
+        if ($this->isVaillant()) {
+            $this->updateVaillant();
+            return;
+        }
         $bundle = $this->ensureToken();
         if ($bundle === null) {
             return; // Status 201 gesetzt, Meldung im Protokoll
@@ -622,10 +698,7 @@ class WPHub extends IPSModule
      */
     public function GetFunctions()
     {
-        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
-        if (!is_array($devices)) {
-            $devices = [];
-        }
+        $devices = $this->readDeviceList();
 
         // Externe Sensoren/Zaehler (contractVersion 1.5, Muster von HeishaMon
         // uebernommen, DG65/NRGHeishaMon): freie Verknuepfung zu einer
@@ -682,8 +755,14 @@ class WPHub extends IPSModule
                 // hier aus einer manuell verknuepften externen Variable statt
                 // aus der Cloud -- 0, solange nichts verknuepft ist.
                 'mainInletTempID'      => $this->extVariableID('Ext_MainInletTempVariable'),
-                'mainOutletTempID'     => $this->extVariableID('Ext_MainOutletTempVariable'),
-                'bufferTempID'         => $this->extVariableID('Ext_BufferTempVariable'),
+                // Vaillant liefert Vorlauf-/Puffertemperatur direkt aus der
+                // Cloud (Ident Vorlauftemperatur/Puffertemperatur, siehe
+                // maintainDeviceVariablesVaillant()) -- geraeteeigener Wert
+                // hat Vorrang vor der externen Verknuepfung; bei Panasonic
+                // legt WPHub diese Idents nie an, contractFieldID() liefert
+                // dann 0 und der bisherige Ext_*-Fallback greift unveraendert.
+                'mainOutletTempID'     => $this->contractFieldID($prefix, 'Vorlauftemperatur') ?: $this->extVariableID('Ext_MainOutletTempVariable'),
+                'bufferTempID'         => $this->contractFieldID($prefix, 'Puffertemperatur') ?: $this->extVariableID('Ext_BufferTempVariable'),
                 // contractVersion 1.11 (Dashboard-Anfrage 17.08.2026, EMS zur
                 // SUITE.md-Registrierung vorgeschlagen): die Panasonic Cloud
                 // liefert Tageswerte, die um Mitternacht auf 0 zurueckspringen
@@ -800,8 +879,8 @@ class WPHub extends IPSModule
         if ($ts <= 0) {
             return 'ℹ️ Noch nicht gesucht.';
         }
-        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
-        $count = is_array($devices) ? count($devices) : 0;
+        $devices = $this->readDeviceList();
+        $count = count($devices);
         $icon = $count > 0 ? '✅' : '⚠️';
         $was = $count === 1 ? 'Wärmepumpe' : 'Wärmepumpen';
         return $icon . ' ' . $count . ' ' . $was . ' gefunden (zuletzt ' . date('H:i:s', $ts) . ' Uhr).';
@@ -976,10 +1055,7 @@ class WPHub extends IPSModule
         if ($this->heishaMonCoexistenceWarning() === null) {
             return [];
         }
-        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
-        if (!is_array($devices)) {
-            return [];
-        }
+        $devices = $this->readDeviceList();
         $names = [];
         foreach ($devices as $d) {
             $devPrefix = (string)($d['prefix'] ?? '');
@@ -1017,14 +1093,12 @@ class WPHub extends IPSModule
         IPS_SetProperty($this->InstanceID, 'DeviceManagedBy', json_encode($map));
         IPS_ApplyChanges($this->InstanceID);
 
-        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
+        $devices = $this->readDeviceList();
         $deviceName = 'Wärmepumpe';
-        if (is_array($devices)) {
-            foreach ($devices as $d) {
-                if ((string)($d['prefix'] ?? '') === $prefix) {
-                    $deviceName = (string)($d['name'] ?? $deviceName);
-                    break;
-                }
+        foreach ($devices as $d) {
+            if ((string)($d['prefix'] ?? '') === $prefix) {
+                $deviceName = (string)($d['name'] ?? $deviceName);
+                break;
             }
         }
         $this->UpdateFormField(
@@ -1119,9 +1193,9 @@ class WPHub extends IPSModule
         $prefix = substr($Ident, 0, 9);
         $field = substr($Ident, 9);
 
-        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
+        $devices = $this->readDeviceList();
         $dev = null;
-        foreach ((is_array($devices) ? $devices : []) as $d) {
+        foreach ($devices as $d) {
             if (($d['prefix'] ?? '') === $prefix) {
                 $dev = $d;
                 break;
@@ -1274,6 +1348,221 @@ class WPHub extends IPSModule
         return $new;
     }
 
+    // ------------------------------------------------------------------
+    // Vaillant myVAILLANT -- eigener, paralleler Zweig statt Umbau der
+    // Panasonic-Pfade oben (Muster InverterHub: je Hersteller ein eigener
+    // Treiber/Zweig, siehe MANUFACTURER_VALUES). Stand 14.09.2026 bewusst
+    // NUR lesend (keine Steuerbefehle) und ungeprueft an einer echten Cloud
+    // -- siehe VaillantClient.php.
+    // ------------------------------------------------------------------
+
+    private function vaillantClient(): WPHUB_VaillantClient
+    {
+        $country = trim($this->ReadPropertyString('VAI_Country'));
+        if ($country === '' || !isset(self::VAILLANT_COUNTRIES[$country])) {
+            $country = 'germany';
+        }
+        return new WPHUB_VaillantClient($country, function (string $topic, string $text) {
+            $this->SendDebug('Vaillant/' . $topic, $text, 0);
+        });
+    }
+
+    /** Token-Buendel aus dem Vaillant-Attribut, null wenn (noch) keines da ist. */
+    private function vaillantTokenBundle(): ?array
+    {
+        $bundle = json_decode((string)$this->ReadAttributeString('VAI_Token'), true);
+        if (!is_array($bundle) || ($bundle['accessToken'] ?? '') === '') {
+            return null;
+        }
+        return $bundle;
+    }
+
+    /** Vaillant-Gegenstueck zu ensureToken() -- gleiches Erneuerungs-Muster. */
+    private function vaillantEnsureToken(): ?array
+    {
+        $bundle = $this->vaillantTokenBundle();
+        if ($bundle === null) {
+            $this->SetStatus(201);
+            return null;
+        }
+        if ((int)($bundle['expiresAt'] ?? 0) - 300 > time()) {
+            return $bundle;
+        }
+        $client = $this->vaillantClient();
+        $new = $client->refresh($bundle);
+        if ($new === null) {
+            $this->LogMessage('myVAILLANT-Zugangsschlüssel abgelaufen und Erneuerung fehlgeschlagen (' . $client->getLastError() . ') — bitte im Formular neu anmelden.', KL_WARNING);
+            $this->SetStatus(201);
+            $this->SetTimerInterval('WPHUB_UpdateTimer', 0);
+            return null;
+        }
+        $this->WriteAttributeString('VAI_Token', json_encode($new));
+        return $new;
+    }
+
+    /**
+     * Anlagenanmeldung -- ausschliesslich auf Klick der Formular-
+     * Schaltflaeche, nie automatisch (gleiches Muster wie Login()). Steuert
+     * bewusst keine Geraete (Stand 14.09.2026, siehe Klassenkopf
+     * VaillantClient.php) -- nur Anmeldung + Geraeteliste + Basiswerte.
+     */
+    public function LoginVaillant(): void
+    {
+        $say = function (string $m) {
+            $this->UpdateFormField('VAI_Result', 'caption', $m);
+            $this->UpdateFormField('VAI_Result', 'visible', true);
+            trigger_error('WPHUB_LoginVaillant #' . $this->InstanceID . ': ' . $m, E_USER_NOTICE);
+        };
+
+        $email = trim($this->ReadPropertyString('VAI_Email'));
+        $pass  = (string)$this->ReadPropertyString('VAI_Password');
+        if ($email === '' || $pass === '') {
+            $say('❌ Bitte zuerst E-Mail und Passwort eintragen und übernehmen, dann anmelden.');
+            return;
+        }
+
+        $client = $this->vaillantClient();
+        $bundle = $client->login($email, $pass);
+        if ($bundle === null) {
+            $say('❌ ' . $client->getLastError());
+            return;
+        }
+
+        $this->WriteAttributeString('VAI_Token', json_encode($bundle));
+        IPS_SetProperty($this->InstanceID, 'VAI_Password', '');
+        IPS_ApplyChanges($this->InstanceID);
+        $this->UpdateFormField('VAI_Password', 'value', '');
+
+        $devices = $this->refreshDevicesVaillant($bundle, $client);
+        if ($devices === null) {
+            $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Anlagenliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
+            return;
+        }
+        $this->refreshDiscoverySummary();
+        if (count($devices) === 0) {
+            $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Im Konto wurde aber keine Anlage gefunden.');
+            return;
+        }
+        $lines = ['✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Gefundene Anlagen:'];
+        foreach ($devices as $d) {
+            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
+        }
+        $say(implode("\n", $lines));
+    }
+
+    private function updateVaillant(): void
+    {
+        $bundle = $this->vaillantEnsureToken();
+        if ($bundle === null) {
+            return; // Status 201 gesetzt, Meldung im Protokoll
+        }
+        $client = $this->vaillantClient();
+        if ($this->refreshDevicesVaillant($bundle, $client) === null) {
+            $this->markAllUnreachable();
+            $this->LogMessage('Aktualisierung fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
+            return;
+        }
+        $this->refreshDiscoverySummary();
+
+        $needsAttention = $this->managedByNeedsAttention();
+        if (count($needsAttention) > 0) {
+            if ($this->GetStatus() !== 203) {
+                $this->LogMessage('Steuerhoheit noch nicht zugeordnet, obwohl eine aktive HeishaMon-Instanz gefunden wurde: ' . implode(', ', $needsAttention) . ' — im WPHub-Formular unter „🔀 Steuerhoheit“ festlegen.', KL_WARNING);
+            }
+            $this->SetStatus(203);
+            return;
+        }
+        $this->SetStatus(102);
+    }
+
+    /**
+     * Anlagenliste laden und je Anlage die Basiswerte pflegen (siehe
+     * maintainDeviceVariablesVaillant()). Nur Regler-Typ "tli" wird
+     * unterstuetzt -- andere Anlagen werden uebersprungen und geloggt statt
+     * geraten (siehe VaillantClient::getControlIdentifier()).
+     */
+    private function refreshDevicesVaillant(array $bundle, WPHUB_VaillantClient $client): ?array
+    {
+        $homes = $client->getHomes($bundle);
+        if ($homes === null) {
+            return null;
+        }
+
+        $devices = [];
+        foreach ($homes as $home) {
+            $systemId = $home['systemId'];
+            $controlIdentifier = $client->getControlIdentifier($bundle, $systemId);
+            if ($controlIdentifier !== 'tli') {
+                $this->SendDebug('Vaillant/Geräte', 'Übersprungen (Regler-Typ "' . $controlIdentifier . '" noch nicht unterstützt): ' . $systemId, 0);
+                continue;
+            }
+            $system = $client->getSystem($bundle, $systemId);
+            if ($system === null) {
+                continue;
+            }
+            $name = trim((string)$home['homeName']) !== '' ? $home['homeName'] : ('Wärmepumpe ' . substr($systemId, 0, 8));
+            $prefix = $this->devicePrefix($systemId);
+            $reachable = (bool)($system['connected'] ?? true);
+
+            $this->maintainDeviceVariablesVaillant($prefix, $name, $system, $reachable);
+
+            $devices[] = [
+                'guid'          => $systemId,
+                'name'          => $name,
+                'prefix'        => $prefix,
+                'reachable'     => $reachable,
+                'operationMode' => null, // Vaillant-Steuerung noch nicht implementiert (siehe Klassenkopf)
+                'lastSeenAt'    => time(),
+            ];
+        }
+
+        $this->writeDeviceList($devices);
+        $this->WriteAttributeInteger('LastDiscoveryTs', time());
+        return $devices;
+    }
+
+    /**
+     * Variablen einer Vaillant-Anlage pflegen -- bewusst schmaler Umfang
+     * (nur Werte, die direkt unter state.system.* bestaetigt sind, siehe
+     * signalkraft/myPyllant models.py System.outdoor_temperature/
+     * water_pressure/... ). Gleiche Ident-Namen wie maintainDeviceVariables()
+     * (Panasonic), damit GetFunctions()/contractFieldID() unveraendert
+     * funktioniert -- der Vertrag ist bereits herstellerneutral.
+     */
+    private function maintainDeviceVariablesVaillant(string $prefix, string $name, array $system, bool $reachable): void
+    {
+        $pos = 0;
+        $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
+        $this->SetValue($prefix . 'Erreichbar', $reachable);
+
+        $state = (is_array($system['state'] ?? null) && is_array($system['state']['system'] ?? null)) ? $system['state']['system'] : [];
+
+        if (isset($state['outdoor_temperature']) && $this->isValidTemperature($state['outdoor_temperature'])) {
+            $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': Außentemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->ensureArchived($prefix . 'Aussentemperatur');
+            $this->SetValue($prefix . 'Aussentemperatur', (float)$state['outdoor_temperature']);
+        }
+        if (isset($state['system_flow_temperature']) && $this->isValidTemperature($state['system_flow_temperature'])) {
+            $this->MaintainVariable($prefix . 'Vorlauftemperatur', $name . ': Vorlauftemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Vorlauftemperatur', (float)$state['system_flow_temperature']);
+        }
+        if (isset($state['cylinder_temperature_sensor_top_c_h']) && $this->isValidTemperature($state['cylinder_temperature_sensor_top_c_h'])) {
+            $this->MaintainVariable($prefix . 'Puffertemperatur', $name . ': Puffertemperatur (oben)', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Puffertemperatur', (float)$state['cylinder_temperature_sensor_top_c_h']);
+        }
+        if (isset($state['cylinder_temperature_sensor_top_d_h_w']) && $this->isValidTemperature($state['cylinder_temperature_sensor_top_d_h_w'])) {
+            $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Warmwasser', (float)$state['cylinder_temperature_sensor_top_d_h_w']);
+        }
+        // Reiner Zusatzwert, nicht Teil des Verbund-Vertrags (kein
+        // gemeinsames *PressureID-Feld) -- Comfort Cloud liefert das gar
+        // nicht erst, daher hier bewusst kein Ident-Gleichlauf noetig.
+        if (isset($state['system_water_pressure']) && is_numeric($state['system_water_pressure'])) {
+            $this->MaintainVariable($prefix . 'Systemdruck', $name . ': Systemdruck', VARIABLETYPE_FLOAT, '', $pos++, true);
+            $this->SetValue($prefix . 'Systemdruck', (float)$state['system_water_pressure']);
+        }
+    }
+
     /**
      * Geraeteliste laden und je Aquarea-Waermepumpe die Variablen pflegen.
      * Die Betriebsdaten stehen INLINE in der device/group-Antwort (kein
@@ -1348,7 +1637,7 @@ class WPHub extends IPSModule
             }
         }
 
-        $this->WriteAttributeString('CC_DeviceList', json_encode($devices));
+        $this->writeDeviceList($devices);
         $this->WriteAttributeInteger('LastDiscoveryTs', time());
         return $devices;
     }
@@ -1569,8 +1858,8 @@ class WPHub extends IPSModule
     /** Bei Cloud-Ausfall: alle bekannten Geraete als unerreichbar markieren. */
     private function markAllUnreachable(): void
     {
-        $devices = json_decode((string)$this->ReadAttributeString('CC_DeviceList'), true);
-        if (!is_array($devices)) {
+        $devices = $this->readDeviceList();
+        if (count($devices) === 0) {
             return;
         }
         foreach ($devices as &$d) {
@@ -1581,7 +1870,7 @@ class WPHub extends IPSModule
             }
         }
         unset($d);
-        $this->WriteAttributeString('CC_DeviceList', json_encode($devices));
+        $this->writeDeviceList($devices);
     }
 
     /** Stabiler Ident-Praefix je Geraet, abgeleitet aus der Geraete-GUID. */

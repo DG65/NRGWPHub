@@ -29,6 +29,27 @@ eine Hersteller-Auswahl + je Hersteller ein Formular-Panel. Alles andere
 (Geräteliste, Variablenpflege, Präfixbildung, `WPHUB_GetFunctions()`-Vertrag)
 ist bereits herstellerneutral.
 
+**Update 14.09.2026 (0.10.0):** Der "nicht von uns aus starten"-Vorbehalt ist
+jetzt Dietmars ausdrücklicher Auftrag ("Ich hätte das schon gerne gebaut").
+Umgesetzt: `Manufacturer`-Select-Property (Standard weiterhin "panasonic",
+Muster InverterHub) + zweiter, paralleler Treiber-Zweig fuer **Vaillant
+myVAILLANT** (`WPHub/libs/VaillantClient.php`, Referenz signalkraft/myPyllant).
+Panasonic-Pfade (Login/Update/RequestAction/ccClient/refreshDevices/
+maintainDeviceVariables) bewusst NICHT angefasst -- der Vaillant-Zweig hat
+eigene Funktionen (loginVaillant ist public `LoginVaillant()`, dazu
+`updateVaillant()`/`refreshDevicesVaillant()`/`maintainDeviceVariablesVaillant()`/
+`vaillantClient()`/`vaillantTokenBundle()`/`vaillantEnsureToken()`) und ein
+eigenes Attribut-Paar (`VAI_Token`/`VAI_DeviceList`, getrennt von
+`CC_Token`/`CC_DeviceList` ueber `deviceListAttribute()`/`readDeviceList()`/
+`writeDeviceList()`). Grund: Dietmars Panasonic-Instanz ist live produktiv --
+ein gemeinsamer Umbau der bestehenden Pfade waere ein unnoetiges Risiko dafuer
+gewesen. Vaillant ist **bewusst nur lesend** (keine Steuerbefehle) und **Stand
+14.09.2026 ungeprueft an einem echten Konto** -- kein Vaillant-Testkonto
+vorhanden, nur die Login-/ALTCHA-Logik ist eigenstaendig (mit nachgerechnetem
+PBKDF2-Schluessel) unit-getestet. Naechster Schritt vor mehr Ausbau: ein
+Tester mit echter Vaillant-Anlage (Forumsthread wirbt dafuer, siehe
+`/Users/dietmar/Nextcloud/Claude/forum-ankuendigung-wphub.md`).
+
 ## Verbund-Konventionen (kondensiert, siehe SUITE.md für Details)
 
 1. **Marke/Repo:** Verbund heißt nach außen "NRG-Stack", DG65 = Hersteller/Org

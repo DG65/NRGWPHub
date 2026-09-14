@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.10.0 (Build 66) — 14.09.2026
+
+- **Zweiter Hersteller: Vaillant myVAILLANT (aroTHERM/aroTHERM plus), neben Panasonic Comfort Cloud.** Dietmars Anstoß ("andere WP-Hersteller mit Cloud-Zugängen mitnehmen"), Architektur dafür am Vorbild InverterHub gebaut: neue Property `Manufacturer` (Select, Standard weiterhin „Panasonic" — jede bestehende Installation bleibt unverändert) schaltet Formular-Panel und Treiber-Zweig um. Vaillant-Login läuft über Keycloak/OIDC mit PKCE + einem ALTCHA-Proof-of-Work (Referenz: signalkraft/myPyllant, Python, aktiv gepflegt) — neue Klasse `WPHUB_VaillantClient` (`WPHub/libs/VaillantClient.php`). Liefert je Anlage Erreichbarkeit, Außentemperatur, Vorlauf-/Puffertemperatur, Warmwasser sowie neu einen Systemdruck-Wert (Panasonic liefert das nicht) — alles über dieselben Idents wie bei Panasonic, wodurch `WPHUB_GetFunctions()` (contractVersion unverändert 1.15) ohne Änderung auch Vaillant-Geräte trägt. **Bewusst nur lesend** (keine Steuerbefehle) und **Stand 14.09.2026 ungeprüft an einem echten Konto** — Dietmar hat keine Vaillant-Anlage zum Testen; nur der Regler-Typ „tli" (der häufigste) wird unterstützt, andere werden übersprungen statt geraten. Neues Panel „🏭 Hersteller" mit Feldhilfe. 33 neue Tests, u. a. ein Korrektheitsnachweis für den ALTCHA-Löser (nachgerechneter PBKDF2-Schlüssel, nicht nur „kein Fehler").
+
 ## 0.9.2 (Build 65) — 14.09.2026
 
 - **Feldhilfe für die vier Steuerhoheit-Optionen ergänzt.** EMS-Bitte im Auftrag von Dietmar (Doku/Hilfe-Durchsicht vor dem Store-Launch): das Panel „🔀 Steuerhoheit" hatte nur eine kurze Info-Zeile, aber — anders als die übrigen Panels — keinen `PopupButton` dazu, was „WPHub"/„HeishaMon"/„Anderes Modul"/„Niemand — nur lesen" konkret bedeuten. Ergänzt nach dem etablierten Muster (RowLayout + `PopupButton`, 460px, volle konkrete Frage als Beschriftung). 1 neuer Test.

@@ -49,6 +49,43 @@
         },
         {
             "type": "ExpansionPanel",
+            "name": "ManufacturerPanel",
+            "caption": "🏭 Hersteller",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Select",
+                            "name": "Manufacturer",
+                            "caption": "Wärmepumpen-Hersteller",
+                            "options": [
+                                {"caption": "Panasonic (Comfort Cloud)", "value": "panasonic"},
+                                {"caption": "Vaillant (myVAILLANT) -- neu, ungeprüft", "value": "vaillant"}
+                            ]
+                        },
+                        {
+                            "type": "PopupButton",
+                            "caption": "Warum steht bei Vaillant „ungeprüft“?",
+                            "width": "460px",
+                            "popup": {
+                                "caption": "Warum steht bei Vaillant „ungeprüft“?",
+                                "items": [
+                                    {
+                                        "type": "Label",
+                                        "caption": "Die Vaillant-Anbindung ist nach der aktiv gepflegten Referenz signalkraft/myPyllant gebaut, aber noch nie gegen ein echtes myVAILLANT-Konto gelaufen -- es gibt (Stand 14.09.2026) noch keinen Tester mit passender Anlage. Sie ist bewusst nur lesend (keine Steuerbefehle). Rückmeldungen (auch Fehler) gerne im WPHub-Forumsthread."
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
+            "name": "PanasonicPanel",
             "caption": "☁️ Panasonic Comfort Cloud",
             "expanded": true,
             "items": [
@@ -155,6 +192,78 @@
         },
         {
             "type": "ExpansionPanel",
+            "name": "VaillantPanel",
+            "caption": "☁️ Vaillant myVAILLANT",
+            "expanded": true,
+            "items": [
+                {
+                    "type": "RowLayout",
+                    "items": [
+                        {
+                            "type": "Label",
+                            "caption": "Zugangsdaten werden nur für die einmalige Anmeldung verwendet, danach nicht mehr gespeichert -- nur der resultierende Zugangsschlüssel."
+                        },
+                        {
+                            "type": "PopupButton",
+                            "caption": "Ist die Speicherung der Zugangsdaten sicher?",
+                            "width": "460px",
+                            "popup": {
+                                "caption": "Ist die Speicherung der Zugangsdaten sicher?",
+                                "items": [
+                                    {
+                                        "type": "Label",
+                                        "caption": "IP-Symcon verschlüsselt Attribute NICHT at rest. \"Sicher\" heißt hier: nicht im Formular/Protokoll sichtbar -- keine echte Verschlüsselung. Das Passwort wird nur für die einmalige Anmeldung verwendet und danach automatisch geleert; gespeichert bleibt nur der Zugangsschlüssel (Token)."
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "type": "ValidationTextBox",
+                    "name": "VAI_Email",
+                    "caption": "myVAILLANT E-Mail"
+                },
+                {
+                    "type": "PasswordTextBox",
+                    "name": "VAI_Password",
+                    "caption": "myVAILLANT Passwort (wird nach der Anmeldung geleert)"
+                },
+                {
+                    "type": "Select",
+                    "name": "VAI_Country",
+                    "caption": "Land des Kontos",
+                    "options": [
+                        {"caption": "Deutschland", "value": "germany"},
+                        {"caption": "Österreich", "value": "austria"},
+                        {"caption": "Schweiz", "value": "switzerland"},
+                        {"caption": "Niederlande", "value": "netherlands"},
+                        {"caption": "Belgien", "value": "belgium"},
+                        {"caption": "Frankreich", "value": "france"},
+                        {"caption": "Luxemburg", "value": "luxembourg"},
+                        {"caption": "Italien", "value": "italy"},
+                        {"caption": "Spanien", "value": "spain"},
+                        {"caption": "Polen", "value": "poland"},
+                        {"caption": "Dänemark", "value": "denmark"},
+                        {"caption": "Vereinigtes Königreich", "value": "unitedkingdom"}
+                    ]
+                },
+                {
+                    "type": "Button",
+                    "name": "VAI_LoginButton",
+                    "caption": "🔑  Anmelden und Anlagen suchen",
+                    "onClick": "WPHUB_LoginVaillant($id);"
+                },
+                {
+                    "type": "Label",
+                    "name": "VAI_Result",
+                    "caption": "",
+                    "visible": false
+                }
+            ]
+        },
+        {
+            "type": "ExpansionPanel",
             "name": "ExtSensorsPanel",
             "caption": "🔌 Externe Sensoren & Zähler (optional)",
             "expanded": false,
@@ -233,7 +342,7 @@
         {
             "code": 201,
             "icon": "error",
-            "caption": "Anmeldung an der Comfort Cloud erforderlich -- im Formular anmelden"
+            "caption": "Anmeldung erforderlich -- im Formular anmelden"
         },
         {
             "code": 202,

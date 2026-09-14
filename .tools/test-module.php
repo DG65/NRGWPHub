@@ -436,6 +436,34 @@ class FakeCC extends WPHUB_ComfortCloudClient
     }
 }
 
+// Vaillant-Cloud-Client-Attrappe (Block 6) -- liefert eine konfigurierbare
+// Anlagenliste + rohe System-JSONs, ohne echten Netzzugriff.
+class FakeVaillant extends WPHUB_VaillantClient
+{
+    public $homesResult = [];              // [['systemId'=>str,'homeName'=>str], ...]
+    public $controlIdentifiers = [];       // systemId => 'tli'|'vrc700'|...
+    public $systemsById = [];              // systemId => rohes System-Array | null
+    public $homesCalls = 0;
+
+    public function getHomes(array $bundle): ?array
+    {
+        $this->homesCalls++;
+        return $this->homesResult;
+    }
+    public function getControlIdentifier(array $bundle, string $systemId): string
+    {
+        return $this->controlIdentifiers[$systemId] ?? 'tli';
+    }
+    public function getSystem(array $bundle, string $systemId): ?array
+    {
+        return $this->systemsById[$systemId] ?? null;
+    }
+    public function getLastError(): string
+    {
+        return 'Vaillant-Attrappen-Fehler';
+    }
+}
+
 // ---------------------------------------------------------------------------
 echo "Block 1: Lebenszyklus und Status\n";
 // ---------------------------------------------------------------------------
@@ -1262,6 +1290,137 @@ check('PayPal-Knopf vorhanden mit link=true', $paypalButton !== null && ($paypal
 check('PayPal-Knopf-onClick ist ein echo', strpos($paypalButton['onClick'] ?? '', "echo 'https://paypal.me/DietmarGureth'") === 0, $paypalButton['onClick'] ?? 'null');
 
 // ---------------------------------------------------------------------------
+echo "Block 6: Hersteller-Auswahl (Manufacturer) + Vaillant myVAILLANT\n";
+// ---------------------------------------------------------------------------
+// Dietmar-Anstoss 14.09.2026 "andere WP-Hersteller mitnehmen": Manufacturer-
+// Select schaltet Formular-Panel + Treiber-Logik um (Muster InverterHub).
+// Vaillant ist ein paralleler, bewusst schmaler Zweig (nur lesend, siehe
+// VaillantClient.php) -- eigene Geraeteliste/eigenes Token, Panasonic bleibt
+// dabei unangetastet (Block 1-4 oben liefen bereits alle unveraendert gruen).
+
+$isVaillant = new ReflectionMethod(WPHub::class, 'isVaillant');
+$isVaillant->setAccessible(true);
+$readDeviceList = new ReflectionMethod(WPHub::class, 'readDeviceList');
+$readDeviceList->setAccessible(true);
+$refreshDevicesVaillant = new ReflectionMethod(WPHub::class, 'refreshDevicesVaillant');
+$refreshDevicesVaillant->setAccessible(true);
+$maintainVarsVaillant = new ReflectionMethod(WPHub::class, 'maintainDeviceVariablesVaillant');
+$maintainVarsVaillant->setAccessible(true);
+$vaillantTokenBundle = new ReflectionMethod(WPHub::class, 'vaillantTokenBundle');
+$vaillantTokenBundle->setAccessible(true);
+
+check('Manufacturer-Standard ist Panasonic', $GLOBALS['ips']['properties']['Manufacturer'] === 'panasonic');
+check('isVaillant() ist bei Panasonic-Standard false', $isVaillant->invoke($mod) === false);
+
+// Geraetelisten sind je Hersteller getrennt -- Umschalten verliert nichts
+// und mischt nichts (kein gemeinsames Attribut).
+$setAttr->invoke($mod, 'CC_DeviceList', json_encode([['prefix' => 'HPPANA01_', 'name' => 'Panasonic-WP']]));
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['prefix' => 'HPVAI001_', 'name' => 'Vaillant-WP']]));
+check('readDeviceList() liest bei Panasonic CC_DeviceList', $readDeviceList->invoke($mod)[0]['name'] === 'Panasonic-WP');
+$GLOBALS['ips']['properties']['Manufacturer'] = 'vaillant';
+check('isVaillant() ist nach Umschalten true', $isVaillant->invoke($mod) === true);
+check('readDeviceList() liest bei Vaillant VAI_DeviceList (getrennt von Panasonic)', $readDeviceList->invoke($mod)[0]['name'] === 'Vaillant-WP');
+
+// GetConfigurationForm() zeigt nur das zum Hersteller passende Anmelde-Panel.
+$formVai = json_decode($mod->GetConfigurationForm(), true);
+check('Bei Vaillant: VaillantPanel sichtbar', findFormElement($formVai['elements'], 'VaillantPanel')['visible'] === true);
+check('Bei Vaillant: PanasonicPanel ausgeblendet', findFormElement($formVai['elements'], 'PanasonicPanel')['visible'] === false);
+$GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';
+$formPana = json_decode($mod->GetConfigurationForm(), true);
+check('Bei Panasonic: PanasonicPanel sichtbar', findFormElement($formPana['elements'], 'PanasonicPanel')['visible'] === true);
+check('Bei Panasonic: VaillantPanel ausgeblendet', findFormElement($formPana['elements'], 'VaillantPanel')['visible'] === false);
+$GLOBALS['ips']['properties']['Manufacturer'] = 'vaillant';
+
+// ALTCHA-Loeser (myVAILLANT-Login-Huerde) -- synthetische Challenge mit
+// kleinem Kostenfaktor + 1-Byte-Praefix, damit der Test schnell bleibt.
+// Erfolg wird durch tatsaechliches Nachrechnen bestaetigt, nicht nur durch
+// "kein Fehler".
+$vaiClientForAltcha = new FakeVaillant('germany');
+$challenge = [
+    'parameters' => [
+        'algorithm' => 'PBKDF2/SHA-256', 'cost' => 50, 'keyLength' => 8,
+        'keyPrefix' => '00', 'nonce' => bin2hex('test-nonce-123456'), 'salt' => bin2hex('test-salt'),
+    ],
+    'signature' => 'fake-signature-fuer-den-test',
+];
+$solved = $vaiClientForAltcha->solveAltchaChallenge($challenge);
+check('solveAltchaChallenge() liefert eine Loesung', $solved !== null);
+if ($solved !== null) {
+    $payload = json_decode(base64_decode($solved), true);
+    check('Loesung ist gueltiges JSON mit counter/derivedKey', is_array($payload) && isset($payload['solution']['counter'], $payload['solution']['derivedKey']));
+    // Nachrechnen: der gemeldete counter muss WIRKLICH einen Schluessel mit
+    // dem geforderten Praefix ergeben (Korrektheit, nicht nur Plausibilitaet).
+    $nonce = hex2bin($challenge['parameters']['nonce']);
+    $salt = hex2bin($challenge['parameters']['salt']);
+    $recomputed = bin2hex(hash_pbkdf2('sha256', $nonce . pack('N', $payload['solution']['counter']), $salt, 50, 8, true));
+    check('Nachgerechneter Schluessel beginnt mit dem geforderten Praefix (00)', strpos($recomputed, '00') === 0, $recomputed);
+    check('Nachgerechneter Schluessel stimmt mit der gemeldeten derivedKey ueberein', $recomputed === $payload['solution']['derivedKey']);
+}
+
+// Variablenpflege einer Vaillant-Anlage -- nur Felder aus dem bestaetigten
+// Rohformat (state.system.*, signalkraft/myPyllant models.py), gleiche
+// Idents wie bei Panasonic (Aussentemperatur/Warmwasser), damit
+// GetFunctions()/contractFieldID() unveraendert funktioniert.
+$vaiSystem = [
+    'state' => ['system' => [
+        'outdoor_temperature' => 7.5,
+        'system_flow_temperature' => 38.2,
+        'cylinder_temperature_sensor_top_c_h' => 41.0,
+        'cylinder_temperature_sensor_top_d_h_w' => 48.5,
+        'system_water_pressure' => 1.8,
+    ]],
+];
+$maintainVarsVaillant->invoke($mod, 'HPVAITST_', 'Test-Wärmepumpe', $vaiSystem, true);
+check('Vaillant: Aussentemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Aussentemperatur']['value'] ?? null) === 7.5);
+check('Vaillant: Vorlauftemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Vorlauftemperatur']['value'] ?? null) === 38.2);
+check('Vaillant: Puffertemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Puffertemperatur']['value'] ?? null) === 41.0);
+check('Vaillant: Warmwasser uebernommen (gleicher Ident wie Panasonic)', ($GLOBALS['ips']['variables']['HPVAITST_Warmwasser']['value'] ?? null) === 48.5);
+check('Vaillant: Systemdruck uebernommen (neues, Panasonic-loses Feld)', ($GLOBALS['ips']['variables']['HPVAITST_Systemdruck']['value'] ?? null) === 1.8);
+check('Vaillant: Erreichbar uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Erreichbar']['value'] ?? null) === true);
+
+// GetFunctions() ist bereits herstellerneutral (contractFieldID() loest nur
+// Idents auf) -- Vaillants eigene Vorlauf-/Puffertemperatur muessen ohne
+// jede Ext_*-Verknuepfung im Vertrag auftauchen.
+// GetFunctions() baut aus CC_DeviceList/VAI_DeviceList -- Testgeraet dafuer eintragen.
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['prefix' => 'HPVAITST_', 'name' => 'Test-Wärmepumpe']]));
+$functionsVai = $mod->GetFunctions();
+check('GetFunctions() liefert genau ein Vaillant-Geraet', is_array($functionsVai) && count($functionsVai) === 1);
+if (is_array($functionsVai) && count($functionsVai) === 1) {
+    check('GetFunctions(): mainOutletTempID zeigt auf die eigene Vorlauftemperatur (ohne Ext_*-Link)', ($functionsVai[0]['mainOutletTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Vorlauftemperatur']['id']);
+    check('GetFunctions(): bufferTempID zeigt auf die eigene Puffertemperatur (ohne Ext_*-Link)', ($functionsVai[0]['bufferTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Puffertemperatur']['id']);
+    check('GetFunctions(): outsideTempID (gleicher Ident wie Panasonic) funktioniert unveraendert', ($functionsVai[0]['outsideTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Aussentemperatur']['id']);
+    check('GetFunctions(): contractVersion bleibt 1.15', ($functionsVai[0]['contractVersion'] ?? null) === '1.15');
+}
+
+// refreshDevicesVaillant(): "tli"-Anlage wird verarbeitet, andere Regler-
+// Typen (z.B. "vrc700") werden uebersprungen statt geraten.
+$fakeVai = new FakeVaillant('germany');
+$fakeVai->homesResult = [
+    ['systemId' => 'sys-tli-1', 'homeName' => 'Zuhause'],
+    ['systemId' => 'sys-vrc700-1', 'homeName' => 'Altbau'],
+];
+$fakeVai->controlIdentifiers = ['sys-tli-1' => 'tli', 'sys-vrc700-1' => 'vrc700'];
+$fakeVai->systemsById = [
+    'sys-tli-1' => ['connected' => true, 'state' => ['system' => ['outdoor_temperature' => 5.0]]],
+];
+$vaiBundle = ['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600];
+$vaiDevices = $refreshDevicesVaillant->invoke($mod, $vaiBundle, $fakeVai);
+check('refreshDevicesVaillant() liefert genau die tli-Anlage', is_array($vaiDevices) && count($vaiDevices) === 1, json_encode($vaiDevices));
+check('refreshDevicesVaillant() uebernimmt den Anlagennamen', ($vaiDevices[0]['name'] ?? null) === 'Zuhause');
+check('refreshDevicesVaillant() schreibt VAI_DeviceList (getrennt von CC_DeviceList)', count($readDeviceList->invoke($mod)) === 1);
+
+// Token-Attribut ist eigenstaendig (VAI_Token, nicht CC_Token).
+check('vaillantTokenBundle() ohne Token: null', $vaillantTokenBundle->invoke($mod) === null);
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
+check('vaillantTokenBundle() mit gesetztem VAI_Token: liefert Buendel', ($vaillantTokenBundle->invoke($mod)['accessToken'] ?? null) === 'tok');
+
+// Aufraeumen fuer eventuelle spaetere Bloecke.
+$GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';
+$setAttr->invoke($mod, 'VAI_Token', '');
+$setAttr->invoke($mod, 'CC_DeviceList', '[]');
+$setAttr->invoke($mod, 'VAI_DeviceList', '[]');
+
+// ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";
 // ---------------------------------------------------------------------------
 // Lehre aus Build 2: login() rief $this->resetCookies() auf, die Methode
@@ -1271,6 +1430,7 @@ echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";
 
 foreach ([
     ['WPHub/libs/ComfortCloudClient.php', WPHUB_ComfortCloudClient::class],
+    ['WPHub/libs/VaillantClient.php', WPHUB_VaillantClient::class],
     ['WPHub/module.php', WPHub::class],
 ] as [$file, $class]) {
     $src = file_get_contents(__DIR__ . '/../' . $file);

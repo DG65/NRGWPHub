@@ -3,8 +3,8 @@
     "author": "DG65",
     "name": "NRG-Stack WPHub",
     "url": "https://github.com/DG65/NRGWPHub",
-    "version": "0.9.2",
-    "build": 65,
+    "version": "0.10.0",
+    "build": 66,
     "date": 1789257600,
     "compatibility": {
         "version": "9.0"
