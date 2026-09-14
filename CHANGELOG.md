@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.9.2 (Build 65) — 14.09.2026
+
+- **Feldhilfe für die vier Steuerhoheit-Optionen ergänzt.** EMS-Bitte im Auftrag von Dietmar (Doku/Hilfe-Durchsicht vor dem Store-Launch): das Panel „🔀 Steuerhoheit" hatte nur eine kurze Info-Zeile, aber — anders als die übrigen Panels — keinen `PopupButton` dazu, was „WPHub"/„HeishaMon"/„Anderes Modul"/„Niemand — nur lesen" konkret bedeuten. Ergänzt nach dem etablierten Muster (RowLayout + `PopupButton`, 460px, volle konkrete Frage als Beschriftung). 1 neuer Test.
+
 ## 0.9.1 (Build 64) — 14.09.2026
 
 - **Fix: Steuerhoheit-Auswahl blieb nach dem Klick im offenen Formular auf dem alten Stand.** Selbst-Audit gegen die Store-Review-Checkliste (Punkt 13, „Sichtbare Rückmeldung bei jeder Aktion") fand: `SetManagedBy()` hat die Auswahl gespeichert, aber das ⚠️-Präfix des betroffenen Select-Felds („Noch nicht zugeordnet") verschwand erst beim nächsten frischen Öffnen des Formulars, nicht sofort nach der Auswahl — gleicher Fehlertyp wie der ursprüngliche `DiscoverySummary`-Bug (Build 50). Jetzt zieht `SetManagedBy()` die Caption per `UpdateFormField()` sofort nach; die Berechnung ist in `managedBySelectCaption()` ausgelagert und wird von `GetConfigurationForm()` und `SetManagedBy()` gemeinsam genutzt. 1 neuer Test.

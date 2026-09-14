@@ -254,7 +254,29 @@ class WPHub extends IPSModule
                     'caption'  => '🔀 Steuerhoheit',
                     'expanded' => ($heishaWarning !== null),
                     'items'    => array_merge([
-                        ['type' => 'Label', 'caption' => 'Steuert eine andere Wärmepumpen-Software (z. B. HeishaMon) dieselbe Anlage, hier je Gerät festlegen -- WPHub schreibt dann für dieses Gerät nichts mehr, zeigt aber weiterhin alle Messwerte.'],
+                        [
+                            'type'  => 'RowLayout',
+                            'items' => [
+                                [
+                                    'type'    => 'Label',
+                                    'caption' => 'Steuert eine andere Wärmepumpen-Software (z. B. HeishaMon) dieselbe Anlage, hier je Gerät festlegen -- WPHub schreibt dann für dieses Gerät nichts mehr, zeigt aber weiterhin alle Messwerte.',
+                                ],
+                                [
+                                    'type'    => 'PopupButton',
+                                    'caption' => 'Was bedeuten die vier Steuerhoheit-Optionen?',
+                                    'width'   => '460px',
+                                    'popup'   => [
+                                        'caption' => 'Was bedeuten die vier Steuerhoheit-Optionen?',
+                                        'items'   => [
+                                            [
+                                                'type'    => 'Label',
+                                                'caption' => '„WPHub (Comfort Cloud, Standard)": WPHub darf diese Wärmepumpe steuern (z. B. Flüsterbetrieb) -- der Normalfall, solange kein anderes Modul dieselbe Anlage bedient. „HeishaMon (lokal, WPHub liest nur)": eine parallel installierte HeishaMon-Instanz regelt dieselbe Wärmepumpe lokal/per MQTT -- WPHub sendet dann keine Steuerbefehle mehr, zeigt aber weiter alle Messwerte an. „Anderes Modul": irgendein drittes Modul (nicht HeishaMon) hat hier die Steuerhoheit -- gleiche Wirkung wie bei HeishaMon, nur zur Dokumentation getrennt benannt. „Niemand -- nur lesen": bewusst reiner Beobachtungsmodus, auch ohne konkurrierendes Modul. In allen drei nicht-„WPHub"-Fällen bleibt die Anzeige der Messwerte unverändert bestehen -- nur die Steuerbefehle werden unterdrückt. Die Geräteidentität zwischen WPHub und anderen Modulen lässt sich technisch nicht automatisch beweisen, deshalb diese manuelle Angabe je Gerät.',
+                                            ],
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
                     ], $rows),
                 ];
                 $generalIndex = null;

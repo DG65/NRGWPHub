@@ -1166,6 +1166,13 @@ check('Select fuer das bekannte Geraet vorhanden', $managedBySelect !== null);
 check('Select zeigt den aktuellen Wert (wphub)', ($managedBySelect['value'] ?? null) === 'wphub');
 check('Select-onChange ruft SetManagedBy mit dem richtigen Praefix', strpos($managedBySelect['onChange'] ?? '', 'WPHUB_SetManagedBy($id, "' . $prefix . '"') === 0, $managedBySelect['onChange'] ?? 'null');
 
+// EMS/Dietmar-Bitte 14.09.2026: Feld-Hilfestellung fuer die vier
+// Steuerhoheit-Optionen (bislang nur eine reine Info-Zeile ohne PopupButton,
+// im Gegensatz zu den anderen Panels). PopupButton traegt keinen 'name',
+// daher direkt im rohen Panel-JSON suchen statt ueber findFormElement().
+$managedByPanelJson = json_encode($managedByPanel);
+check('Steuerhoheit-Panel hat eine Feldhilfe (PopupButton) zu den vier Optionen', strpos($managedByPanelJson, 'Was bedeuten die vier Steuerhoheit-Optionen?') !== false);
+
 // HeishaMon-Fund 13.09.2026 (live an Instanz #57727 bestaetigt): aktive
 // HeishaMon-Instanz + noch nicht explizit gesetzte Steuerhoheit ist eine
 // stille Luecke -- muss deutlich markiert werden, nicht nur intern auf
