@@ -1289,6 +1289,28 @@ check('Lizenz-Knopf-onClick ist ein echo (nicht die URL direkt in link)', strpos
 check('PayPal-Knopf vorhanden mit link=true', $paypalButton !== null && ($paypalButton['link'] ?? false) === true);
 check('PayPal-Knopf-onClick ist ein echo', strpos($paypalButton['onClick'] ?? '', "echo 'https://paypal.me/DietmarGureth'") === 0, $paypalButton['onClick'] ?? 'null');
 
+// Forum-Hinweis -- seit 16.09.2026 live (echter Thread-Link), einmalig
+// dismissible, steht nach den Fachpanels und vor "Über dieses Modul".
+$formForum = json_decode($mod->GetConfigurationForm(), true);
+$forumPanel = findFormElement($formForum['elements'], 'ForumHintPanel');
+check('Forum-Hinweis-Panel vorhanden', $forumPanel !== null);
+check('Forum-Hinweis-Caption korrekt', ($forumPanel['caption'] ?? '') === '💬  Feedback im Symcon-Forum');
+$forumIndex = array_search('ForumHintPanel', array_column($formForum['elements'], 'name'), true);
+check('Forum-Hinweis steht vor "Über dieses Modul" (letztes Element)', $forumIndex !== false && $forumIndex < count($formForum['elements']) - 1);
+$forumButton = null;
+foreach (($forumPanel['items'] ?? []) as $item) {
+    if (($item['caption'] ?? '') === 'Zum Forums-Thread') {
+        $forumButton = $item;
+    }
+}
+check('Forum-Knopf vorhanden mit link=true', $forumButton !== null && ($forumButton['link'] ?? false) === true);
+check('Forum-Knopf-onClick ist ein echo auf den echten Thread-Link', strpos($forumButton['onClick'] ?? '', "echo 'https://community.symcon.de/t/modul-nrg-stack-wphub-") === 0, $forumButton['onClick'] ?? 'null');
+
+$mod->AckForumHint();
+check('AckForumHint() setzt ForumHintGone', $getAttrBool->invoke($mod, 'ForumHintGone') === true);
+$formAfterForumAck = json_decode($mod->GetConfigurationForm(), true);
+check('Forum-Hinweis-Panel erscheint nach Bestaetigen nicht mehr', findFormElement($formAfterForumAck['elements'], 'ForumHintPanel') === null);
+
 // ---------------------------------------------------------------------------
 echo "Block 6: Hersteller-Auswahl (Manufacturer) + Vaillant myVAILLANT\n";
 // ---------------------------------------------------------------------------

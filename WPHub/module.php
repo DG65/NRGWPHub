@@ -154,6 +154,9 @@ class WPHub extends IPSModule
         // bool statt versioniert, weil sich der Zweck eines Moduls nicht mit
         // jedem Release aendert.
         $this->RegisterAttributeBoolean('PurposeIntroGone', false);
+        // Einmalig dismissible Forum-Hinweis (SUITE.md "Einheitliche Formular-
+        // Optik" Punkt 5.5, Forumsthread seit 16.09.2026 live), siehe ForumHint().
+        $this->RegisterAttributeBoolean('ForumHintGone', false);
         // Zeitpunkt der letzten erfolgreichen Geraetesuche (Verbund-Konvention
         // "Einheitliche Verbund-Status-Kopfzeile", SUITE.md 20.08.2026) --
         // siehe discoverySummaryLine().
@@ -338,6 +341,13 @@ class WPHub extends IPSModule
             }
         }
 
+        // Forum-Hinweis -- nach den Fachpanels, vor "Über dieses Modul"
+        // (SUITE.md "Einheitliche Formular-Optik").
+        $forumHint = $this->ForumHint();
+        if ($forumHint !== null) {
+            $form['elements'][] = $forumHint;
+        }
+
         // "Über dieses Modul" -- ganz unten (SUITE.md "Einheitliche
         // Formular-Optik" Punkt 5), nicht dismissible.
         $form['elements'][] = $this->LicenseHint();
@@ -433,6 +443,39 @@ class WPHub extends IPSModule
     {
         $this->WriteAttributeBoolean('PurposeIntroGone', true);
         $this->UpdateFormField('PurposeIntroPanel', 'visible', false);
+    }
+
+    // Forumsthread seit 16.09.2026 live (Dietmar).
+    private const FORUM_THREAD_URL = 'https://community.symcon.de/t/modul-nrg-stack-wphub-waermepumpen-cloud-anbindung-fuer-ip-symcon-panasonic-comfort-cloud-vaillant-myvaillant-cloud-alternative-zu-heishamon/144412';
+
+    /**
+     * Symcon-Forum-Hinweis -- SUITE.md "Einheitliche Formular-Optik", nach den
+     * Fachpanels, vor "Über dieses Modul". Einmalig dismissible, kein
+     * Versionsbezug (Muster MeterHub ForumHint()/AckForumHint(), hier ohne
+     * dessen Mehrinstanzen-Propagierung -- WPHub hat dafuer keinen Bedarf).
+     */
+    private function ForumHint(): ?array
+    {
+        if ($this->ReadAttributeBoolean('ForumHintGone')) {
+            return null;
+        }
+        return [
+            'type'     => 'ExpansionPanel',
+            'name'     => 'ForumHintPanel',
+            'expanded' => true,
+            'caption'  => '💬  Feedback im Symcon-Forum',
+            'items'    => [
+                ['type' => 'Label', 'caption' => 'Fragen, Fehler, Erfahrungsberichte oder Hilfe beim Testen weiterer Wärmepumpen-Hersteller -- dafür gibt es den WPHub-Forumsthread.'],
+                ['type' => 'Button', 'caption' => 'Zum Forums-Thread', 'onClick' => "echo '" . self::FORUM_THREAD_URL . "';", 'link' => true],
+                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckForumHint($id);'],
+            ],
+        ];
+    }
+
+    public function AckForumHint(): void
+    {
+        $this->WriteAttributeBoolean('ForumHintGone', true);
+        $this->UpdateFormField('ForumHintPanel', 'visible', false);
     }
 
     /**

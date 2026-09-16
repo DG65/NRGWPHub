@@ -183,8 +183,9 @@ allein auf diese Liste verlassen.
    MeterHub) — kein weiterer Klaerungsbedarf am Konto.
 2. **2FA-Unterstützung** (Auth0 mfa_token-Flow, in der Python-Referenz
    vorhanden) — nur bei Bedarf.
-3. **Forum-Hinweis-Panel** folgt, sobald es einen WPHub-Forumsthread gibt
-   (gleiche Begründung wie bei MeterHub).
+3. ~~Forum-Hinweis-Panel~~ — erledigt 16.09.2026: Thread ist live
+   (https://community.symcon.de/t/modul-nrg-stack-wphub-waermepumpen-cloud-anbindung-fuer-ip-symcon-panasonic-comfort-cloud-vaillant-myvaillant-cloud-alternative-zu-heishamon/144412),
+   Panel `ForumHint()`/`AckForumHint()` in module.php verlinkt (0.10.1).
 4. Punkt-12-Checkliste ("Neuinstallations-Simulation") vor dem ersten
    beta/main-Wechsel durchgehen; davor `migrationsvergleich.php`
    (SUITE.md 9e) einmal gegen den ersten Vergleichsstand laufen lassen.
