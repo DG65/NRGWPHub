@@ -1,10 +1,10 @@
 {
-    "id": "{D81D0DE5-CFA2-4DA3-96ED-1D5F740BD232}",
+    "id": "{5E43F805-11F3-4989-950B-32347D5682CD}",
     "author": "DG65",
     "name": "NRG-Stack WPHub",
     "url": "https://github.com/DG65/NRGWPHub",
-    "version": "0.10.1",
-    "build": 67,
+    "version": "0.10.2",
+    "build": 68,
     "date": 1789257600,
     "compatibility": {
         "version": "9.0"

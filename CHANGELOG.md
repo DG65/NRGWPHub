@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.10.2 (Build 68) — 16.09.2026
+
+- **Neue library-/Modul-GUID wegen echter Kollision beim Module-Store-Upload.** Der Store meldete beim Einreichen "Die verwendete GUID {D81D0DE5-…} wird bereits von einem anderen Modul verwendet". Geprüft: keine Dopplung in irgendeinem eigenen Repo, keine öffentliche GitHub-Fundstelle, kein vorheriger eigener Store-Eintrag (Dietmar bestätigt) — also eine echte externe Kollision, kein Copy-Paste-Fehler. `library.json→id` und `WPHub/module.json→id`/`library` neu generiert. **Achtung für Dietmar:** Symcon erkennt die geänderte Modul-GUID als anderes Modul — die bestehende WPHub-Instanz muss nach dem Update neu angelegt werden (Konfiguration/Zuordnungen gehen dabei verloren, siehe Ankündigung im Chat).
+
 ## 0.10.1 (Build 67) — 16.09.2026
 
 - **Forum-Hinweis-Panel verlinkt den echten WPHub-Vorstellungsthread.** Der Thread ist seit heute live (Dietmar). Neues, einmalig dismissibles Panel „💬 Feedback im Symcon-Forum" (Muster MeterHub `ForumHint()`/`AckForumHint()`, ohne dessen Mehrinstanzen-Propagierung), eingehängt zwischen den Fachpanels und „🧡 Über dieses Modul" (SUITE.md „Einheitliche Formular-Optik"). Löst den bisherigen Platzhalter-Zustand ab (kein Forum-Panel, da noch kein Thread existierte). 7 neue Tests.
