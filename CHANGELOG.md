@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.10.3 (Build 69) — 16.09.2026
+
+- **Korrektur: GUID-"Kollision" war ein Fehlalarm — GUIDs zurückgesetzt.** Der Store-Fehler aus 0.10.2 kam laut Dietmar daher, dass beim Einreichen das falsche Repo in den Module Store geladen wurde (nicht WPHub selbst) — keine echte Kollision. `library.json→id` und `WPHub/module.json→id`/`library` wieder auf die ursprünglichen, seit dem Scaffold vom 10.08.2026 verwendeten Werte gesetzt (`D81D0DE5-…`/`5BE429EA-…`). Die in 0.10.2 neu vergebenen GUIDs sind hinfällig. Dietmars laufende WPHub-Instanz bleibt dadurch unangetastet — die für 0.10.2 angekündigte Neuanlage der Instanz entfällt.
+
 ## 0.10.2 (Build 68) — 16.09.2026
 
 - **Neue library-/Modul-GUID wegen echter Kollision beim Module-Store-Upload.** Der Store meldete beim Einreichen "Die verwendete GUID {D81D0DE5-…} wird bereits von einem anderen Modul verwendet". Geprüft: keine Dopplung in irgendeinem eigenen Repo, keine öffentliche GitHub-Fundstelle, kein vorheriger eigener Store-Eintrag (Dietmar bestätigt) — also eine echte externe Kollision, kein Copy-Paste-Fehler. `library.json→id` und `WPHub/module.json→id`/`library` neu generiert. **Achtung für Dietmar:** Symcon erkennt die geänderte Modul-GUID als anderes Modul — die bestehende WPHub-Instanz muss nach dem Update neu angelegt werden (Konfiguration/Zuordnungen gehen dabei verloren, siehe Ankündigung im Chat).
