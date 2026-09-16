@@ -95,9 +95,11 @@ Tester mit echter Vaillant-Anlage (Forumsthread wirbt dafuer, siehe
    Referenz: MeterHub/Inexogy-Treiber. Im Scaffold bereits als
    `CC_Email`/`CC_Password` (Properties, Login-Input) und `CC_Token`
    (Attribut, Ergebnis) angelegt — `Login()`/Handshake-Logik fehlt noch.
-9. **Branch-Modell:** `ems-integration` (verbundweit identischer Name) —
-   solange die EMS-Integrationsphase läuft, geht ALLES dorthin, nicht auf
-   `beta`/`main`.
+9. **Branch-Modell:** `ems-integration` (verbundweit identischer Name) bleibt
+   der aktive Entwicklungsbranch. Seit 16.09.2026 existiert zusätzlich `beta`
+   (erster Store-Release-Branch, Dietmars Auftrag "nach Beta mergen") — wird
+   nur bei Bedarf von `ems-integration` nachgezogen, kein automatischer
+   Gleichlauf. `main` existiert für dieses Repo noch nicht.
 10. **Store-Review-Checkliste (12 Punkte, siehe SUITE.md):** u. a. keine
     Selbstpersistenz in Formular-Buttons, `vendor` in `module.json` =
     Gerätehersteller (hier "Panasonic", NICHT "DG65" — bereits so gesetzt),
@@ -186,9 +188,11 @@ allein auf diese Liste verlassen.
 3. ~~Forum-Hinweis-Panel~~ — erledigt 16.09.2026: Thread ist live
    (https://community.symcon.de/t/modul-nrg-stack-wphub-waermepumpen-cloud-anbindung-fuer-ip-symcon-panasonic-comfort-cloud-vaillant-myvaillant-cloud-alternative-zu-heishamon/144412),
    Panel `ForumHint()`/`AckForumHint()` in module.php verlinkt (0.10.1).
-4. Punkt-12-Checkliste ("Neuinstallations-Simulation") vor dem ersten
-   beta/main-Wechsel durchgehen; davor `migrationsvergleich.php`
-   (SUITE.md 9e) einmal gegen den ersten Vergleichsstand laufen lassen.
+4. ~~Punkt-12-Checkliste vor dem ersten beta-Wechsel~~ — erledigt
+   16.09.2026 (Ergebnis siehe CHANGELOG 0.10.4). `migrationsvergleich.php`
+   (SUITE.md 9e) entfiel bewusst: erster Beta-Release, kein Vorgänger-Stand
+   zum Vergleichen. Vor einem künftigen `beta`→`main`-Wechsel erneut
+   durchgehen, dann greift 9e auch inhaltlich.
 
 ## Verbund-Kontakt
 

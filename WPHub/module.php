@@ -482,12 +482,13 @@ class WPHub extends IPSModule
      * "Über dieses Modul" -- SUITE.md "Einheitliche Formular-Optik" Punkt 5.
      * Ganz unten, NICHT dismissible (Lizenzhinweis, kein einmaliger Tipp),
      * eingeklappt. Wortlaut verbundweit identisch ("Variante A"), nur
-     * LICENSE_URL modul-eigen. LICENSE_URL zeigt auf ems-integration -- das
-     * ist bislang der einzige Branch dieses Repos (noch kein main/beta-
-     * Release), enthaelt bereits den PolyForm-Text (gegengeprueft, siehe
-     * SUITE.md-Stolperfalle 01.09.2026: nicht blind auf main verlinken).
+     * LICENSE_URL modul-eigen. Zeigt seit 16.09.2026 auf beta (erster
+     * Store-Release-Branch, siehe SUITE.md-Stolperfalle 01.09.2026: nicht
+     * blind auf main verlinken -- main existiert fuer dieses Repo noch
+     * nicht). Aktive Entwicklung bleibt auf ems-integration, beta wird nur
+     * bei Bedarf nachgezogen.
      */
-    private const LICENSE_URL = 'https://github.com/DG65/NRGWPHub/blob/ems-integration/LICENSE';
+    private const LICENSE_URL = 'https://github.com/DG65/NRGWPHub/blob/beta/LICENSE';
     private const PAYPAL_URL = 'https://paypal.me/DietmarGureth';
 
     private function LicenseHint(): array

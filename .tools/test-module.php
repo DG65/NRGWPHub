@@ -1285,7 +1285,7 @@ foreach ($licenseHint['items'] as $item) {
     }
 }
 check('Lizenz-Knopf vorhanden mit link=true (Stolperfalle 01.09.2026)', $licenseButton !== null && ($licenseButton['link'] ?? false) === true);
-check('Lizenz-Knopf-onClick ist ein echo (nicht die URL direkt in link)', strpos($licenseButton['onClick'] ?? '', "echo 'https://github.com/DG65/NRGWPHub/blob/ems-integration/LICENSE'") === 0, $licenseButton['onClick'] ?? 'null');
+check('Lizenz-Knopf-onClick ist ein echo (nicht die URL direkt in link)', strpos($licenseButton['onClick'] ?? '', "echo 'https://github.com/DG65/NRGWPHub/blob/beta/LICENSE'") === 0, $licenseButton['onClick'] ?? 'null');
 check('PayPal-Knopf vorhanden mit link=true', $paypalButton !== null && ($paypalButton['link'] ?? false) === true);
 check('PayPal-Knopf-onClick ist ein echo', strpos($paypalButton['onClick'] ?? '', "echo 'https://paypal.me/DietmarGureth'") === 0, $paypalButton['onClick'] ?? 'null');
 

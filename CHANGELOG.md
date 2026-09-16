@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.10.4 (Build 70) — 16.09.2026
+
+- **Erster Beta-Release.** `beta`-Branch angelegt (bisher gab es nur `ems-integration`). Vor dem Wechsel geprüft: `php -l` + voller Testlauf grün, Store-Review-Checkliste Punkt 12 (Neuinstallations-Simulation) durchgegangen — keine eigenen Objekt-/Variablen-IDs, PLZ/Adressen oder Kampagnennamen im Formular-Code, jede Hersteller-Nennung entweder als "z. B." oder (Panasonic/Vaillant-Panels) durch die eigene Hersteller-Auswahl explizit gerechtfertigt. `migrationsvergleich.php` (SUITE.md 9e) entfällt für diesen allerersten Beta-Stand — es gibt noch keinen vorherigen Beta/Main-Stand zum Vergleichen. `LICENSE_URL` zeigt jetzt auf `beta` statt `ems-integration` (aktive Entwicklung bleibt auf `ems-integration`, `beta` wird nur bei Bedarf nachgezogen).
+
 ## 0.10.3 (Build 69) — 16.09.2026
 
 - **Korrektur: GUID-"Kollision" war ein Fehlalarm — GUIDs zurückgesetzt.** Der Store-Fehler aus 0.10.2 kam laut Dietmar daher, dass beim Einreichen das falsche Repo in den Module Store geladen wurde (nicht WPHub selbst) — keine echte Kollision. `library.json→id` und `WPHub/module.json→id`/`library` wieder auf die ursprünglichen, seit dem Scaffold vom 10.08.2026 verwendeten Werte gesetzt (`D81D0DE5-…`/`5BE429EA-…`). Die in 0.10.2 neu vergebenen GUIDs sind hinfällig. Dietmars laufende WPHub-Instanz bleibt dadurch unangetastet — die für 0.10.2 angekündigte Neuanlage der Instanz entfällt.
