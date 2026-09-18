@@ -194,6 +194,25 @@ allein auf diese Liste verlassen.
    zum Vergleichen. Vor einem künftigen `beta`→`main`-Wechsel erneut
    durchgehen, dann greift 9e auch inhaltlich.
 
+## Heizkurven-Recherche für Dashboard (18.09.2026)
+
+Dashboard-Sitzung wollte einen einheitlichen `*_GetHeatingCurve`/`*_SetHeatingCurve`-Vertrag
+für WPHub/WPModbusHub/SamsungEhs klären. Recherche-Ergebnis (Belege/Details siehe Chat-
+Transkript, nicht hier dupliziert): **Panasonic Comfort Cloud hat gar kein Kurvenkonzept**
+(nur Direkt-Zielwert je Zone, bereits als `Zone{n}Soll` implementiert). **Vaillant
+myVAILLANT hat eine Heizkurve, aber nur die Steigung** (`Circuit.heating_curve`, PATCH
+`.../circuit/{i}/heating-curve`, 0,1–5,0, Schritt 0,05) -- kein Fußpunkt/Niveau in der API,
+ein "Verschieben" der Kurve ist darüber nicht moeglich, nur eine Drehung um einen fuer uns
+unsichtbaren Punkt.
+
+**Dietmars Entscheidung (Dashboard, 18.09.2026):** WPMonitor-Heizkurven-Reiter v1 wird NUR
+gegen HeishaMon gebaut (einziger heute geprueft schreibbarer Weg). WPHub (Panasonic/Vaillant)
+bekommt **keinen Zeitdruck** -- der Dashboard-Vertrag erhaelt Kapazitaetsfelder
+(`curveModel`/`curveWritable`), damit spaeteres Andocken ohne UI-Umbau moeglich ist. Naechster
+Schritt liegt bei uns: Vaillant-Schreibzugriff erst an echter Hardware verifizieren (bisher
+KEIN Testkonto), bevor `SetHeatingCurve()` gebaut wird -- dann von uns aus bei Dashboard
+melden, nicht umgekehrt.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben
