@@ -97,9 +97,11 @@ Tester mit echter Vaillant-Anlage (Forumsthread wirbt dafuer, siehe
    (Attribut, Ergebnis) angelegt — `Login()`/Handshake-Logik fehlt noch.
 9. **Branch-Modell:** `ems-integration` (verbundweit identischer Name) bleibt
    der aktive Entwicklungsbranch. Seit 16.09.2026 existiert zusätzlich `beta`
-   (erster Store-Release-Branch, Dietmars Auftrag "nach Beta mergen") — wird
-   nur bei Bedarf von `ems-integration` nachgezogen, kein automatischer
-   Gleichlauf. `main` existiert für dieses Repo noch nicht.
+   (erster Store-Release-Branch, Dietmars Auftrag "nach Beta mergen"). **Seit
+   18.09.2026 (Dietmars Entscheidung, verbundweit): beide Branches laufen
+   automatisch gleich** — jeder Push nach `ems-integration` geht im selben Zug
+   auch nach `beta`, kein manuelles Nachziehen mehr nötig. `main` existiert für
+   dieses Repo noch nicht.
 10. **Store-Review-Checkliste (12 Punkte, siehe SUITE.md):** u. a. keine
     Selbstpersistenz in Formular-Buttons, `vendor` in `module.json` =
     Gerätehersteller (hier "Panasonic", NICHT "DG65" — bereits so gesetzt),
