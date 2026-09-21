@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.10.7 (Build 73) — 21.09.2026
+
+- **🔗-Zeile grün (Verbund-Regel „Wert kommt automatisch“, SUITE.md 64b5d1f).** Die automatisch übernommene App-Version wird grün dargestellt (Label `color` 0x2E8B3D), in allen anderen Zuständen (✏️, ℹ️) mit `-1` = Standardfarbe. Zwei neue Prüfungen am ausgelieferten Formular-JSON.
+
 ## 0.10.6 (Build 72) — 21.09.2026
 
 - **App-Version: Eingabefeld ausblenden, wenn ein Wert automatisch kommt (Verbund-Regel „Wert kommt automatisch: Eingabefeld ersetzen“).** Statt einer Statuszeile über einem Feld, das man nicht braucht: Ist die Version automatisch ermittelt und das Feld leer, blendet WPHub das Eingabefeld aus und zeigt nur „🔗 App-Version: X (automatisch ermittelt, Quelle: Play Store bzw. AppBrain …)“. Das Feld erscheint nur, wenn nichts automatisch kommt (ℹ️ Modulstandard) oder bei eigener Angabe (✏️). Der Feldwert wird nie per Formular gesetzt, nur ein-/ausgeblendet.

@@ -833,25 +833,27 @@ $appStatus = function () use ($mod): array {
     $form = json_decode($mod->GetConfigurationForm(), true);
     $line = findFormElement($form['elements'], 'CC_AppVersionStatus');
     $row = findFormElement($form['elements'], 'CC_AppVersionRow');
-    return [$line['caption'] ?? '(Element fehlt)', $row['visible'] ?? null];
+    return [$line['caption'] ?? '(Element fehlt)', $row['visible'] ?? null, $line['color'] ?? null];
 };
 // Zustand: eigene Angabe 5.0.1 UND automatisch 6.0.0 (Cloud hat 5.0.1 abgelehnt)
-[$line, $rowVisible] = $appStatus();
+[$line, $rowVisible, $lineColor] = $appStatus();
 check('Zustand ✏️ (eigene Angabe abgelehnt): nennt beide Versionen und Vorrang der automatischen', strpos($line, '✏️') === 0 && strpos($line, '5.0.1') !== false && strpos($line, '6.0.0') !== false && strpos($line, 'Vorrang') !== false, $line);
 check('Zustand ✏️: Eingabefeld bleibt sichtbar', $rowVisible === true);
 // Zustand: nur automatisch
 $GLOBALS['ips']['properties']['CC_AppVersion'] = '';
-[$line, $rowVisible] = $appStatus();
+[$line, $rowVisible, $lineColor] = $appStatus();
 check('Zustand 🔗 (automatisch): Zeile "🔗 App-Version: 6.0.0 (automatisch ermittelt, Quelle ...)"', strpos($line, '🔗 App-Version: 6.0.0 (automatisch ermittelt, Quelle:') === 0, $line);
 check('Zustand 🔗: Eingabefeld ist AUSGEBLENDET (visible false)', $rowVisible === false);
+check('Zustand 🔗: Zeile ist GRUEN (color 0x2E8B3D)', $lineColor === 0x2E8B3D, var_export($lineColor, true));
 // Zustand: nur eigene Angabe
 $GLOBALS['ips']['properties']['CC_AppVersion'] = '5.0.1';
 $setAttr->invoke($mod, 'CC_AppVersionAuto', '');
-[$line, $rowVisible] = $appStatus();
+[$line, $rowVisible, $lineColor] = $appStatus();
 check('Zustand ✏️ (eigene Angabe): nennt 5.0.1, Feld sichtbar', strpos($line, '✏️ App-Version: 5.0.1') === 0 && $rowVisible === true, $line);
 // Zustand: nichts automatisch
 $GLOBALS['ips']['properties']['CC_AppVersion'] = '';
-[$line, $rowVisible] = $appStatus();
+[$line, $rowVisible, $lineColor] = $appStatus();
+check('Zustand ℹ️/✏️: Standardfarbe (-1), nie gruen', $lineColor === -1, var_export($lineColor, true));
 check('Zustand ℹ️ (nichts automatisch): nennt Modulstandard 4.4.0, Feld sichtbar', strpos($line, 'ℹ️ App-Version: 4.4.0') === 0 && $rowVisible === true, $line);
 check('Statuszeile: statischer Platzhalter ersetzt (nicht leer)', $line !== '' && $line !== '(Element fehlt)');
 check('Formular: kein statischer Satz "leer = automatisch" mehr', strpos(file_get_contents(__DIR__ . '/../WPHub/form.json'), 'leer = automatisch') === false);

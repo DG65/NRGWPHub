@@ -221,8 +221,8 @@ class WPHub extends IPSModule
             'caption' => 'ℹ️ WPHub Version ' . $libraryVersion . ' -- Wärmepumpen-Cloud-Anbindung, Panasonic Comfort Cloud und (neu, ungeprüft) Vaillant myVAILLANT.',
         ]);
 
-        [$appVersionLine, $appVersionFieldVisible] = $this->appVersionStatus();
-        $this->updateFormElement($form['elements'], 'CC_AppVersionStatus', ['caption' => $appVersionLine]);
+        [$appVersionLine, $appVersionFieldVisible, $appVersionColor] = $this->appVersionStatus();
+        $this->updateFormElement($form['elements'], 'CC_AppVersionStatus', ['caption' => $appVersionLine, 'color' => $appVersionColor]);
         // Nur ein-/ausblenden, NIE den Feldwert per Formular setzen.
         $this->updateFormElement($form['elements'], 'CC_AppVersionRow', ['visible' => $appVersionFieldVisible]);
 
@@ -1340,6 +1340,8 @@ class WPHub extends IPSModule
     // ------------------------------------------------------------------
 
     const APP_VERSION_DEFAULT = '4.4.0';
+    // Gruen fuer automatisch uebernommene Werte (SUITE.md, Regel "Wert kommt automatisch").
+    const AUTO_LINE_COLOR = 0x2E8B3D;
 
     /**
      * Welche Comfort-Cloud-App-Version gilt gerade, und woher kommt sie?
@@ -1367,9 +1369,10 @@ class WPHub extends IPSModule
      * "Verbund-Verbindungen im Formular sichtbar machen" + "Wert kommt
      * automatisch: Eingabefeld ersetzen"): 🔗 automatisch ermittelt (Eingabefeld
      * ausgeblendet), ✏️ eigene Angabe (Feld sichtbar), ℹ️ nichts automatisch
-     * (Feld sichtbar). Liefert [Zeile, Feld sichtbar].
+     * (Feld sichtbar). Liefert [Zeile, Feld sichtbar, Farbe]: 🔗 GRUEN
+     * (0x2E8B3D, Verbund-Regel), sonst -1 = Standardfarbe.
      *
-     * @return array{0: string, 1: bool}
+     * @return array{0: string, 1: bool, 2: int}
      */
     private function appVersionStatus(): array
     {
@@ -1378,18 +1381,18 @@ class WPHub extends IPSModule
         $manual = trim($this->ReadPropertyString('CC_AppVersion'));
 
         if ($auto !== '' && $manual === '') {
-            return ['🔗 App-Version: ' . $auto . ' (automatisch ermittelt, Quelle: Play Store bzw. AppBrain, nachdem die Comfort Cloud eine ältere Version abgelehnt hatte). Das Eingabefeld erscheint nur, wenn nichts automatisch kommt.', false];
+            return ['🔗 App-Version: ' . $auto . ' (automatisch ermittelt, Quelle: Play Store bzw. AppBrain, nachdem die Comfort Cloud eine ältere Version abgelehnt hatte). Das Eingabefeld erscheint nur, wenn nichts automatisch kommt.', false, self::AUTO_LINE_COLOR];
         }
         if ($auto !== '' && $manual !== '') {
             if ($manual === $auto) {
-                return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, entspricht der automatisch ermittelten Version). Feld leeren, um wieder nur die automatische zu nutzen.', true];
+                return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, entspricht der automatisch ermittelten Version). Feld leeren, um wieder nur die automatische zu nutzen.', true, -1];
             }
-            return ['✏️ Eigene App-Version ' . $manual . ' wurde von der Comfort Cloud abgelehnt, es gilt die automatisch ermittelte Version ' . $auto . ' (Vorrang). Feld leeren, um wieder nur die automatische zu nutzen.', true];
+            return ['✏️ Eigene App-Version ' . $manual . ' wurde von der Comfort Cloud abgelehnt, es gilt die automatisch ermittelte Version ' . $auto . ' (Vorrang). Feld leeren, um wieder nur die automatische zu nutzen.', true, -1];
         }
         if ($manual !== '') {
-            return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, hat Vorrang vor dem Modulstandard). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst und nutzt dann diese.', true];
+            return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, hat Vorrang vor dem Modulstandard). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst und nutzt dann diese.', true, -1];
         }
-        return ['ℹ️ App-Version: ' . $version . ' (Standard im Modul, bisher nichts automatisch ermittelt). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst. Das Feld unten ist nur der Notnagel, falls das nicht klappt.', true];
+        return ['ℹ️ App-Version: ' . $version . ' (Standard im Modul, bisher nichts automatisch ermittelt). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst. Das Feld unten ist nur der Notnagel, falls das nicht klappt.', true, -1];
     }
 
     private function ccClient(): WPHUB_ComfortCloudClient
