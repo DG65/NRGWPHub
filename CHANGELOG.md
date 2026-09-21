@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.10.5 (Build 71) — 21.09.2026
+
+- **App-Version im Formular sichtbar: live berechnete Statuszeile statt „leer = automatisch“.** Neue Verbund-Regel (SUITE.md „Verbund-Verbindungen im Formular sichtbar machen“, 21.09.2026): automatisch ermittelte Werte dürfen im Formular nicht nur als statischer Satz stehen. Unter dem Feld „App-Version“ (jetzt „Notnagel, leer lassen“) zeigt WPHub jetzt, welche Comfort-Cloud-App-Version tatsächlich gilt und woher sie stammt: ✅ automatisch ermittelt (Vorrang, mit Hinweis, wenn der Feldwert deshalb nicht verwendet wird), ✅ aus dem Feld, ℹ️ Modulstandard 4.4.0. Vorrang und Zeile teilen sich eine Funktion (`effectiveAppVersion()`), können also nicht auseinanderlaufen. 6 neue Prüfungen am ausgelieferten Formular-JSON, für jeden Zustand.
+
 ## 0.10.4 (Build 70) — 16.09.2026
 
 - **Erster Beta-Release.** `beta`-Branch angelegt (bisher gab es nur `ems-integration`). Vor dem Wechsel geprüft: `php -l` + voller Testlauf grün, Store-Review-Checkliste Punkt 12 (Neuinstallations-Simulation) durchgegangen — keine eigenen Objekt-/Variablen-IDs, PLZ/Adressen oder Kampagnennamen im Formular-Code, jede Hersteller-Nennung entweder als "z. B." oder (Panasonic/Vaillant-Panels) durch die eigene Hersteller-Auswahl explizit gerechtfertigt. `migrationsvergleich.php` (SUITE.md 9e) entfällt für diesen allerersten Beta-Stand — es gibt noch keinen vorherigen Beta/Main-Stand zum Vergleichen. `LICENSE_URL` zeigt jetzt auf `beta` statt `ems-integration` (aktive Entwicklung bleibt auf `ems-integration`, `beta` wird nur bei Bedarf nachgezogen).

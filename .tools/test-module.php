@@ -825,7 +825,26 @@ $GLOBALS['ips']['properties']['CC_AppVersion'] = '5.0.1';
 check('Formular-Notnagel greift', $ccClient->invoke($mod)->getAppVersion() === '5.0.1');
 $setAttr->invoke($mod, 'CC_AppVersionAuto', '6.0.0');
 check('Automatisch ermittelte Version hat Vorrang', $ccClient->invoke($mod)->getAppVersion() === '6.0.0');
+
+// Formular: live berechnete Statuszeile statt "leer = automatisch" (SUITE.md
+// "Verbund-Verbindungen im Formular sichtbar machen"). Geprueft am
+// AUSGELIEFERTEN JSON, rekursiv gesucht, fuer jeden Zustand.
+$statusLine = function () use ($mod): string {
+    $form = json_decode($mod->GetConfigurationForm(), true);
+    $el = findFormElement($form['elements'], 'CC_AppVersionStatus');
+    return $el['caption'] ?? '(Element fehlt)';
+};
+$line = $statusLine();
+check('Statuszeile (auto): nennt gueltige Version 6.0.0 und Quelle', strpos($line, '✅') === 0 && strpos($line, '6.0.0') !== false && strpos($line, 'automatisch ermittelt') !== false, $line);
+check('Statuszeile (auto+Feld abweichend): sagt, dass das Feld nicht verwendet wird', strpos($line, '5.0.1') !== false && strpos($line, 'nicht verwendet') !== false, $line);
+$setAttr->invoke($mod, 'CC_AppVersionAuto', '');
+$line = $statusLine();
+check('Statuszeile (manuell): nennt Version 5.0.1 aus dem Feld', strpos($line, '✅') === 0 && strpos($line, '5.0.1') !== false && strpos($line, 'aus dem Feld') !== false, $line);
 $GLOBALS['ips']['properties']['CC_AppVersion'] = '';
+$line = $statusLine();
+check('Statuszeile (Standard): ℹ️ nennt 4.4.0 als Modulstandard', strpos($line, 'ℹ️') === 0 && strpos($line, '4.4.0') !== false && strpos($line, 'Standard im Modul') !== false, $line);
+check('Statuszeile: statischer Platzhalter ist ersetzt (nicht leer)', $line !== '' && $line !== '(Element fehlt)');
+check('Feldbeschriftung enthaelt nicht mehr "leer = automatisch"', strpos(file_get_contents(__DIR__ . '/../WPHub/form.json'), 'leer = automatisch') === false);
 
 // 4106 beim Geraeteabruf: einmal neu ermitteln, dann genau EIN Wiederholungsversuch.
 $fake2 = new FakeCC();

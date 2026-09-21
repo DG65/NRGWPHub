@@ -170,7 +170,7 @@
                         {
                             "type": "ValidationTextBox",
                             "name": "CC_AppVersion",
-                            "caption": "App-Version (leer = automatisch)"
+                            "caption": "App-Version (Notnagel, leer lassen)"
                         },
                         {
                             "type": "PopupButton",
@@ -187,6 +187,11 @@
                             }
                         }
                     ]
+                },
+                {
+                    "type": "Label",
+                    "name": "CC_AppVersionStatus",
+                    "caption": ""
                 }
             ]
         },
