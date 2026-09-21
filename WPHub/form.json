@@ -166,6 +166,7 @@
                 },
                 {
                     "type": "RowLayout",
+                    "name": "CC_AppVersionRow",
                     "items": [
                         {
                             "type": "ValidationTextBox",

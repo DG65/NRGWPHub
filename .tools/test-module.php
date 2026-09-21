@@ -826,25 +826,55 @@ check('Formular-Notnagel greift', $ccClient->invoke($mod)->getAppVersion() === '
 $setAttr->invoke($mod, 'CC_AppVersionAuto', '6.0.0');
 check('Automatisch ermittelte Version hat Vorrang', $ccClient->invoke($mod)->getAppVersion() === '6.0.0');
 
-// Formular: live berechnete Statuszeile statt "leer = automatisch" (SUITE.md
-// "Verbund-Verbindungen im Formular sichtbar machen"). Geprueft am
-// AUSGELIEFERTEN JSON, rekursiv gesucht, fuer jeden Zustand.
-$statusLine = function () use ($mod): string {
+// Formular: Statuszeile + Feld ein-/ausblenden (SUITE.md "Verbund-Verbindungen
+// im Formular sichtbar machen" und "Wert kommt automatisch: Eingabefeld
+// ersetzen"). Geprueft am AUSGELIEFERTEN JSON, rekursiv gesucht, je Zustand.
+$appStatus = function () use ($mod): array {
     $form = json_decode($mod->GetConfigurationForm(), true);
-    $el = findFormElement($form['elements'], 'CC_AppVersionStatus');
-    return $el['caption'] ?? '(Element fehlt)';
+    $line = findFormElement($form['elements'], 'CC_AppVersionStatus');
+    $row = findFormElement($form['elements'], 'CC_AppVersionRow');
+    return [$line['caption'] ?? '(Element fehlt)', $row['visible'] ?? null];
 };
-$line = $statusLine();
-check('Statuszeile (auto): nennt gueltige Version 6.0.0 und Quelle', strpos($line, '✅') === 0 && strpos($line, '6.0.0') !== false && strpos($line, 'automatisch ermittelt') !== false, $line);
-check('Statuszeile (auto+Feld abweichend): sagt, dass das Feld nicht verwendet wird', strpos($line, '5.0.1') !== false && strpos($line, 'nicht verwendet') !== false, $line);
-$setAttr->invoke($mod, 'CC_AppVersionAuto', '');
-$line = $statusLine();
-check('Statuszeile (manuell): nennt Version 5.0.1 aus dem Feld', strpos($line, '✅') === 0 && strpos($line, '5.0.1') !== false && strpos($line, 'aus dem Feld') !== false, $line);
+// Zustand: eigene Angabe 5.0.1 UND automatisch 6.0.0 (Cloud hat 5.0.1 abgelehnt)
+[$line, $rowVisible] = $appStatus();
+check('Zustand ✏️ (eigene Angabe abgelehnt): nennt beide Versionen und Vorrang der automatischen', strpos($line, '✏️') === 0 && strpos($line, '5.0.1') !== false && strpos($line, '6.0.0') !== false && strpos($line, 'Vorrang') !== false, $line);
+check('Zustand ✏️: Eingabefeld bleibt sichtbar', $rowVisible === true);
+// Zustand: nur automatisch
 $GLOBALS['ips']['properties']['CC_AppVersion'] = '';
-$line = $statusLine();
-check('Statuszeile (Standard): ℹ️ nennt 4.4.0 als Modulstandard', strpos($line, 'ℹ️') === 0 && strpos($line, '4.4.0') !== false && strpos($line, 'Standard im Modul') !== false, $line);
-check('Statuszeile: statischer Platzhalter ist ersetzt (nicht leer)', $line !== '' && $line !== '(Element fehlt)');
-check('Feldbeschriftung enthaelt nicht mehr "leer = automatisch"', strpos(file_get_contents(__DIR__ . '/../WPHub/form.json'), 'leer = automatisch') === false);
+[$line, $rowVisible] = $appStatus();
+check('Zustand 🔗 (automatisch): Zeile "🔗 App-Version: 6.0.0 (automatisch ermittelt, Quelle ...)"', strpos($line, '🔗 App-Version: 6.0.0 (automatisch ermittelt, Quelle:') === 0, $line);
+check('Zustand 🔗: Eingabefeld ist AUSGEBLENDET (visible false)', $rowVisible === false);
+// Zustand: nur eigene Angabe
+$GLOBALS['ips']['properties']['CC_AppVersion'] = '5.0.1';
+$setAttr->invoke($mod, 'CC_AppVersionAuto', '');
+[$line, $rowVisible] = $appStatus();
+check('Zustand ✏️ (eigene Angabe): nennt 5.0.1, Feld sichtbar', strpos($line, '✏️ App-Version: 5.0.1') === 0 && $rowVisible === true, $line);
+// Zustand: nichts automatisch
+$GLOBALS['ips']['properties']['CC_AppVersion'] = '';
+[$line, $rowVisible] = $appStatus();
+check('Zustand ℹ️ (nichts automatisch): nennt Modulstandard 4.4.0, Feld sichtbar', strpos($line, 'ℹ️ App-Version: 4.4.0') === 0 && $rowVisible === true, $line);
+check('Statuszeile: statischer Platzhalter ersetzt (nicht leer)', $line !== '' && $line !== '(Element fehlt)');
+check('Formular: kein statischer Satz "leer = automatisch" mehr', strpos(file_get_contents(__DIR__ . '/../WPHub/form.json'), 'leer = automatisch') === false);
+check('Formular: Wert wird nie per UpdateFormField ins Feld geschrieben', !isset($GLOBALS['ips']['formFieldUpdates']['CC_AppVersion']['value']));
+
+// ApplyChanges: neue Nutzereingabe verwirft die automatisch ermittelte Version.
+$rdAttr = new ReflectionMethod(WPHub::class, 'ReadAttributeString');
+$rdAttr->setAccessible(true);
+$setAttr->invoke($mod, 'CC_AppVersionSeen', '#unset');
+$setAttr->invoke($mod, 'CC_AppVersionAuto', '6.0.0');
+$GLOBALS['ips']['properties']['CC_AppVersion'] = '5.0.1';
+$mod->ApplyChanges();
+check('ApplyChanges: erster Lauf nach Update merkt den Feldwert, verwirft nichts', $rdAttr->invoke($mod, 'CC_AppVersionAuto') === '6.0.0' && $rdAttr->invoke($mod, 'CC_AppVersionSeen') === '5.0.1');
+$GLOBALS['ips']['properties']['CC_AppVersion'] = '5.5.5';
+$mod->ApplyChanges();
+check('ApplyChanges: NEUE eigene Angabe verwirft die automatische Version (Eingabe gilt sofort)', $rdAttr->invoke($mod, 'CC_AppVersionAuto') === '' && $ccClient->invoke($mod)->getAppVersion() === '5.5.5');
+$setAttr->invoke($mod, 'CC_AppVersionAuto', '7.0.0'); // Cloud lehnt 5.5.5 ab, WPHub ermittelt neu
+$mod->ApplyChanges();
+check('ApplyChanges: unveraendertes Feld laesst die neu ermittelte Version stehen (Selbstheilung)', $rdAttr->invoke($mod, 'CC_AppVersionAuto') === '7.0.0' && $ccClient->invoke($mod)->getAppVersion() === '7.0.0');
+$GLOBALS['ips']['properties']['CC_AppVersion'] = '';
+$mod->ApplyChanges();
+check('ApplyChanges: Feld leeren verwirft die automatische Version NICHT', $rdAttr->invoke($mod, 'CC_AppVersionAuto') === '7.0.0');
+$setAttr->invoke($mod, 'CC_AppVersionAuto', '');
 
 // 4106 beim Geraeteabruf: einmal neu ermitteln, dann genau EIN Wiederholungsversuch.
 $fake2 = new FakeCC();

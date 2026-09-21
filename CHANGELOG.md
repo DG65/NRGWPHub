@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.10.6 (Build 72) — 21.09.2026
+
+- **App-Version: Eingabefeld ausblenden, wenn ein Wert automatisch kommt (Verbund-Regel „Wert kommt automatisch: Eingabefeld ersetzen“).** Statt einer Statuszeile über einem Feld, das man nicht braucht: Ist die Version automatisch ermittelt und das Feld leer, blendet WPHub das Eingabefeld aus und zeigt nur „🔗 App-Version: X (automatisch ermittelt, Quelle: Play Store bzw. AppBrain …)“. Das Feld erscheint nur, wenn nichts automatisch kommt (ℹ️ Modulstandard) oder bei eigener Angabe (✏️). Der Feldwert wird nie per Formular gesetzt, nur ein-/ausgeblendet.
+- **Eigene Angabe hat jetzt wirklich Vorrang, ohne die Selbstheilung zu verlieren.** Bisher gewann eine früher automatisch ermittelte Version immer gegen einen später eingetippten Feldwert. Jetzt verwirft `ApplyChanges()` die automatische Version, sobald der Nutzer einen NEUEN Wert einträgt (neues Attribut `CC_AppVersionSeen`, beim ersten Lauf nach dem Update wird nur gemerkt, nichts verworfen). Lehnt die Comfort Cloud die eigene Version danach ab (4106), ermittelt WPHub wieder selbst eine, und die hat dann Vorrang; die Zeile sagt das offen. 13 Prüfungen am ausgelieferten Formular-JSON und an ApplyChanges, drei Mutationen werden erkannt.
+
 ## 0.10.5 (Build 71) — 21.09.2026
 
 - **App-Version im Formular sichtbar: live berechnete Statuszeile statt „leer = automatisch“.** Neue Verbund-Regel (SUITE.md „Verbund-Verbindungen im Formular sichtbar machen“, 21.09.2026): automatisch ermittelte Werte dürfen im Formular nicht nur als statischer Satz stehen. Unter dem Feld „App-Version“ (jetzt „Notnagel, leer lassen“) zeigt WPHub jetzt, welche Comfort-Cloud-App-Version tatsächlich gilt und woher sie stammt: ✅ automatisch ermittelt (Vorrang, mit Hinweis, wenn der Feldwert deshalb nicht verwendet wird), ✅ aus dem Feld, ℹ️ Modulstandard 4.4.0. Vorrang und Zeile teilen sich eine Funktion (`effectiveAppVersion()`), können also nicht auseinanderlaufen. 6 neue Prüfungen am ausgelieferten Formular-JSON, für jeden Zustand.

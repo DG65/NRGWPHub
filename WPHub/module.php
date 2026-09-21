@@ -147,6 +147,9 @@ class WPHub extends IPSModule
         $this->RegisterAttributeString('VAI_DeviceList', '[]');
         // Zuletzt automatisch ermittelte App-Version (hat Vorrang).
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
+        // Zuletzt gesehener Feldwert von CC_AppVersion ('#unset' = noch nie
+        // gesehen). Erkennt eine Nutzeraenderung in ApplyChanges(), siehe dort.
+        $this->RegisterAttributeString('CC_AppVersionSeen', '#unset');
         // Zuletzt bestaetigter Stand des "Neu in Version"-Panels.
         $this->RegisterAttributeString('SeenNews', '');
         // Einmalig dismissible "Wozu dieses Modul?"-Panel (SUITE.md
@@ -170,6 +173,22 @@ class WPHub extends IPSModule
         parent::ApplyChanges();
 
         $this->ensureSharedProfiles();
+
+        // Eigene Angabe hat Vorrang (SUITE.md "Wert kommt automatisch: Eingabefeld
+        // ersetzen"): tippt der Nutzer im Feld "App-Version" einen NEUEN Wert ein,
+        // wird die bis dahin automatisch ermittelte Version verworfen, damit die
+        // Eingabe sofort gilt. Erst wenn die Comfort Cloud diese Version ablehnt
+        // (4106), ermittelt WPHub wieder selbst eine und diese hat dann Vorrang
+        // (Selbstheilung). Beim ersten Lauf nach dem Update ('#unset') wird der
+        // Feldwert nur gemerkt, nichts verworfen.
+        $manualNow = trim($this->ReadPropertyString('CC_AppVersion'));
+        $manualSeen = $this->ReadAttributeString('CC_AppVersionSeen');
+        if ($manualSeen !== $manualNow) {
+            $this->WriteAttributeString('CC_AppVersionSeen', $manualNow);
+            if ($manualSeen !== '#unset' && $manualNow !== '') {
+                $this->WriteAttributeString('CC_AppVersionAuto', '');
+            }
+        }
 
         $active   = $this->ReadPropertyBoolean('WPHUB_Active');
         $interval = max(30, $this->ReadPropertyInteger('WPHUB_Interval'));
@@ -202,9 +221,10 @@ class WPHub extends IPSModule
             'caption' => 'ℹ️ WPHub Version ' . $libraryVersion . ' -- Wärmepumpen-Cloud-Anbindung, Panasonic Comfort Cloud und (neu, ungeprüft) Vaillant myVAILLANT.',
         ]);
 
-        $this->updateFormElement($form['elements'], 'CC_AppVersionStatus', [
-            'caption' => $this->appVersionStatusLine(),
-        ]);
+        [$appVersionLine, $appVersionFieldVisible] = $this->appVersionStatus();
+        $this->updateFormElement($form['elements'], 'CC_AppVersionStatus', ['caption' => $appVersionLine]);
+        // Nur ein-/ausblenden, NIE den Feldwert per Formular setzen.
+        $this->updateFormElement($form['elements'], 'CC_AppVersionRow', ['visible' => $appVersionFieldVisible]);
 
         // "Neu in Version"-Panel vorn einhaengen, solange diese Version noch
         // nicht bestaetigt wurde (Dismiss NUR via Attribut + UpdateFormField,
@@ -1343,25 +1363,33 @@ class WPHub extends IPSModule
     }
 
     /**
-     * Live berechnete Statuszeile zur App-Version (SUITE.md "Verbund-
-     * Verbindungen im Formular sichtbar machen"): sagt, welche Version
-     * tatsaechlich gilt und woher sie stammt, statt "leer = automatisch".
+     * Statuszeile zur App-Version in den Zustaenden der Verbund-Regel (SUITE.md
+     * "Verbund-Verbindungen im Formular sichtbar machen" + "Wert kommt
+     * automatisch: Eingabefeld ersetzen"): 🔗 automatisch ermittelt (Eingabefeld
+     * ausgeblendet), ✏️ eigene Angabe (Feld sichtbar), ℹ️ nichts automatisch
+     * (Feld sichtbar). Liefert [Zeile, Feld sichtbar].
+     *
+     * @return array{0: string, 1: bool}
      */
-    private function appVersionStatusLine(): string
+    private function appVersionStatus(): array
     {
-        [$version, $source] = $this->effectiveAppVersion();
+        [$version] = $this->effectiveAppVersion();
+        $auto = trim($this->ReadAttributeString('CC_AppVersionAuto'));
         $manual = trim($this->ReadPropertyString('CC_AppVersion'));
-        if ($source === 'auto') {
-            $line = '✅ Es gilt App-Version ' . $version . ' -- automatisch ermittelt, nachdem die Comfort Cloud eine ältere abgelehnt hatte (hat Vorrang vor dem Feld).';
-            if ($manual !== '' && $manual !== $version) {
-                $line .= ' Der Wert im Feld (' . $manual . ') wird deshalb aktuell nicht verwendet.';
+
+        if ($auto !== '' && $manual === '') {
+            return ['🔗 App-Version: ' . $auto . ' (automatisch ermittelt, Quelle: Play Store bzw. AppBrain, nachdem die Comfort Cloud eine ältere Version abgelehnt hatte). Das Eingabefeld erscheint nur, wenn nichts automatisch kommt.', false];
+        }
+        if ($auto !== '' && $manual !== '') {
+            if ($manual === $auto) {
+                return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, entspricht der automatisch ermittelten Version). Feld leeren, um wieder nur die automatische zu nutzen.', true];
             }
-            return $line;
+            return ['✏️ Eigene App-Version ' . $manual . ' wurde von der Comfort Cloud abgelehnt, es gilt die automatisch ermittelte Version ' . $auto . ' (Vorrang). Feld leeren, um wieder nur die automatische zu nutzen.', true];
         }
-        if ($source === 'manual') {
-            return '✅ Es gilt App-Version ' . $version . ' -- aus dem Feld oben. Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst und nutzt dann diese.';
+        if ($manual !== '') {
+            return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, hat Vorrang vor dem Modulstandard). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst und nutzt dann diese.', true];
         }
-        return 'ℹ️ Es gilt App-Version ' . $version . ' -- Standard im Modul (bisher nie automatisch aktualisiert, Feld leer). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst.';
+        return ['ℹ️ App-Version: ' . $version . ' (Standard im Modul, bisher nichts automatisch ermittelt). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst. Das Feld unten ist nur der Notnagel, falls das nicht klappt.', true];
     }
 
     private function ccClient(): WPHUB_ComfortCloudClient
