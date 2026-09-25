@@ -370,6 +370,35 @@ Pruefstand: 299 Pruefungen (vorher 288), sechs neue Mutationen (`snakeCaseKeysDe
 nicht angewendet, DHW-Ersatz fehlt, vrc700-Basis-URL falsch, vrc700 wieder uebersprungen
 -- je einmal fuer tli und vrc700) alle gefangen.
 
+## Vaillant: API-Kontingent-Sperrfrist (0.11.1, 25.09.2026)
+
+m_rothenpieler (Forum-Post #24, 2x aroTHERM split 7,5 kW Kaskade, sensoCOMFORT ueber
+VR920 -- vermutlich "tli", nicht "vrc700") meldete: Login/Erreichbar funktionierte, aber
+keine weiteren Werte, und nach mehreren 60s-Zyklen `GET /v1/homes -> HTTP 403
+"Out of call volume quota. Quota will be replenished in 00:02:51."`, danach Erreichbar
+auf Alarm. Er hat das Modul wieder entfernt. Seine Vermutung ("Datenstruktur stimmt nicht")
+deckt sich vermutlich mit dem gerade erst gefundenen camelCase-Bug (siehe Abschnitt oben,
+0.11.0) -- die Kontingent-Sperre ist aber ein ZWEITES, unabhaengiges Problem: WPHub fragt
+bislang JEDEN Zyklus ungebremst erneut an, auch direkt nach einem 403, was die Sperre nur
+verlaengert haben duerfte.
+
+**Fix:** `WPHUB_VaillantClient::parseQuotaRetrySeconds()` liest Vaillants eigene Angabe
+("Quota will be replenished in HH:MM:SS") aus der Fehlerantwort, `failApi()` setzt das
+oeffentliche `$client->quotaRetryAfterSeconds`, sobald HTTP 403 kommt (Fallback 5 Minuten,
+falls das Zeitmuster mal fehlt). `updateVaillant()` legt daraus eine Sperrfrist
+(`VAI_RetryNotBefore`-Attribut) an und ueberspringt waehrend dieser Zeit den kompletten
+Zyklus -- kein weiterer API-Aufruf, keine weitere Protokollzeile, bis die Sperrfrist um ist.
+**Noch NICHT geloest:** ob das Kontingent pro Konto oder GETEILT ueber den oeffentlichen,
+festen `SUBSCRIPTION_KEY` (alle myPyllant-/WPHub-Nutzer weltweit) gilt, ist unbekannt --
+falls Letzteres, hilft eine laengere Pause nur bedingt. Kein Anlass, den Subscription-Key
+zu aendern (oeffentlich, aus myPyllant selbst, keine Alternative bekannt).
+
+Testbarkeit: `vaillantClient()` hat jetzt denselben `$GLOBALS['ips']['vaillantClientFactory']`-
+Testseam wie WPBsbLan (`bsbClientFactory`) -- vorher liess sich `updateVaillant()` gar
+nicht ohne echten Netzzugriff pruefen. Pruefstand 305 -> 311, sechs neue Mutationen
+gefangen (inkl. der Verdrahtung in `failApi()`, direkt am echten Client statt nur an der
+Attrappe getestet).
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

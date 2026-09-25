@@ -48,6 +48,15 @@ class WPHUB_VaillantClient
     private $lastError = '';
     private $cookieFile = null;
     private $debug = null; // callable(string $topic, string $text)
+    // Fund 25.09.2026 (m_rothenpieler, Forum-Post #24/WPHub-Thread): "Out of
+    // call volume quota. Quota will be replenished in HH:MM:SS" (HTTP 403) --
+    // von failApi() gesetzt, sobald genau dieses Muster in einer Antwort
+    // auftaucht. NULL = kein Kontingent-Fehler in der letzten Anfrage. Das
+    // Modul (module.php::updateVaillant()) liest das aus und legt eine
+    // Sperrfrist an, statt im naechsten Zyklus sofort wieder anzufragen --
+    // ohne das haette jeder weitere Fehlversuch das Kontingent nur laenger
+    // blockiert.
+    public ?int $quotaRetryAfterSeconds = null;
 
     public function __construct(string $country, ?callable $debug = null)
     {
@@ -496,6 +505,28 @@ class WPHUB_VaillantClient
         }
         $this->lastError = $what . ' fehlgeschlagen (HTTP ' . $r['status'] . '): ' . substr((string)$r['body'], 0, 300);
         $this->dbg('fehler', $this->lastError);
+        if ((int)$r['status'] === 403) {
+            $this->quotaRetryAfterSeconds = self::parseQuotaRetrySeconds((string)$r['body']);
+        }
+    }
+
+    /**
+     * Sucht in einer Fehlerantwort nach "Quota will be replenished in
+     * HH:MM:SS" (Vaillants eigener Wortlaut, von m_rothenpieler im Forum
+     * zitiert, 25.09.2026) und liefert die Sekunden bis dahin, mit 10s
+     * Sicherheitsabstand. Liefert einen sicheren Standardwert (5 Minuten),
+     * wenn HTTP 403 kam, aber kein Zeitmuster gefunden wird (z. B. ein
+     * anderer 403-Grund oder ein veraendertes Wording) -- besser eine
+     * Pause zu viel als eine Anfrage zu viel waehrend eines Kontingent-Sperre.
+     * Oeffentlich, damit der Pruefstand sie direkt testen kann.
+     */
+    public static function parseQuotaRetrySeconds(string $body): int
+    {
+        if (preg_match('/replenished in (\d{1,2}):(\d{2}):(\d{2})/i', $body, $m)) {
+            $seconds = ((int)$m[1]) * 3600 + ((int)$m[2]) * 60 + (int)$m[3];
+            return $seconds + 10;
+        }
+        return 300;
     }
 
     private function urlForLog(string $url): string

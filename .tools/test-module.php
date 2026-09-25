@@ -1544,10 +1544,69 @@ $parsedVrc700 = WPHUB_VaillantClient::parseVrc700Body($vrc700Body);
 check('parseVrc700Body(): domesticHotWater wird VOR der Konvertierung zu dhw ersetzt', ($parsedVrc700['state']['system']['dhw_temperature'] ?? null) === 47.5 && ($parsedVrc700['state']['system']['dhw_target_temperature'] ?? null) === 50.5, json_encode($parsedVrc700));
 check('parseVrc700Body(): ungueltiges JSON liefert NULL', WPHUB_VaillantClient::parseVrc700Body('kein json') === null);
 
+// parseQuotaRetrySeconds(): Fund 25.09.2026 (m_rothenpieler, Forum-Post #24) --
+// "Out of call volume quota. Quota will be replenished in 00:02:51."
+check('parseQuotaRetrySeconds(): Vaillants genauer Wortlaut wird erkannt (2:51 + 10s Puffer)', WPHUB_VaillantClient::parseQuotaRetrySeconds('Out of call volume quota. Quota will be replenished in 00:02:51.') === (2 * 60 + 51 + 10));
+check('parseQuotaRetrySeconds(): zweistellige Stunden werden korrekt erfasst', WPHUB_VaillantClient::parseQuotaRetrySeconds('replenished in 01:02:03') === (3600 + 120 + 3 + 10));
+check('parseQuotaRetrySeconds(): ohne erkennbares Zeitmuster ein sicherer Standardwert (5 min)', WPHUB_VaillantClient::parseQuotaRetrySeconds('irgendein anderer 403-Text') === 300);
+
+// failApi() (privat): setzt quotaRetryAfterSeconds NUR bei HTTP 403, direkt
+// am echten Client geprueft (keine Attrappe -- das ist die Verdrahtung, die
+// die Attrappe selbst umgeht).
+$realVaiClient = new WPHUB_VaillantClient('germany');
+$failApi = new ReflectionMethod(WPHUB_VaillantClient::class, 'failApi');
+$failApi->setAccessible(true);
+check('failApi(): quotaRetryAfterSeconds ist anfangs NULL', $realVaiClient->quotaRetryAfterSeconds === null);
+$failApi->invoke($realVaiClient, 'Testaufruf', ['status' => 500, 'body' => 'Serverfehler']);
+check('failApi(): HTTP 500 setzt quotaRetryAfterSeconds NICHT', $realVaiClient->quotaRetryAfterSeconds === null);
+$failApi->invoke($realVaiClient, 'Testaufruf', ['status' => 403, 'body' => 'Out of call volume quota. Quota will be replenished in 00:00:30.']);
+check('failApi(): HTTP 403 setzt quotaRetryAfterSeconds aus dem Antworttext', $realVaiClient->quotaRetryAfterSeconds === 40, (string)$realVaiClient->quotaRetryAfterSeconds);
+
 // Token-Attribut ist eigenstaendig (VAI_Token, nicht CC_Token).
 check('vaillantTokenBundle() ohne Token: null', $vaillantTokenBundle->invoke($mod) === null);
 $setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
 check('vaillantTokenBundle() mit gesetztem VAI_Token: liefert Buendel', ($vaillantTokenBundle->invoke($mod)['accessToken'] ?? null) === 'tok');
+
+// updateVaillant(): waehrend einer Kontingent-Sperrfrist wird GAR NICHTS
+// versucht (keine erneute Anfrage, kein Status-Wechsel) -- sonst wuerde
+// jeder Zyklus die Sperre nur verlaengern (Fund m_rothenpieler, s.o.).
+$updateVaillant = new ReflectionMethod(WPHub::class, 'updateVaillant');
+$updateVaillant->setAccessible(true);
+$getStatus = new ReflectionMethod(WPHub::class, 'GetStatus');
+$getStatus->setAccessible(true);
+$setStatus = new ReflectionMethod(WPHub::class, 'SetStatus');
+$setStatus->setAccessible(true);
+$writeRetry = new ReflectionMethod(WPHub::class, 'WriteAttributeInteger');
+$writeRetry->setAccessible(true);
+// Gueltiges, nicht ablaufendes Token hinterlegen, damit vaillantEnsureToken()
+// sofort durchreicht und updateVaillant() bis zum eigentlichen API-Aufruf kommt.
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
+$fakeVaiQuota = new FakeVaillant('germany');
+$fakeVaiQuota->homesResult = null; // simuliert einen fehlgeschlagenen Abruf
+$fakeVaiQuota->quotaRetryAfterSeconds = 45;
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiQuota) {
+    return $fakeVaiQuota;
+};
+
+$setStatus->invoke($mod, 999); // Wachposten-Wert, den nur ein echter Durchlauf aendern wuerde
+$writeRetry->invoke($mod, 'VAI_RetryNotBefore', time() + 120);
+$logCountBeforeBlocked = count($GLOBALS['ips']['log']);
+$updateVaillant->invoke($mod);
+check('updateVaillant() waehrend der Sperrfrist: Status bleibt unangetastet (kein Versuch)', $getStatus->invoke($mod) === 999);
+check('updateVaillant() waehrend der Sperrfrist: protokolliert nichts (kein Log-Eintrag)', count($GLOBALS['ips']['log']) === $logCountBeforeBlocked);
+check('updateVaillant() waehrend der Sperrfrist: ruft getHomes() der Attrappe gar nicht erst auf', $fakeVaiQuota->homesCalls === 0);
+
+$writeRetry->invoke($mod, 'VAI_RetryNotBefore', time() - 5); // Sperrfrist bereits abgelaufen
+$readRetry = new ReflectionMethod(WPHub::class, 'ReadAttributeInteger');
+$readRetry->setAccessible(true);
+$before = time();
+$updateVaillant->invoke($mod);
+check('updateVaillant() nach Ablauf der Sperrfrist: unternimmt wieder einen Versuch', $fakeVaiQuota->homesCalls === 1);
+$newRetry = $readRetry->invoke($mod, 'VAI_RetryNotBefore');
+check('updateVaillant() setzt bei einem Kontingent-Fehler eine NEUE Sperrfrist aus quotaRetryAfterSeconds', $newRetry >= $before + 45 && $newRetry <= $before + 47, $newRetry . ' vs. ' . ($before + 45));
+$lastLog = end($GLOBALS['ips']['log']);
+check('updateVaillant() protokolliert den Kontingent-Fehler klar erkennbar', strpos($lastLog, 'Kontingent') !== false, $lastLog);
+unset($GLOBALS['ips']['vaillantClientFactory']);
 
 // Aufraeumen fuer eventuelle spaetere Bloecke.
 $GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';

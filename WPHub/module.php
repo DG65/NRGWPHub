@@ -145,6 +145,9 @@ class WPHub extends IPSModule
         // erhalten (kein Datenverlust bei Hin-/Herschalten zum Ausprobieren).
         $this->RegisterAttributeString('VAI_Token', '');
         $this->RegisterAttributeString('VAI_DeviceList', '[]');
+        // Sperrfrist nach einem "Out of call volume quota"-Fehler (403) --
+        // siehe updateVaillant()/VaillantClient::parseQuotaRetrySeconds().
+        $this->RegisterAttributeInteger('VAI_RetryNotBefore', 0);
         // Zuletzt automatisch ermittelte App-Version (hat Vorrang).
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt gesehener Feldwert von CC_AppVersion ('#unset' = noch nie
@@ -1472,8 +1475,17 @@ class WPHub extends IPSModule
     // -- siehe VaillantClient.php.
     // ------------------------------------------------------------------
 
+    /**
+     * Baut den Vaillant-Client. Testseam: der Pruefstand kann eine
+     * Fabrikfunktion unter $GLOBALS['ips']['vaillantClientFactory']
+     * hinterlegen (liefert dann eine Attrappe statt eines echten
+     * curl-Clients) -- Muster identisch zu WPBsbLan::bsbLanClient().
+     */
     private function vaillantClient(): WPHUB_VaillantClient
     {
+        if (isset($GLOBALS['ips']['vaillantClientFactory']) && is_callable($GLOBALS['ips']['vaillantClientFactory'])) {
+            return ($GLOBALS['ips']['vaillantClientFactory'])();
+        }
         $country = trim($this->ReadPropertyString('VAI_Country'));
         if ($country === '' || !isset(self::VAILLANT_COUNTRIES[$country])) {
             $country = 'germany';
@@ -1566,8 +1578,19 @@ class WPHub extends IPSModule
         $say(implode("\n", $lines));
     }
 
+    /**
+     * Vaillant-Update -- mit Sperrfrist nach einem API-Kontingent-Fehler
+     * (Fund 25.09.2026, m_rothenpieler: "Out of call volume quota", HTTP 403
+     * nach mehreren 60s-Zyklen). OHNE diese Sperrfrist wuerde jeder weitere
+     * Zyklus sofort erneut anfragen und die Sperre nur verlaengern -- siehe
+     * VaillantClient::parseQuotaRetrySeconds().
+     */
     private function updateVaillant(): void
     {
+        $retryNotBefore = $this->ReadAttributeInteger('VAI_RetryNotBefore');
+        if ($retryNotBefore > time()) {
+            return; // Kontingent-Sperrfrist laeuft noch, letzter Status bleibt stehen
+        }
         $bundle = $this->vaillantEnsureToken();
         if ($bundle === null) {
             return; // Status 201 gesetzt, Meldung im Protokoll
@@ -1575,7 +1598,12 @@ class WPHub extends IPSModule
         $client = $this->vaillantClient();
         if ($this->refreshDevicesVaillant($bundle, $client) === null) {
             $this->markAllUnreachable();
-            $this->LogMessage('Aktualisierung fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
+            if ($client->quotaRetryAfterSeconds !== null) {
+                $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
+                $this->LogMessage('Vaillant-API-Kontingent aufgebraucht -- naechster Versuch in ' . $client->quotaRetryAfterSeconds . ' s (' . $client->getLastError() . ').', KL_WARNING);
+            } else {
+                $this->LogMessage('Aktualisierung fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
+            }
             return;
         }
         $this->refreshDiscoverySummary();

@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.11.1 (Build 75) — 25.09.2026
+
+- **Vaillant: Sperrfrist nach einem API-Kontingent-Fehler.** m_rothenpieler (Forum-Post #24, aroTHERM-split-Kaskade über sensoCOMFORT) meldete nach einigen Aktualisierungszyklen `HTTP 403 "Out of call volume quota"` — die Erreichbarkeits-Variable kippte danach auf Alarm. WPHub versucht nach so einem Fehler jetzt nicht mehr bei jedem 60-Sekunden-Zyklus erneut (was die Sperre nur verlängert hätte), sondern liest die von Vaillant selbst genannte Wartezeit ("Quota will be replenished in HH:MM:SS") aus der Fehlermeldung und pausiert bis dahin, mit einer klar erkennbaren Protokollmeldung statt der bisherigen generischen Fehlermeldung.
+- Prüfstand: 311 Prüfungen (vorher 305), sechs neue Mutationen der Zielstellen geprüft.
+
 ## 0.11.0 (Build 74) — 25.09.2026
 
 - **Wichtiger Fix: Vaillant-Systemdaten wurden bislang gar nicht ausgewertet.** cbeham (Forum-Post #22, LWP VWF117 + recoVair365/4) hat sich als erster echter myVAILLANT-Tester angemeldet -- dabei kam ans Licht, dass die rohe Vaillant-API camelCase-Feldnamen liefert (z. B. `outdoorTemperature`), während der Code seit dem ersten Bau schon snake_case (`outdoor_temperature`) erwartet hatte, wie in myPyllants eigenen, bereits konvertierten Modellnamen -- ohne die dazwischenliegende Konvertierung blieben alle Temperaturfelder bislang leer, auch bei einer erfolgreich angemeldeten tli-Anlage. Jetzt wird jede Systemantwort mit einem 1:1-Nachbau von `myPyllant.utils.dict_to_snake_case()` konvertiert (Quelltext gegengelesen).
