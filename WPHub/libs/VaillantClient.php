@@ -34,6 +34,9 @@ class WPHUB_VaillantClient
     const AUTH_BASE          = 'https://identity.vaillant-group.com/auth/realms';
     const ALTCHA_CHALLENGE   = 'https://identity.vaillant-group.com/api/altcha/challenge';
     const API_BASE_TLI       = 'https://api.vaillant-group.com/service-connected-control/end-user-app-api/v1';
+    // myPyllant.const.API_URL_BASE['vrc700'] -- eigene Basis-URL, NICHT
+    // API_BASE_TLI mit anderem Pfad (Quelltext gegengelesen 25.09.2026).
+    const API_BASE_VRC700    = 'https://api.vaillant-group.com/service-connected-control/vrc700/v1';
     const CLIENT_ID          = 'myvaillant';
     const REDIRECT_URI       = 'enduservaillant.page.link://login';
     const UA                 = 'okhttp/4.9.2';
@@ -195,19 +198,114 @@ class WPHUB_VaillantClient
 
     /**
      * Rohes System-JSON (configuration/state/properties/current_system) fuer
-     * eine tli-Anlage. Nur "tli" wird unterstuetzt -- fuer andere Regler-Typen
-     * liefert die Referenz eine andere URL-Form, die WPHub (noch) nicht baut.
+     * eine tli-Anlage, Schluessel per snakeCaseKeysDeep() konvertiert --
+     * siehe dort, warum das noetig ist (Fund 25.09.2026: die rohe API liefert
+     * camelCase, nicht snake_case, siehe myPyllant.api.get_systems()).
      */
     public function getSystem(array $bundle, string $systemId): ?array
     {
         $this->lastError = '';
         $r = $this->apiRequest($bundle, 'GET', self::API_BASE_TLI . '/systems/' . rawurlencode($systemId) . '/tli');
-        $json = ($r !== null) ? json_decode($r['body'], true) : null;
-        if ($r === null || $r['status'] !== 200 || !is_array($json)) {
+        if ($r === null || $r['status'] !== 200) {
             $this->failApi('Systemdaten (systems/' . $systemId . '/tli)', $r);
             return null;
         }
-        return $json;
+        $parsed = self::parseTliBody((string)$r['body']);
+        if ($parsed === null) {
+            $this->failApi('Systemdaten (systems/' . $systemId . '/tli) -- ungueltiges JSON', $r);
+        }
+        return $parsed;
+    }
+
+    /**
+     * Reine Dekodierfunktion fuer eine tli-System-Antwort -- ausgelagert,
+     * damit der Pruefstand sie OHNE echtes HTTP direkt mit einem
+     * vorgefertigten JSON-Body testen kann (dieselbe Funktion, die auch
+     * getSystem() im Live-Betrieb nutzt). NULL nur bei ungueltigem JSON.
+     */
+    public static function parseTliBody(string $body): ?array
+    {
+        $json = json_decode($body, true);
+        if (!is_array($json)) {
+            return null;
+        }
+        return self::snakeCaseKeysDeep($json);
+    }
+
+    /**
+     * Rohes System-JSON fuer eine vrc700-Anlage (Sensocomfort/aeltere
+     * Vaillant-/Marken-Regelung ueber dieselbe myVAILLANT-Cloud). Eigene
+     * Basis-URL (NICHT die TLI-Basis mit einem anderen Pfadsuffix -- eine
+     * komplett eigene Route, siehe myPyllant.const.API_URL_BASE) und ein
+     * Textersatz VOR dem JSON-Dekodieren ("domesticHotWater"->"dhw",
+     * "DomesticHotWater"->"Dhw"), 1:1 aus myPyllant.api.get_systems()
+     * uebernommen (Quelltext am 25.09.2026 gegengelesen, siehe
+     * WPHub-CLAUDE.md). Feldnamen nach der Konvertierung sind fuer
+     * DHW-Werte dadurch ANDERS als bei tli (z. B. "..._dhw" statt
+     * "..._d_h_w") -- welche Felder eine echte vrc700-Anlage tatsaechlich
+     * liefert, ist noch UNGEPRUEFT (kein Testkonto). maintainDeviceVariablesVaillant()
+     * liest deshalb bewusst nur die Felder, die bei tli bereits bestaetigt sind;
+     * findet keines davon einen Treffer, bleibt die Anlage ohne Werte, aber
+     * ERREICHBAR und ERKANNT (Fortschritt gegenueber dem bisherigen
+     * Komplett-Ueberspringen) -- das komplette Roh-JSON geht zusaetzlich per
+     * SendDebug raus, um die echten Feldnamen von einem Tester zu bekommen.
+     */
+    public function getSystemVrc700(array $bundle, string $systemId): ?array
+    {
+        $this->lastError = '';
+        $r = $this->apiRequest($bundle, 'GET', self::API_BASE_VRC700 . '/systems/' . rawurlencode($systemId));
+        if ($r === null || $r['status'] !== 200) {
+            $this->failApi('Systemdaten vrc700 (systems/' . $systemId . ')', $r);
+            return null;
+        }
+        $parsed = self::parseVrc700Body((string)$r['body']);
+        if ($parsed === null) {
+            $this->failApi('Systemdaten vrc700 (systems/' . $systemId . ') -- ungueltiges JSON nach Ersetzung', $r);
+        }
+        return $parsed;
+    }
+
+    /**
+     * Reine Dekodierfunktion fuer eine vrc700-System-Antwort -- siehe
+     * parseTliBody(), gleiches Testbarkeits-Muster. Fuehrt zusaetzlich den
+     * domesticHotWater/DomesticHotWater-Textersatz VOR dem Dekodieren aus.
+     */
+    public static function parseVrc700Body(string $body): ?array
+    {
+        $raw = str_replace(['domesticHotWater', 'DomesticHotWater'], ['dhw', 'Dhw'], $body);
+        $json = json_decode($raw, true);
+        if (!is_array($json)) {
+            return null;
+        }
+        return self::snakeCaseKeysDeep($json);
+    }
+
+    /**
+     * camelCase -> snake_case, rekursiv ueber verschachtelte Arrays/Objekte --
+     * 1:1-Nachbau von myPyllant.utils.dict_to_snake_case() (Regex
+     * `(?<!^)(?=[A-Z])`, Unterstrich vor JEDEM Grossbuchstaben ausser am
+     * Anfang, dann klein). Wichtig fuer Akronyme: "topDHW" wird zu
+     * "top_d_h_w" (jeder Grossbuchstabe einzeln), NICHT "top_dhw" -- das
+     * bestaetigt, warum die bestehenden tli-Feldnamen in
+     * maintainDeviceVariablesVaillant() genau so und nicht anders geschrieben
+     * sind (sie wurden aus myPyllants eigenen, bereits konvertierten
+     * Pydantic-Modellnamen uebernommen, nicht aus der rohen API).
+     */
+    private static function snakeCaseKeysDeep($data)
+    {
+        if (!is_array($data)) {
+            return $data;
+        }
+        $isList = array_keys($data) === range(0, count($data) - 1);
+        if ($isList) {
+            return array_map([self::class, 'snakeCaseKeysDeep'], $data);
+        }
+        $out = [];
+        foreach ($data as $k => $v) {
+            $newKey = is_string($k) ? strtolower((string)preg_replace('/(?<!^)(?=[A-Z])/', '_', $k)) : $k;
+            $out[$newKey] = self::snakeCaseKeysDeep($v);
+        }
+        return $out;
     }
 
     /**

@@ -458,6 +458,13 @@ class FakeVaillant extends WPHUB_VaillantClient
     {
         return $this->systemsById[$systemId] ?? null;
     }
+    public array $systemsVrc700ById = [];  // systemId => rohes vrc700-System-Array | null
+    public array $vrc700Calls = [];
+    public function getSystemVrc700(array $bundle, string $systemId): ?array
+    {
+        $this->vrc700Calls[] = $systemId;
+        return $this->systemsVrc700ById[$systemId] ?? null;
+    }
     public function getLastError(): string
     {
         return 'Vaillant-Attrappen-Fehler';
@@ -1465,22 +1472,77 @@ if (is_array($functionsVai) && count($functionsVai) === 1) {
     check('GetFunctions(): contractVersion bleibt 1.15', ($functionsVai[0]['contractVersion'] ?? null) === '1.15');
 }
 
-// refreshDevicesVaillant(): "tli"-Anlage wird verarbeitet, andere Regler-
-// Typen (z.B. "vrc700") werden uebersprungen statt geraten.
+// refreshDevicesVaillant(): "tli" UND "vrc700" werden verarbeitet (Fund
+// 25.09.2026, cbeham/Forum-Post #22: vrc700 hat eine eigene Basis-URL, siehe
+// VaillantClient::getSystemVrc700()) -- nur "scf" bleibt uebersprungen.
 $fakeVai = new FakeVaillant('germany');
 $fakeVai->homesResult = [
     ['systemId' => 'sys-tli-1', 'homeName' => 'Zuhause'],
     ['systemId' => 'sys-vrc700-1', 'homeName' => 'Altbau'],
+    ['systemId' => 'sys-scf-1', 'homeName' => 'iQconnect'],
 ];
-$fakeVai->controlIdentifiers = ['sys-tli-1' => 'tli', 'sys-vrc700-1' => 'vrc700'];
+$fakeVai->controlIdentifiers = ['sys-tli-1' => 'tli', 'sys-vrc700-1' => 'vrc700', 'sys-scf-1' => 'scf'];
 $fakeVai->systemsById = [
     'sys-tli-1' => ['connected' => true, 'state' => ['system' => ['outdoor_temperature' => 5.0]]],
 ];
+$fakeVai->systemsVrc700ById = [
+    'sys-vrc700-1' => ['connected' => true, 'state' => ['system' => ['outdoor_temperature' => 3.5]]],
+];
 $vaiBundle = ['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600];
 $vaiDevices = $refreshDevicesVaillant->invoke($mod, $vaiBundle, $fakeVai);
-check('refreshDevicesVaillant() liefert genau die tli-Anlage', is_array($vaiDevices) && count($vaiDevices) === 1, json_encode($vaiDevices));
+check('refreshDevicesVaillant() liefert tli- UND vrc700-Anlage, scf bleibt aussen vor', is_array($vaiDevices) && count($vaiDevices) === 2, json_encode($vaiDevices));
 check('refreshDevicesVaillant() uebernimmt den Anlagennamen', ($vaiDevices[0]['name'] ?? null) === 'Zuhause');
-check('refreshDevicesVaillant() schreibt VAI_DeviceList (getrennt von CC_DeviceList)', count($readDeviceList->invoke($mod)) === 1);
+check('refreshDevicesVaillant() ruft getSystemVrc700() fuer die vrc700-Anlage auf', $fakeVai->vrc700Calls === ['sys-vrc700-1']);
+check('refreshDevicesVaillant() schreibt VAI_DeviceList (getrennt von CC_DeviceList)', count($readDeviceList->invoke($mod)) === 2);
+$vrc700Device = null;
+foreach ($vaiDevices as $d) {
+    if (($d['guid'] ?? null) === 'sys-vrc700-1') {
+        $vrc700Device = $d;
+    }
+}
+check('vrc700-Anlage: erkannt, erreichbar und mit Namen "Altbau"', $vrc700Device !== null && $vrc700Device['reachable'] === true && $vrc700Device['name'] === 'Altbau', json_encode($vrc700Device));
+check('vrc700-Anlage: Aussentemperatur uebernommen (dieselbe Feldlogik wie tli)', $vrc700Device !== null && ($GLOBALS['ips']['variables'][$vrc700Device['prefix'] . 'Aussentemperatur']['value'] ?? null) === 3.5, json_encode($GLOBALS['ips']['variables'][($vrc700Device['prefix'] ?? '') . 'Aussentemperatur'] ?? null));
+
+// snakeCaseKeysDeep(): reine Konvertierungslogik direkt getestet, mit
+// realistischem camelCase wie es die echte myVAILLANT-API liefert (Quelltext
+// myPyllant.utils.dict_to_snake_case gegengelesen 25.09.2026).
+$snakeCase = new ReflectionMethod(WPHUB_VaillantClient::class, 'snakeCaseKeysDeep');
+$snakeCase->setAccessible(true);
+$camel = [
+    'outdoorTemperature' => 7.5,
+    'systemFlowTemperature' => 38.2,
+    // Akronym DHW: JEDER Grossbuchstabe bekommt einen eigenen Unterstrich
+    // (Python-Regex trennt nicht nach Wortgruppen) -- deshalb "d_h_w", nicht
+    // "dhw". Das ist genau die Schreibweise, die maintainDeviceVariablesVaillant()
+    // fuer tli-Anlagen bereits erwartet.
+    'cylinderTemperatureSensorTopDHW' => 48.5,
+    'nestedList' => [
+        ['zoneIndex' => 0, 'currentRoomTemperature' => 21.0],
+        ['zoneIndex' => 1, 'currentRoomTemperature' => 19.5],
+    ],
+];
+$snaked = $snakeCase->invoke(null, $camel);
+check('snakeCaseKeysDeep(): einfaches camelCase korrekt konvertiert', array_key_exists('outdoor_temperature', $snaked) && $snaked['outdoor_temperature'] === 7.5, json_encode($snaked));
+check('snakeCaseKeysDeep(): Akronym DHW wird buchstabenweise getrennt (d_h_w, nicht dhw)', array_key_exists('cylinder_temperature_sensor_top_d_h_w', $snaked), json_encode(array_keys($snaked)));
+check('snakeCaseKeysDeep(): verschachtelte Listen-Elemente werden ebenfalls konvertiert', ($snaked['nested_list'][0]['current_room_temperature'] ?? null) === 21.0 && ($snaked['nested_list'][1]['zone_index'] ?? null) === 1, json_encode($snaked['nested_list'] ?? null));
+
+// getSystemVrc700(): Base-URL ist eigenstaendig (NICHT API_BASE_TLI mit
+// anderem Pfad) und der domesticHotWater/DomesticHotWater-Ersatz laeuft VOR
+// dem JSON-Dekodieren (1:1 myPyllant.api.get_systems()).
+check('API_BASE_VRC700 ist eine eigene Basis-URL, nicht API_BASE_TLI-basiert', WPHUB_VaillantClient::API_BASE_VRC700 === 'https://api.vaillant-group.com/service-connected-control/vrc700/v1' && strpos(WPHUB_VaillantClient::API_BASE_VRC700, WPHUB_VaillantClient::API_BASE_TLI) === false);
+
+// parseTliBody()/parseVrc700Body(): reine Dekodierfunktionen direkt mit
+// vorgefertigtem JSON-Body getestet, ohne echtes HTTP (Muster: WPBsbLan
+// parseResponseBody()).
+$tliBody = json_encode(['connected' => true, 'state' => ['system' => ['outdoorTemperature' => 6.5]]]);
+$parsedTli = WPHUB_VaillantClient::parseTliBody($tliBody);
+check('parseTliBody(): camelCase wird zu snake_case konvertiert', ($parsedTli['state']['system']['outdoor_temperature'] ?? null) === 6.5, json_encode($parsedTli));
+check('parseTliBody(): ungueltiges JSON liefert NULL', WPHUB_VaillantClient::parseTliBody('kein json') === null);
+
+$vrc700Body = json_encode(['connected' => true, 'state' => ['system' => ['domesticHotWaterTemperature' => 47.5, 'DomesticHotWaterTargetTemperature' => 50.5]]]);
+$parsedVrc700 = WPHUB_VaillantClient::parseVrc700Body($vrc700Body);
+check('parseVrc700Body(): domesticHotWater wird VOR der Konvertierung zu dhw ersetzt', ($parsedVrc700['state']['system']['dhw_temperature'] ?? null) === 47.5 && ($parsedVrc700['state']['system']['dhw_target_temperature'] ?? null) === 50.5, json_encode($parsedVrc700));
+check('parseVrc700Body(): ungueltiges JSON liefert NULL', WPHUB_VaillantClient::parseVrc700Body('kein json') === null);
 
 // Token-Attribut ist eigenstaendig (VAI_Token, nicht CC_Token).
 check('vaillantTokenBundle() ohne Token: null', $vaillantTokenBundle->invoke($mod) === null);

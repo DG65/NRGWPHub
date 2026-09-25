@@ -327,6 +327,49 @@ Baustein der Waermepumpen-Vertikale neben WPHub/HeishaMon/WPModbusHub+Gateway/Sa
 Noch offen: Forumsantwort an Lütfü mit dem Ergebnis, Forumsthread fuer WPBsbLan selbst
 (noch keiner -- `ForumHint()` liefert bewusst `null` bis dahin).
 
+## Vaillant: camelCase-Fix + vrc700-Anlauf (0.11.0, 25.09.2026)
+
+cbeham hat sich im Thread gemeldet (Beitrag #19/#20/#22): WPHub installiert, nur
+"Panasonic" sichtbar (veraltete Store-Version, Vaillant ist seit 0.10.0 im Code --
+Update-Hinweis gepostet), danach als echter myVAILLANT-Kontoinhaber getestet
+(Vaillant LWP VWF117 + recoVair365/4-Lueftung). Login klappte ("Angemeldet,
+Zugangsschluessel gespeichert"), aber "im Konto wurde keine Anlage gefunden" --
+Debug-Screenshot zeigte die Ursache: `Vaillant/Geraete: Uebersprungen (Regler-Typ
+"vrc700" noch nicht unterstuetzt)`.
+
+**Zwei Funde beim Nachlesen des myPyllant-Quelltexts (github.com/signalkraft/myPyllant,
+25.09.2026, NICHT geraten):**
+
+1. **Bug im bestehenden "tli"-Pfad, unabhaengig von cbehams Anlage.** Die rohe
+   Vaillant-API liefert camelCase-Feldnamen (z. B. `outdoorTemperature`), myPyllant
+   wandelt das selbst per `dict_to_snake_case()` (Regex `(?<!^)(?=[A-Z])`, Unterstrich
+   vor JEDEM Grossbuchstaben) in snake_case um -- WPHub hatte diesen Konvertierungsschritt
+   nie gebaut, sondern gleich die snake_case-Namen aus myPyllants eigenen (bereits
+   konvertierten) Pydantic-Modellen als vermeintliche Roh-Feldnamen uebernommen. Ohne
+   Konvertierung waeren bei JEDER tli-Anlage (nicht nur bei cbeham) alle Temperaturfelder
+   leer geblieben -- nie aufgefallen, weil noch kein Tester bis zu den echten Werten kam.
+   Fix: `WPHUB_VaillantClient::snakeCaseKeysDeep()`, 1:1-Nachbau der Python-Regex,
+   angewendet in `parseTliBody()`.
+2. **vrc700 hat eine EIGENE Basis-URL**, nicht die tli-Basis mit anderem Pfad-Suffix
+   (`.../vrc700/v1` statt `.../end-user-app-api/v1`, aus `myPyllant.const.API_URL_BASE`).
+   Dazu ein Textersatz VOR dem JSON-Dekodieren (`domesticHotWater`->`dhw`,
+   `DomesticHotWater`->`Dhw`) -- 1:1 aus `myPyllant.api.get_systems()`. Neu:
+   `getSystemVrc700()`/`parseVrc700Body()`, `refreshDevicesVaillant()` ruft das jetzt
+   auf statt zu ueberspringen. `scf`/iQconnect bleibt uebersprungen (laut Referenz-
+   Kommentar strukturell ohne aggregiertes System).
+
+**Bewusst NICHT geraten:** welche Feldnamen eine echte vrc700-Anlage nach der
+Konvertierung tatsaechlich liefert (Akronym-Handling wie bei DHW macht das Ergebnis
+NICHT 1:1 identisch mit tli, z. B. `_dhw` statt `_d_h_w`) -- `maintainDeviceVariablesVaillant()`
+liest weiterhin nur die bei tli bestaetigten Feldnamen; findet sie keinen Treffer, bleibt
+die Anlage erreichbar/erkannt, aber ohne Werte. Das komplette Roh-System geht zusaetzlich
+per `SendDebug('Vaillant/vrc700-Rohdaten', ...)` raus, um von cbeham die echten
+Feldnamen zu bekommen -- naechster Schritt nach seinem Update auf 0.11.0.
+
+Pruefstand: 299 Pruefungen (vorher 288), sechs neue Mutationen (`snakeCaseKeysDeep()`
+nicht angewendet, DHW-Ersatz fehlt, vrc700-Basis-URL falsch, vrc700 wieder uebersprungen
+-- je einmal fuer tli und vrc700) alle gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

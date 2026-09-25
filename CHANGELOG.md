@@ -1,5 +1,11 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.11.0 (Build 74) — 25.09.2026
+
+- **Wichtiger Fix: Vaillant-Systemdaten wurden bislang gar nicht ausgewertet.** cbeham (Forum-Post #22, LWP VWF117 + recoVair365/4) hat sich als erster echter myVAILLANT-Tester angemeldet -- dabei kam ans Licht, dass die rohe Vaillant-API camelCase-Feldnamen liefert (z. B. `outdoorTemperature`), während der Code seit dem ersten Bau schon snake_case (`outdoor_temperature`) erwartet hatte, wie in myPyllants eigenen, bereits konvertierten Modellnamen -- ohne die dazwischenliegende Konvertierung blieben alle Temperaturfelder bislang leer, auch bei einer erfolgreich angemeldeten tli-Anlage. Jetzt wird jede Systemantwort mit einem 1:1-Nachbau von `myPyllant.utils.dict_to_snake_case()` konvertiert (Quelltext gegengelesen).
+- **Regler-Typ „vrc700" (cbehams eigentlicher Fall) wird jetzt versucht statt komplett übersprungen.** Eigene Basis-URL (nicht die tli-Basis mit anderem Pfad) plus der von Vaillant selbst nötige Textersatz für Warmwasser-Felder, ebenfalls 1:1 aus der Referenz übernommen. Welche Felder eine echte vrc700-Anlage liefert, ist noch ungeprüft -- das komplette Rohsystem geht zusätzlich über die Debugausgabe raus, um die passenden Feldnamen von einem Tester zu bekommen. „scf"/iQconnect-Anlagen bleiben weiterhin übersprungen (laut Referenz strukturell ohne aggregiertes System).
+- Prüfstand: 299 Prüfungen (vorher 288), Vaillant-Teil um camelCase-Fixtures und direkte Dekodier-Tests ergänzt, sechs neue Mutationen der Zielstellen geprüft.
+
 ## 0.10.7 (Build 73) — 21.09.2026
 
 - **🔗-Zeile grün (Verbund-Regel „Wert kommt automatisch“, SUITE.md 64b5d1f).** Die automatisch übernommene App-Version wird grün dargestellt (Label `color` 0x2E8B3D), in allen anderen Zuständen (✏️, ℹ️) mit `-1` = Standardfarbe. Zwei neue Prüfungen am ausgelieferten Formular-JSON.

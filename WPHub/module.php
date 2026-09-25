@@ -1593,9 +1593,15 @@ class WPHub extends IPSModule
 
     /**
      * Anlagenliste laden und je Anlage die Basiswerte pflegen (siehe
-     * maintainDeviceVariablesVaillant()). Nur Regler-Typ "tli" wird
-     * unterstuetzt -- andere Anlagen werden uebersprungen und geloggt statt
-     * geraten (siehe VaillantClient::getControlIdentifier()).
+     * maintainDeviceVariablesVaillant()). Regler-Typ "tli" UND "vrc700"
+     * werden abgerufen (siehe VaillantClient::getSystem()/getSystemVrc700()) --
+     * "scf"/iQconnect-Anlagen bleiben uebersprungen (laut myPyllant-Quelltext
+     * strukturell ohne aggregiertes System, siehe VaillantClient.php-Kommentar).
+     * vrc700 ist Stand 25.09.2026 NUR im Verbindungsaufbau verifiziert
+     * (cbeham, Forum-Post #22/WPHub-Thread) -- welche Felder
+     * maintainDeviceVariablesVaillant() daraus tatsaechlich lesen kann, ist
+     * noch offen, deshalb geht das komplette Roh-System zusaetzlich per
+     * SendDebug raus.
      */
     private function refreshDevicesVaillant(array $bundle, WPHUB_VaillantClient $client): ?array
     {
@@ -1608,11 +1614,17 @@ class WPHub extends IPSModule
         foreach ($homes as $home) {
             $systemId = $home['systemId'];
             $controlIdentifier = $client->getControlIdentifier($bundle, $systemId);
-            if ($controlIdentifier !== 'tli') {
+            if ($controlIdentifier === 'tli') {
+                $system = $client->getSystem($bundle, $systemId);
+            } elseif ($controlIdentifier === 'vrc700') {
+                $system = $client->getSystemVrc700($bundle, $systemId);
+                if ($system !== null) {
+                    $this->SendDebug('Vaillant/vrc700-Rohdaten', json_encode($system, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
+                }
+            } else {
                 $this->SendDebug('Vaillant/Geräte', 'Übersprungen (Regler-Typ "' . $controlIdentifier . '" noch nicht unterstützt): ' . $systemId, 0);
                 continue;
             }
-            $system = $client->getSystem($bundle, $systemId);
             if ($system === null) {
                 continue;
             }
