@@ -1,5 +1,14 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.11.4 (Build 78) — 25.09.2026
+
+- **Fix: Warmwasser blieb bei Vaillant-Anlagen immer leer.** Markus (m_rothenpieler, Forum-Post #30) hat auf meine Bitte um Rohdaten die komplette tli-Antwort seiner VRC720-Kaskade geschickt. Damit erstmals geklärt: Der bisherige Warmwasser-Pfad (`state.system.cylinder_temperature_sensor_top_d_h_w`) existiert in der echten API gar nicht — Vaillant führt Warmwasser als eigene Liste (`state.dhw[]`/`configuration.dhw[]`), nicht als flaches Systemfeld. Warmwasser liest jetzt `state.dhw[0].current_dhw_temperature`, neu dazugekommen ist der Warmwasser-Sollwert aus `configuration.dhw[0].tapping_setpoint`.
+- **Neu: Heizkreis-1-Vorlauftemperatur (Ist/Soll).** Aus Markus' Rohdaten ebenfalls ersichtlich: `state.circuits[0].current_circuit_flow_temperature`/`heating_circuit_flow_setpoint` ist ein eigener, bisher ungenutzter Wert, getrennt vom System-Vorlauf. Jetzt als Zone1Ist/Zone1Soll übernommen — gleicher Ident wie bei Panasonic, dadurch automatisch über `z1WaterTempID`/`z1WaterTargetTempID` im Verbund-Vertrag verfügbar (keine Änderung an `GetFunctions()` nötig).
+- **Neu: Raumtemperatur/-feuchte** aus `state.zones[0]` als zusätzliche Werte (wie Systemdruck: reine Zusatzinfo, kein eigenes Vertragsfeld im Verbund).
+- **Geklärt, kein Fix nötig: Vorlauf- und Puffertemperatur sind bei Markus' Anlage tatsächlich identisch.** Beide Felder liefern in seiner echten Rohantwort exakt denselben Wert (`33.4375`) — das kommt so von der Vaillant-API selbst, keine Verwechslung im Code.
+- **Weiterhin offen, bewusst nicht angegangen:** Energiedaten und Werte je Kaskaden-Einzelgerät sind in dieser tli-Systemantwort nicht enthalten (von Markus selbst bestätigt) — dafür wäre der separate `Device`/`DeviceData`-Endpunkt nötig, den WPHub noch nicht liest.
+- Prüfstand: 329 Prüfungen (vorher 317), zwölf neue Mutationen der Zielstellen geprüft.
+
 ## 0.11.3 (Build 77) — 25.09.2026
 
 - **Fix: Aktualisierungstimer blieb nach einem Kontingent-Fehler bei der Zugangsschlüssel-Erneuerung dauerhaft stehen.** Markus (m_rothenpieler, Forum-Post #28) berichtete: Instanz hing auf „Erreichbar = Alarm“, auch nach 20+ Minuten kamen keine neuen Werte und keine weiteren Debug-Einträge mehr — die 0.11.1-Sperrfrist deckte nur den Datenabruf ab, nicht den Fall, dass die Token-Erneuerung selbst am API-Kontingent scheitert. Dieser Fall wurde bisher wie ein kaputter Zugangsschlüssel behandelt und hat den Timer komplett abgeschaltet (`SetTimerInterval(...,0)`), sodass gar nichts mehr automatisch weiterlief — der Nutzer hätte manuell neu anmelden müssen, obwohl es nur eine vorübergehende Sperre war. Jetzt gilt dieselbe Sperrfrist wie beim Datenabruf, der Timer bleibt an.

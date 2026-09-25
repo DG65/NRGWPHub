@@ -452,6 +452,48 @@ Pruefstand 312 -> 317 (inkl. `FakeVaillant::refresh()`, vorher fehlte diese Attr
 Methode komplett -- `updateVaillant()` haette bei einem abgelaufenen Test-Token echten
 Netzzugriff versucht). Eine neue Mutation gefangen.
 
+## Fix: Warmwasser + neue Heizkreis-1-/Raumklima-Felder anhand echter Rohdaten (0.11.4, Forum-Post #30, 25.09.2026)
+
+Markus (m_rothenpieler) hat auf meine Bitte in der 0.11.2-Antwort (Punkt 1 oben, "ohne
+sein rohes System-JSON nicht zu klaeren") seine komplette tli-Rohantwort geschickt
+(VRC720-Kaskade, Datei `vaillant_tli_2026-09-25_210547_raw.json`). Damit sind beide
+offenen Punkte aus 0.11.2 geklaert -- diesmal an echten Daten, nicht an der
+myPyllant-Doku/den Modellnamen geraten:
+
+**Punkt 1 (Vorlauf=Puffer) ist KEIN Bug.** `state.system.system_flow_temperature` und
+`state.system.cylinder_temperature_sensor_top_c_h` sind in seiner echten Rohantwort
+buchstaeblich derselbe Wert (`33.4375`) -- die Vaillant-API selbst liefert das so auf
+seiner Anlage. Code unveraendert gelassen.
+
+**Punkt 2 (Warmwasser/Kreise/Raumklima) -- echter Fix, kein Rateweg mehr noetig:**
+Das rohe JSON zeigt exakt die Listen-Struktur, die schon in 0.11.2 aus
+`myPyllant/models.py` erwartet wurde, jetzt aber wirklich mit echten Werten belegt:
+- `state.dhw[0].current_dhw_temperature` = 49 (Warmwasser Ist) -- der bisherige Pfad
+  `state.system.cylinder_temperature_sensor_top_d_h_w` kommt in der echten Antwort an
+  KEINER Stelle vor, Warmwasser war deshalb bei jedem Vaillant-Nutzer immer leer.
+- `configuration.dhw[0].tapping_setpoint` = 50 (Warmwasser Soll, komplett neu).
+- `state.circuits[0].current_circuit_flow_temperature` = 29.5625 /
+  `heating_circuit_flow_setpoint` = 30 -- eigener Heizkreis-1-Vorlauf, getrennt vom
+  System-Vorlauf. Als `Zone1Ist`/`Zone1Soll` uebernommen (gleicher Ident wie Panasonic),
+  damit fuellt `GetFunctions()` `z1WaterTempID`/`z1WaterTargetTempID` automatisch --
+  diese Vertragsfelder standen bei jeder Vaillant-Anlage bisher permanent auf 0.
+- `state.zones[0].current_room_temperature`/`current_room_humidity` = 20.1 °C / 53 % --
+  als Raumtemperatur/Raumfeuchte uebernommen, reiner Zusatzwert wie Systemdruck, kein
+  eigenes Vertragsfeld (der Verbund kennt keine Raumklima-*ID).
+- `dhw`/`circuits`/`zones` liegen als Index-0-Element einer Liste vor (nicht als
+  Zone-`index`, Markus' `dhw[0].index` ist z. B. 255) -- neue private Hilfsfunktion
+  `firstListEntry()` holt defensiv das erste Element, liefert `[]` wenn die Liste fehlt
+  oder leer ist (kein Fatal Error bei anderen Kontostrukturen).
+
+**Weiterhin offen, bewusst NICHT angegangen:** Energie- und Kaskaden-Einzelgeraetewerte
+fehlen laut Markus' eigener Durchsicht in dieser tli-Antwort komplett -- dafuer waere der
+separate `Device`/`DeviceData`-Endpunkt noetig (siehe 0.11.2-Abschnitt oben), den WPHub
+noch nicht anspricht. Kein Feld dafuer geraten oder vorbereitet.
+
+Pruefstand 317 -> 329 (Fixture 1:1 aus Markus' echtem JSON nachgebaut, inkl. Randfall
+fehlender dhw/circuits/zones-Listen). Zwoelf neue Mutationen gefangen (jeder neue
+Feldname + jeder `firstListEntry()`-Pfad + ein falscher Listen-Index).
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

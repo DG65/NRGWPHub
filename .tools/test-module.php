@@ -58,6 +58,12 @@ function IPS_SetVariableProfileDigits(string $name, int $digits): void
 {
     $GLOBALS['ips']['profiles'][$name]['digits'] = $digits;
 }
+function IPS_SetVariableProfileValues(string $name, float $min, float $max, float $step): void
+{
+    $GLOBALS['ips']['profiles'][$name]['min'] = $min;
+    $GLOBALS['ips']['profiles'][$name]['max'] = $max;
+    $GLOBALS['ips']['profiles'][$name]['step'] = $step;
+}
 function IPS_SetVariableProfileAssociation(string $name, float $value, string $valueText, string $valueIcon, int $valueColor): void
 {
     $GLOBALS['ips']['profiles'][$name]['associations'][] = $value;
@@ -1446,26 +1452,55 @@ if ($solved !== null) {
     check('Nachgerechneter Schluessel stimmt mit der gemeldeten derivedKey ueberein', $recomputed === $payload['solution']['derivedKey']);
 }
 
-// Variablenpflege einer Vaillant-Anlage -- nur Felder aus dem bestaetigten
-// Rohformat (state.system.*, signalkraft/myPyllant models.py), gleiche
-// Idents wie bei Panasonic (Aussentemperatur/Warmwasser), damit
+// Variablenpflege einer Vaillant-Anlage -- Fixture 1:1 aus Markus'
+// (m_rothenpieler) echtem tli-Rohsystem (VRC720-Kaskade, Forum-Post #30,
+// 25.09.2026: state.dhw[]/state.circuits[]/state.zones[] als eigene Listen,
+// NICHT als flache state.system.*-Felder). Gleiche Idents wie bei Panasonic
+// (Aussentemperatur/Warmwasser/Zone1Ist/Zone1Soll), damit
 // GetFunctions()/contractFieldID() unveraendert funktioniert.
 $vaiSystem = [
-    'state' => ['system' => [
-        'outdoor_temperature' => 7.5,
-        'system_flow_temperature' => 38.2,
-        'cylinder_temperature_sensor_top_c_h' => 41.0,
-        'cylinder_temperature_sensor_top_d_h_w' => 48.5,
-        'system_water_pressure' => 1.8,
-    ]],
+    'configuration' => [
+        'dhw' => [
+            ['index' => 255, 'tapping_setpoint' => 50],
+        ],
+    ],
+    'state' => [
+        'system' => [
+            'outdoor_temperature' => 12.6015625,
+            'system_flow_temperature' => 33.4375,
+            'cylinder_temperature_sensor_top_c_h' => 33.4375,
+            'system_water_pressure' => 2,
+        ],
+        'dhw' => [
+            ['index' => 255, 'current_dhw_temperature' => 49],
+        ],
+        'circuits' => [
+            ['index' => 0, 'current_circuit_flow_temperature' => 29.5625, 'heating_circuit_flow_setpoint' => 30],
+        ],
+        'zones' => [
+            ['index' => 0, 'current_room_temperature' => 20.1, 'current_room_humidity' => 53],
+        ],
+    ],
 ];
 $maintainVarsVaillant->invoke($mod, 'HPVAITST_', 'Test-Wärmepumpe', $vaiSystem, true);
-check('Vaillant: Aussentemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Aussentemperatur']['value'] ?? null) === 7.5);
-check('Vaillant: Vorlauftemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Vorlauftemperatur']['value'] ?? null) === 38.2);
-check('Vaillant: Puffertemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Puffertemperatur']['value'] ?? null) === 41.0);
-check('Vaillant: Warmwasser uebernommen (gleicher Ident wie Panasonic)', ($GLOBALS['ips']['variables']['HPVAITST_Warmwasser']['value'] ?? null) === 48.5);
-check('Vaillant: Systemdruck uebernommen (neues, Panasonic-loses Feld)', ($GLOBALS['ips']['variables']['HPVAITST_Systemdruck']['value'] ?? null) === 1.8);
+check('Vaillant: Aussentemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Aussentemperatur']['value'] ?? null) === 12.6015625);
+check('Vaillant: Vorlauftemperatur uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Vorlauftemperatur']['value'] ?? null) === 33.4375);
+check('Vaillant: Puffertemperatur uebernommen (identisch zu Vorlauf -- echtes API-Verhalten bei Markus, kein Bug)', ($GLOBALS['ips']['variables']['HPVAITST_Puffertemperatur']['value'] ?? null) === 33.4375);
+check('Vaillant: Warmwasser aus state.dhw[0].current_dhw_temperature (FIX 25.09.2026, alter Pfad existierte nie)', ($GLOBALS['ips']['variables']['HPVAITST_Warmwasser']['value'] ?? null) === 49.0);
+check('Vaillant: WarmwasserSoll aus configuration.dhw[0].tapping_setpoint (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_WarmwasserSoll']['value'] ?? null) === 50.0);
+check('Vaillant: Zone1Ist aus state.circuits[0].current_circuit_flow_temperature (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Zone1Ist']['value'] ?? null) === 29.5625);
+check('Vaillant: Zone1Soll aus state.circuits[0].heating_circuit_flow_setpoint (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Zone1Soll']['value'] ?? null) === 30.0);
+check('Vaillant: Raumtemperatur aus state.zones[0].current_room_temperature (NEU, Zusatzwert)', ($GLOBALS['ips']['variables']['HPVAITST_Raumtemperatur']['value'] ?? null) === 20.1);
+check('Vaillant: Raumfeuchte aus state.zones[0].current_room_humidity (NEU, Zusatzwert)', ($GLOBALS['ips']['variables']['HPVAITST_Raumfeuchte']['value'] ?? null) === 53.0);
+check('Vaillant: Raumfeuchte nutzt NRG.Percent', ($GLOBALS['ips']['variables']['HPVAITST_Raumfeuchte']['profile'] ?? '') === 'NRG.Percent');
+check('Vaillant: Systemdruck uebernommen (Panasonic-loses Feld)', ($GLOBALS['ips']['variables']['HPVAITST_Systemdruck']['value'] ?? null) === 2.0);
 check('Vaillant: Erreichbar uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Erreichbar']['value'] ?? null) === true);
+
+// Randfall: fehlende dhw/circuits/zones-Listen (aeltere/andere Vaillant-
+// Konten) duerfen nicht knallen -- firstListEntry() faengt das ab.
+$maintainVarsVaillant->invoke($mod, 'HPVAILEER_', 'Leere Anlage', ['state' => ['system' => ['outdoor_temperature' => 1.0]]], true);
+check('Vaillant: ohne dhw/circuits/zones bleibt Warmwasser unangelegt (keine Exception)', !isset($GLOBALS['ips']['variables']['HPVAILEER_Warmwasser']));
+check('Vaillant: ohne dhw/circuits/zones bleibt Zone1Ist unangelegt (keine Exception)', !isset($GLOBALS['ips']['variables']['HPVAILEER_Zone1Ist']));
 
 // GetFunctions() ist bereits herstellerneutral (contractFieldID() loest nur
 // Idents auf) -- Vaillants eigene Vorlauf-/Puffertemperatur muessen ohne
@@ -1478,6 +1513,10 @@ if (is_array($functionsVai) && count($functionsVai) === 1) {
     check('GetFunctions(): mainOutletTempID zeigt auf die eigene Vorlauftemperatur (ohne Ext_*-Link)', ($functionsVai[0]['mainOutletTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Vorlauftemperatur']['id']);
     check('GetFunctions(): bufferTempID zeigt auf die eigene Puffertemperatur (ohne Ext_*-Link)', ($functionsVai[0]['bufferTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Puffertemperatur']['id']);
     check('GetFunctions(): outsideTempID (gleicher Ident wie Panasonic) funktioniert unveraendert', ($functionsVai[0]['outsideTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Aussentemperatur']['id']);
+    check('GetFunctions(): dhwTempID zeigt auf die gefixte Warmwasser-Variable', ($functionsVai[0]['dhwTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Warmwasser']['id']);
+    check('GetFunctions(): dhwTargetTempID zeigt auf die neue WarmwasserSoll-Variable', ($functionsVai[0]['dhwTargetTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_WarmwasserSoll']['id']);
+    check('GetFunctions(): z1WaterTempID zeigt auf die neue Zone1Ist-Variable (Heizkreis-Vorlauf)', ($functionsVai[0]['z1WaterTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Zone1Ist']['id']);
+    check('GetFunctions(): z1WaterTargetTempID zeigt auf die neue Zone1Soll-Variable', ($functionsVai[0]['z1WaterTargetTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Zone1Soll']['id']);
     check('GetFunctions(): contractVersion bleibt 1.15', ($functionsVai[0]['contractVersion'] ?? null) === '1.15');
 }
 

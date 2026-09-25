@@ -1709,6 +1709,31 @@ class WPHub extends IPSModule
      * (Panasonic), damit GetFunctions()/contractFieldID() unveraendert
      * funktioniert -- der Vertrag ist bereits herstellerneutral.
      */
+    /**
+     * Erstes Element einer myVAILLANT-Liste (dhw/circuits/zones -- jeweils
+     * ein Array mit eigenem 'index'-Feld, NICHT zwingend bei Array-Position
+     * 0 inhaltlich "das erste", aber bislang das einzige real gesehene
+     * Muster, siehe Markus' Rohdaten 25.09.2026: dhw[0].index ist z. B. 255,
+     * nicht 0). v1 nimmt bewusst nur den ersten Eintrag -- mehrere DHW-
+     * Stationen/Heizkreise pro Konto sind noch nicht verifiziert.
+     */
+    private function firstListEntry(array $system, string ...$path): array
+    {
+        $node = $system;
+        foreach ($path as $key) {
+            if (!is_array($node) || !isset($node[$key])) {
+                return [];
+            }
+            $node = $node[$key];
+        }
+        return (is_array($node) && is_array($node[0] ?? null)) ? $node[0] : [];
+    }
+
+    /**
+     * Vaillant-Basiswerte. Feldherkunft am 25.09.2026 an Markus' (m_rothenpieler)
+     * echtem tli-Rohsystem (VRC720-Kaskade) verifiziert, siehe WPHub-CLAUDE.md --
+     * NICHT mehr nur nach der Referenzbibliothek geraten wie beim ersten Bau.
+     */
     private function maintainDeviceVariablesVaillant(string $prefix, string $name, array $system, bool $reachable): void
     {
         $pos = 0;
@@ -1727,19 +1752,66 @@ class WPHub extends IPSModule
             $this->SetValue($prefix . 'Vorlauftemperatur', (float)$state['system_flow_temperature']);
         }
         if (isset($state['cylinder_temperature_sensor_top_c_h']) && $this->isValidTemperature($state['cylinder_temperature_sensor_top_c_h'])) {
+            // Fund 25.09.2026 (Markus): auf seiner Anlage liefert die API
+            // system_flow_temperature UND diesen Wert identisch -- keine
+            // Verwechslung im Code, das kommt schon so von Vaillant (Puffer
+            // ist bei ihm offenbar die hydraulische Weiche fuer den System-
+            // vorlauf). Bewusst NICHT zusammengelegt, andere Anlagen koennen
+            // hier durchaus unterschiedliche Werte liefern.
             $this->MaintainVariable($prefix . 'Puffertemperatur', $name . ': Puffertemperatur (oben)', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Puffertemperatur', (float)$state['cylinder_temperature_sensor_top_c_h']);
         }
-        if (isset($state['cylinder_temperature_sensor_top_d_h_w']) && $this->isValidTemperature($state['cylinder_temperature_sensor_top_d_h_w'])) {
+
+        // Warmwasser -- FIX 25.09.2026: lag bisher auf einem flachen
+        // state.system.*-Feld, das es laut Markus' echtem Rohsystem gar
+        // nicht gibt (deshalb blieb Warmwasser bei ihm immer leer). Die
+        // API fuehrt DHW als eigene Liste state.dhw[]/configuration.dhw[].
+        $dhwState = $this->firstListEntry($system, 'state', 'dhw');
+        if (isset($dhwState['current_dhw_temperature']) && $this->isValidTemperature($dhwState['current_dhw_temperature'])) {
             $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-            $this->SetValue($prefix . 'Warmwasser', (float)$state['cylinder_temperature_sensor_top_d_h_w']);
+            $this->SetValue($prefix . 'Warmwasser', (float)$dhwState['current_dhw_temperature']);
         }
+        $dhwConfig = $this->firstListEntry($system, 'configuration', 'dhw');
+        if (isset($dhwConfig['tapping_setpoint']) && $this->isValidTemperature($dhwConfig['tapping_setpoint'])) {
+            $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': Warmwasser Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'WarmwasserSoll', (float)$dhwConfig['tapping_setpoint']);
+        }
+
+        // Heizkreis-1-Vorlauf Ist/Soll (NEU 25.09.2026, aus state.circuits[0]) --
+        // Ident bewusst "Zone1Ist"/"Zone1Soll" wie bei Panasonic, damit
+        // GetFunctions() sie automatisch ueber z1WaterTempID/
+        // z1WaterTargetTempID auflöst (gleicher Vertrag, gleiche Idents,
+        // siehe GetFunctions()-Kommentar "dieselben Feldnamen wie bei
+        // HeishaMon").
+        $circuitState = $this->firstListEntry($system, 'state', 'circuits');
+        if (isset($circuitState['current_circuit_flow_temperature']) && $this->isValidTemperature($circuitState['current_circuit_flow_temperature'])) {
+            $this->MaintainVariable($prefix . 'Zone1Ist', $name . ': Heizkreis 1 Vorlauftemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Zone1Ist', (float)$circuitState['current_circuit_flow_temperature']);
+        }
+        if (isset($circuitState['heating_circuit_flow_setpoint']) && $this->isValidTemperature($circuitState['heating_circuit_flow_setpoint'])) {
+            $this->MaintainVariable($prefix . 'Zone1Soll', $name . ': Heizkreis 1 Vorlauf-Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Zone1Soll', (float)$circuitState['heating_circuit_flow_setpoint']);
+        }
+
         // Reiner Zusatzwert, nicht Teil des Verbund-Vertrags (kein
         // gemeinsames *PressureID-Feld) -- Comfort Cloud liefert das gar
         // nicht erst, daher hier bewusst kein Ident-Gleichlauf noetig.
         if (isset($state['system_water_pressure']) && is_numeric($state['system_water_pressure'])) {
             $this->MaintainVariable($prefix . 'Systemdruck', $name . ': Systemdruck', VARIABLETYPE_FLOAT, '', $pos++, true);
             $this->SetValue($prefix . 'Systemdruck', (float)$state['system_water_pressure']);
+        }
+
+        // Raumtemperatur/-feuchte (NEU 25.09.2026, state.zones[0]) -- wie
+        // Systemdruck ein reiner Zusatzwert ohne eigenes Vertragsfeld
+        // (der Verbund kennt keine Raumklima-*ID, nur Wasser-/Aussentemp.).
+        $zoneState = $this->firstListEntry($system, 'state', 'zones');
+        if (isset($zoneState['current_room_temperature']) && $this->isValidTemperature($zoneState['current_room_temperature'])) {
+            $this->MaintainVariable($prefix . 'Raumtemperatur', $name . ': Raumtemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Raumtemperatur', (float)$zoneState['current_room_temperature']);
+        }
+        if (isset($zoneState['current_room_humidity']) && is_numeric($zoneState['current_room_humidity'])) {
+            $this->MaintainVariable($prefix . 'Raumfeuchte', $name . ': Raumfeuchte', VARIABLETYPE_FLOAT, 'NRG.Percent', $pos++, true);
+            $this->SetValue($prefix . 'Raumfeuchte', (float)$zoneState['current_room_humidity']);
         }
     }
 
@@ -2081,6 +2153,12 @@ class WPHub extends IPSModule
             IPS_CreateVariableProfile('NRG.kWh', VARIABLETYPE_FLOAT);
             IPS_SetVariableProfileText('NRG.kWh', '', ' kWh');
             IPS_SetVariableProfileDigits('NRG.kWh', 2);
+        }
+        if (!IPS_VariableProfileExists('NRG.Percent')) {
+            IPS_CreateVariableProfile('NRG.Percent', VARIABLETYPE_FLOAT);
+            IPS_SetVariableProfileText('NRG.Percent', '', ' %');
+            IPS_SetVariableProfileDigits('NRG.Percent', 0);
+            IPS_SetVariableProfileValues('NRG.Percent', 0, 100, 1);
         }
         // Modulspezifisch (kein NRG.*-Praefix): Werte aus dem A2W-Transfer-
         // Statusabruf, die kein anderes NRG-Stack-Modul teilt.
