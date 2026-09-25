@@ -1452,6 +1452,16 @@ if ($solved !== null) {
     check('Nachgerechneter Schluessel stimmt mit der gemeldeten derivedKey ueberein', $recomputed === $payload['solution']['derivedKey']);
 }
 
+// firstValidTemperature(): reine Auswahllogik direkt getestet -- der erste
+// GUELTIGE Kandidat gewinnt, in der uebergebenen Reihenfolge (tli vor
+// vrc700), ungueltige/fehlende Kandidaten werden uebersprungen.
+$firstValidTemp = new ReflectionMethod(WPHub::class, 'firstValidTemperature');
+$firstValidTemp->setAccessible(true);
+check('firstValidTemperature(): erster Kandidat gewinnt, wenn mehrere gueltig sind', $firstValidTemp->invoke($mod, [11.0, 22.0]) === 11.0);
+check('firstValidTemperature(): null-Kandidat wird uebersprungen, naechster gueltiger gewinnt', $firstValidTemp->invoke($mod, [null, 22.0]) === 22.0);
+check('firstValidTemperature(): ungueltiger (ausserhalb Temperaturbereich) Kandidat wird uebersprungen', $firstValidTemp->invoke($mod, [999.0, 22.0]) === 22.0);
+check('firstValidTemperature(): kein gueltiger Kandidat -> null', $firstValidTemp->invoke($mod, [null, 999.0]) === null);
+
 // Variablenpflege einer Vaillant-Anlage -- Fixture 1:1 aus Markus'
 // (m_rothenpieler) echtem tli-Rohsystem (VRC720-Kaskade, Forum-Post #30,
 // 25.09.2026: state.dhw[]/state.circuits[]/state.zones[] als eigene Listen,
@@ -1501,6 +1511,46 @@ check('Vaillant: Erreichbar uebernommen', ($GLOBALS['ips']['variables']['HPVAITS
 $maintainVarsVaillant->invoke($mod, 'HPVAILEER_', 'Leere Anlage', ['state' => ['system' => ['outdoor_temperature' => 1.0]]], true);
 check('Vaillant: ohne dhw/circuits/zones bleibt Warmwasser unangelegt (keine Exception)', !isset($GLOBALS['ips']['variables']['HPVAILEER_Warmwasser']));
 check('Vaillant: ohne dhw/circuits/zones bleibt Zone1Ist unangelegt (keine Exception)', !isset($GLOBALS['ips']['variables']['HPVAILEER_Zone1Ist']));
+
+// vrc700-Fixture 1:1 aus cbehams echtem Rohsystem (VRC700, Forum-Post #32,
+// 25.09.2026): state.dhw[] hat KEINE Temperatur (nur current_special_function/
+// index), Puffer-/Warmwassertemperatur stecken hier als FLACHE Systemfelder
+// mit eigenem Namen (nicht die tli-Feldnamen) -- genau der Fall, den
+// firstValidTemperature() abfangen muss.
+$vaiSystemVrc700 = [
+    'configuration' => [
+        'dhw' => [
+            ['index' => 255, 'tapping_setpoint' => 52],
+        ],
+    ],
+    'state' => [
+        'system' => [
+            'outdoor_temperature' => 9.4375,
+            'system_flow_temperature' => 35.25,
+            'cylinder_temperature_sensor_top_central_heating' => 29,
+            'cylinder_temperature_sensor_bottom_central_heating' => 35.125,
+            'cylinder_temperature_sensor_top_dhw' => 57.125,
+            'cylinder_temperature_sensor_bottom_dhw' => 54.375,
+            'system_water_pressure' => 2.2,
+        ],
+        'dhw' => [
+            ['index' => 255, 'current_special_function' => 'NONE'],
+        ],
+        'circuits' => [
+            ['index' => 0, 'current_circuit_flow_temperature' => 25.5, 'heating_circuit_flow_setpoint' => 25.705233],
+            ['index' => 1, 'current_circuit_flow_temperature' => 33.1875, 'heating_circuit_flow_setpoint' => 32.17296],
+        ],
+        'zones' => [
+            ['index' => 0, 'current_room_temperature' => 23.4375, 'current_room_humidity' => 50],
+            ['index' => 1, 'current_room_temperature' => 22.0, 'current_room_humidity' => 52],
+        ],
+    ],
+];
+$maintainVarsVaillant->invoke($mod, 'HPVAIVRC_', 'Test-vrc700-Wärmepumpe', $vaiSystemVrc700, true);
+check('vrc700: Puffertemperatur ueber den vrc700-eigenen Feldnamen gefunden (FIX 25.09.2026, cbeham Forum-Post #32)', ($GLOBALS['ips']['variables']['HPVAIVRC_Puffertemperatur']['value'] ?? null) === 29.0);
+check('vrc700: Warmwasser ueber den flachen Systemfeld-Fallback gefunden (state.dhw[] hat bei cbeham keine Temperatur)', ($GLOBALS['ips']['variables']['HPVAIVRC_Warmwasser']['value'] ?? null) === 57.125);
+check('vrc700: WarmwasserSoll unveraendert aus configuration.dhw[0].tapping_setpoint', ($GLOBALS['ips']['variables']['HPVAIVRC_WarmwasserSoll']['value'] ?? null) === 52.0);
+check('vrc700: Zone1Ist unveraendert aus state.circuits[0] (erster Kreis, nicht der zweite)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone1Ist']['value'] ?? null) === 25.5);
 
 // GetFunctions() ist bereits herstellerneutral (contractFieldID() loest nur
 // Idents auf) -- Vaillants eigene Vorlauf-/Puffertemperatur muessen ohne

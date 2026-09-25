@@ -1730,9 +1730,31 @@ class WPHub extends IPSModule
     }
 
     /**
-     * Vaillant-Basiswerte. Feldherkunft am 25.09.2026 an Markus' (m_rothenpieler)
-     * echtem tli-Rohsystem (VRC720-Kaskade) verifiziert, siehe WPHub-CLAUDE.md --
-     * NICHT mehr nur nach der Referenzbibliothek geraten wie beim ersten Bau.
+     * Erster gueltiger Temperaturwert aus mehreren Kandidaten-Rohwerten (in
+     * Reihenfolge). Vaillants tli- und vrc700-Endpunkte liefern fuer denselben
+     * Messpunkt teils VERSCHIEDENE Feldnamen (nicht nur unterschiedliche
+     * Werte) -- siehe maintainDeviceVariablesVaillant()-Kommentar.
+     */
+    private function firstValidTemperature(array $candidates): ?float
+    {
+        foreach ($candidates as $c) {
+            if ($c !== null && $this->isValidTemperature($c)) {
+                return (float)$c;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Vaillant-Basiswerte. Feldherkunft am 25.09.2026 an ZWEI echten Rohsystemen
+     * verifiziert (siehe WPHub-CLAUDE.md) -- NICHT mehr nur nach der
+     * Referenzbibliothek geraten wie beim ersten Bau:
+     * - Markus' (m_rothenpieler) tli-Anlage (VRC720-Kaskade, Forum-Post #30)
+     * - cbehams vrc700-Anlage (VRC700, Forum-Post #32)
+     * tli und vrc700 sind KEINE Feldnamen-Varianten voneinander, sondern zwei
+     * eigenstaendige Datenmodelle mit teils unterschiedlichen Rohfeldern fuer
+     * denselben Messpunkt (Puffer-/Warmwassertemperatur) -- deshalb wird bei
+     * diesen beiden Feldern jeweils eine Liste bekannter Pfade durchprobiert.
      */
     private function maintainDeviceVariablesVaillant(string $prefix, string $name, array $system, bool $reachable): void
     {
@@ -1751,7 +1773,15 @@ class WPHub extends IPSModule
             $this->MaintainVariable($prefix . 'Vorlauftemperatur', $name . ': Vorlauftemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Vorlauftemperatur', (float)$state['system_flow_temperature']);
         }
-        if (isset($state['cylinder_temperature_sensor_top_c_h']) && $this->isValidTemperature($state['cylinder_temperature_sensor_top_c_h'])) {
+        // Puffer oben -- FIX 25.09.2026 (cbeham, Forum-Post #32): vrc700
+        // nennt dasselbe Feld anders als tli (cylinder_temperature_sensor_
+        // top_central_heating statt _top_c_h), bislang komplett uebersehen,
+        // Puffertemperatur blieb bei jeder vrc700-Anlage unangelegt.
+        $puffer = $this->firstValidTemperature([
+            $state['cylinder_temperature_sensor_top_c_h'] ?? null,                 // tli (Markus)
+            $state['cylinder_temperature_sensor_top_central_heating'] ?? null,     // vrc700 (cbeham)
+        ]);
+        if ($puffer !== null) {
             // Fund 25.09.2026 (Markus): auf seiner Anlage liefert die API
             // system_flow_temperature UND diesen Wert identisch -- keine
             // Verwechslung im Code, das kommt schon so von Vaillant (Puffer
@@ -1759,17 +1789,23 @@ class WPHub extends IPSModule
             // vorlauf). Bewusst NICHT zusammengelegt, andere Anlagen koennen
             // hier durchaus unterschiedliche Werte liefern.
             $this->MaintainVariable($prefix . 'Puffertemperatur', $name . ': Puffertemperatur (oben)', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-            $this->SetValue($prefix . 'Puffertemperatur', (float)$state['cylinder_temperature_sensor_top_c_h']);
+            $this->SetValue($prefix . 'Puffertemperatur', $puffer);
         }
 
-        // Warmwasser -- FIX 25.09.2026: lag bisher auf einem flachen
-        // state.system.*-Feld, das es laut Markus' echtem Rohsystem gar
-        // nicht gibt (deshalb blieb Warmwasser bei ihm immer leer). Die
-        // API fuehrt DHW als eigene Liste state.dhw[]/configuration.dhw[].
+        // Warmwasser Ist -- FIX 25.09.2026: bei tli in einer eigenen Liste
+        // (state.dhw[].current_dhw_temperature), bei vrc700 dagegen als
+        // flaches Systemfeld (state.system.cylinder_temperature_sensor_top_
+        // dhw, Fund cbeham Forum-Post #32 -- state.dhw[] enthaelt bei ihm nur
+        // current_special_function/index, keine Temperatur). Beide Pfade
+        // durchprobiert, keiner geraten -- beide an echten Rohdaten bestaetigt.
         $dhwState = $this->firstListEntry($system, 'state', 'dhw');
-        if (isset($dhwState['current_dhw_temperature']) && $this->isValidTemperature($dhwState['current_dhw_temperature'])) {
+        $warmwasser = $this->firstValidTemperature([
+            $dhwState['current_dhw_temperature'] ?? null,           // tli (Markus)
+            $state['cylinder_temperature_sensor_top_dhw'] ?? null,  // vrc700 (cbeham)
+        ]);
+        if ($warmwasser !== null) {
             $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-            $this->SetValue($prefix . 'Warmwasser', (float)$dhwState['current_dhw_temperature']);
+            $this->SetValue($prefix . 'Warmwasser', $warmwasser);
         }
         $dhwConfig = $this->firstListEntry($system, 'configuration', 'dhw');
         if (isset($dhwConfig['tapping_setpoint']) && $this->isValidTemperature($dhwConfig['tapping_setpoint'])) {

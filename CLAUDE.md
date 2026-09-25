@@ -494,6 +494,37 @@ Pruefstand 317 -> 329 (Fixture 1:1 aus Markus' echtem JSON nachgebaut, inkl. Ran
 fehlender dhw/circuits/zones-Listen). Zwoelf neue Mutationen gefangen (jeder neue
 Feldname + jeder `firstListEntry()`-Pfad + ein falscher Listen-Index).
 
+## Fix: Puffer/Warmwasser fehlten bei vrc700-Anlagen (0.11.5, Forum-Post #32, 25.09.2026)
+
+cbeham (VRC700-Kaskade, dieselbe Anlage aus Forum-Post #22/0.11.0) hat nach dem
+0.11.4-Update die Instanz-Konfiguration und die Rohdaten-Debugausgabe gepostet:
+Variablenliste zeigt Erreichbar/Aussentemperatur/Vorlauftemperatur/WarmwasserSoll/
+Zone1Ist/Zone1Soll/Systemdruck/Raumtemperatur/Raumfeuchte -- aber **weder
+Puffertemperatur NOCH Warmwasser (Ist)** sind ueberhaupt als Variable angelegt.
+
+**Ursachenfindung an seinem echten vrc700-Rohdump (nicht geraten):** tli und vrc700
+sind keine reinen Feldnamen-Synonyme, sondern zwei unterschiedliche Vaillant-
+Datenmodelle:
+- Puffer oben: tli nennt das Feld `cylinder_temperature_sensor_top_c_h`, vrc700
+  dagegen `cylinder_temperature_sensor_top_central_heating` (voll ausgeschriebener
+  Name, kein Kuerzel). 0.11.4 kannte nur die tli-Schreibweise.
+- Warmwasser Ist: bei tli in `state.dhw[0].current_dhw_temperature` (eigene Liste,
+  siehe 0.11.4-Abschnitt oben). Bei vrc700 enthaelt `state.dhw[]` laut cbehams
+  Rohdaten NUR `current_special_function`/`index`, keine Temperatur -- die
+  Warmwassertemperatur steckt stattdessen als flaches Systemfeld
+  `cylinder_temperature_sensor_top_dhw` (und `_bottom_dhw`, ungenutzt) in
+  `state.system`, genau wie beim Puffer-Sensor-Namensschema.
+
+**Fix:** neue private Hilfsfunktion `firstValidTemperature(array $candidates): ?float`
+probiert eine Liste moeglicher Rohwerte der Reihe nach durch (erster gueltiger
+Kandidat gewinnt) -- fuer Puffertemperatur und Warmwasser Ist wird jetzt zuerst der
+tli-Pfad, dann der vrc700-Pfad versucht. Markus' tli-Zuordnung (0.11.4) bleibt dadurch
+unveraendert, kein Regressionsrisiko fuer seine Anlage.
+
+Pruefstand 329 -> 337 (neue vrc700-Fixture 1:1 aus cbehams echtem Rohdump, direkter
+Test von `firstValidTemperature()` inkl. Prioritaets-/Ueberspring-Verhalten). Sechs
+neue Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben
