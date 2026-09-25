@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.11.3 (Build 77) — 25.09.2026
+
+- **Fix: Aktualisierungstimer blieb nach einem Kontingent-Fehler bei der Zugangsschlüssel-Erneuerung dauerhaft stehen.** Markus (m_rothenpieler, Forum-Post #28) berichtete: Instanz hing auf „Erreichbar = Alarm“, auch nach 20+ Minuten kamen keine neuen Werte und keine weiteren Debug-Einträge mehr — die 0.11.1-Sperrfrist deckte nur den Datenabruf ab, nicht den Fall, dass die Token-Erneuerung selbst am API-Kontingent scheitert. Dieser Fall wurde bisher wie ein kaputter Zugangsschlüssel behandelt und hat den Timer komplett abgeschaltet (`SetTimerInterval(...,0)`), sodass gar nichts mehr automatisch weiterlief — der Nutzer hätte manuell neu anmelden müssen, obwohl es nur eine vorübergehende Sperre war. Jetzt gilt dieselbe Sperrfrist wie beim Datenabruf, der Timer bleibt an.
+- Prüfstand: 317 Prüfungen (vorher 312), eine neue Mutation der Zielstelle geprüft.
+
 ## 0.11.2 (Build 76) — 25.09.2026
 
 - **Erste echte Vaillant-Bestätigung: Markus (m_rothenpieler) hat 0.11.1 an seiner sensoCOMFORT-Kaskade laufen** — Anmeldung und erste Messwerte funktionieren (Außentemperatur, Vorlauf, Puffertemperatur, Systemdruck). Zwei offene Punkte: Vorlauf- und Puffertemperatur kommen bei ihm identisch an (könnte an seiner Anlagentopologie liegen oder an einer noch ungenauen Feldzuordnung), Warmwasser/Betriebszustände/Energie/Kaskaden-Einzelgeräte fehlen noch komplett. Damit sich das an echten Daten statt an Vermutungen klären lässt: die komplette Rohantwort einer tli-Anlage geht jetzt ebenfalls über die Instanz-Debugausgabe raus (bisher nur für vrc700).

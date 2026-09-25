@@ -471,6 +471,13 @@ class FakeVaillant extends WPHUB_VaillantClient
     {
         return 'Vaillant-Attrappen-Fehler';
     }
+    public $refreshResult = null; // null oder array -- fester Rueckgabewert fuer refresh()
+    public int $refreshCalls = 0;
+    public function refresh(array $bundle): ?array
+    {
+        $this->refreshCalls++;
+        return $this->refreshResult;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1615,6 +1622,48 @@ $newRetry = $readRetry->invoke($mod, 'VAI_RetryNotBefore');
 check('updateVaillant() setzt bei einem Kontingent-Fehler eine NEUE Sperrfrist aus quotaRetryAfterSeconds', $newRetry >= $before + 45 && $newRetry <= $before + 47, $newRetry . ' vs. ' . ($before + 45));
 $lastLog = end($GLOBALS['ips']['log']);
 check('updateVaillant() protokolliert den Kontingent-Fehler klar erkennbar', strpos($lastLog, 'Kontingent') !== false, $lastLog);
+unset($GLOBALS['ips']['vaillantClientFactory']);
+
+// vaillantEnsureToken(): dieselbe Kontingent-Sperrfrist gilt auch, wenn die
+// TOKEN-ERNEUERUNG (nicht der Datenabruf) am Kontingent scheitert -- Fund
+// 25.09.2026, m_rothenpieler/Forum-Post #28: vorher wurde das wie ein
+// kaputter Zugangsschluessel behandelt und der Aktualisierungstimer ganz
+// abgeschaltet, obwohl es nur eine voruebergehende Sperre war. Ein
+// ABGELAUFENES Token hinterlegen, damit vaillantEnsureToken() tatsaechlich
+// refresh() aufruft.
+$writeRetry->invoke($mod, 'VAI_RetryNotBefore', 0); // Sperrfrist aus dem vorigen Test zuruecksetzen
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'alt', 'refreshToken' => 'ref', 'expiresAt' => time() - 10]));
+$setTimerInterval = new ReflectionMethod(WPHub::class, 'SetTimerInterval');
+$setTimerInterval->setAccessible(true);
+
+$fakeVaiRefreshQuota = new FakeVaillant('germany');
+$fakeVaiRefreshQuota->refreshResult = null; // Erneuerung schlaegt fehl
+$fakeVaiRefreshQuota->quotaRetryAfterSeconds = 33;
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiRefreshQuota) {
+    return $fakeVaiRefreshQuota;
+};
+$setTimerInterval->invoke($mod, 'WPHUB_UpdateTimer', 600000); // wie Markus' 600s-Intervall
+$before2 = time();
+$updateVaillant->invoke($mod);
+check('vaillantEnsureToken(): ruft refresh() der Attrappe tatsaechlich auf', $fakeVaiRefreshQuota->refreshCalls === 1);
+check('vaillantEnsureToken(): Kontingent-Fehler bei der Erneuerung setzt eine Sperrfrist', $readRetry->invoke($mod, 'VAI_RetryNotBefore') >= $before2 + 33);
+check('vaillantEnsureToken(): der Aktualisierungstimer bleibt AN (nicht wie bei einem echten Login-Fehler abgeschaltet)', $mod->GetTimerInterval('WPHUB_UpdateTimer') === 600000);
+$lastLog2 = end($GLOBALS['ips']['log']);
+check('vaillantEnsureToken(): Protokollzeile nennt "Kontingent", nicht "bitte neu anmelden"', strpos($lastLog2, 'Kontingent') !== false && strpos($lastLog2, 'neu anmelden') === false, $lastLog2);
+
+// Gegenprobe: eine ECHTE Erneuerungs-Fehlermeldung (kein Kontingent-Muster)
+// schaltet den Timer weiterhin ab, wie vor diesem Fix -- keine Regression.
+$writeRetry->invoke($mod, 'VAI_RetryNotBefore', 0); // Sperrfrist aus dem Kontingent-Fall oben zuruecksetzen
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'alt', 'refreshToken' => 'abgelaufen', 'expiresAt' => time() - 10]));
+$fakeVaiRefreshBroken = new FakeVaillant('germany');
+$fakeVaiRefreshBroken->refreshResult = null;
+$fakeVaiRefreshBroken->quotaRetryAfterSeconds = null; // KEIN Kontingent-Fehler
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiRefreshBroken) {
+    return $fakeVaiRefreshBroken;
+};
+$setTimerInterval->invoke($mod, 'WPHUB_UpdateTimer', 600000);
+$updateVaillant->invoke($mod);
+check('vaillantEnsureToken(): ein ECHTER Erneuerungs-Fehler (kein Kontingent) schaltet den Timer weiterhin ab', $mod->GetTimerInterval('WPHUB_UpdateTimer') === 0);
 unset($GLOBALS['ips']['vaillantClientFactory']);
 
 // Aufraeumen fuer eventuelle spaetere Bloecke.

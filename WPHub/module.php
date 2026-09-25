@@ -1519,6 +1519,19 @@ class WPHub extends IPSModule
         $client = $this->vaillantClient();
         $new = $client->refresh($bundle);
         if ($new === null) {
+            // Fund 25.09.2026 (m_rothenpieler, Forum-Post #28): schlug die
+            // Erneuerung wegen desselben API-Kontingent-Fehlers fehl wie
+            // refreshDevicesVaillant() (siehe VaillantClient::failApi()),
+            // GALT DAS BISHER ALS "Zugangsschluessel kaputt, Timer aus" --
+            // bei einer bloss vorruebergehenden Kontingent-Sperre haette der
+            // Nutzer den Timer nie automatisch wieder anlaufen sehen, egal
+            // wie lange er wartet (musste manuell neu anmelden/ApplyChanges).
+            // Jetzt: gleiche Sperrfrist wie beim Datenabruf, Timer bleibt an.
+            if ($client->quotaRetryAfterSeconds !== null) {
+                $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
+                $this->LogMessage('Vaillant-API-Kontingent aufgebraucht (Zugangsschlüssel-Erneuerung) -- nächster Versuch in ' . $client->quotaRetryAfterSeconds . ' s (' . $client->getLastError() . ').', KL_WARNING);
+                return null;
+            }
             $this->LogMessage('myVAILLANT-Zugangsschlüssel abgelaufen und Erneuerung fehlgeschlagen (' . $client->getLastError() . ') — bitte im Formular neu anmelden.', KL_WARNING);
             $this->SetStatus(201);
             $this->SetTimerInterval('WPHUB_UpdateTimer', 0);

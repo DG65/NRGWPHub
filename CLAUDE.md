@@ -429,6 +429,29 @@ Dump gebeten, um beide Punkte an echten Daten statt an weiteren Vermutungen zu k
 (genau das Muster, das bei IDM/Proxon/SamsungEhs/WPBsbLan schon funktioniert hat).
 Pruefstand 311 -> 312.
 
+## Fix: Timer blieb nach Kontingent-Fehler bei der Token-Erneuerung stehen (0.11.3, Forum-Post #28, 25.09.2026)
+
+Markus (m_rothenpieler) meldete nach 0.11.2-Update: Instanz haengt auf "Erreichbar =
+Alarm", 20+ Minuten ohne neue Werte UND ohne weitere Debug-Eintraege trotz 600s-
+Intervall -- Vermutung: Timer laeuft nach der Kontingent-Pause nicht wieder an.
+
+**Ursache gefunden (eigener Bug in 0.11.1):** Die Sperrfrist aus 0.11.1 deckt nur
+`refreshDevicesVaillant()` (den Datenabruf) ab. `vaillantEnsureToken()` ruft bei einem
+abgelaufenen Access-Token separat `client->refresh()` auf -- schlaegt DAS am selben
+Kontingent-Fehler fehl (plausibel: gleiche Vaillant-API, gleiches Kontingent), griff
+bisher der ALTE Code: "Zugangsschluessel kaputt" -> `SetTimerInterval('WPHUB_UpdateTimer',
+0)` -- Timer komplett aus, keine automatische Erholung, egal wie lange man wartet.
+
+**Fix:** `vaillantEnsureToken()` prueft jetzt genau wie `updateVaillant()` selbst
+`$client->quotaRetryAfterSeconds` nach einem `refresh()`-Fehlschlag -- bei einem
+Kontingent-Fehler gilt dieselbe Sperrfrist (Timer bleibt an), nur ein ECHTER
+Erneuerungsfehler (falscher/widerrufener Refresh-Token) schaltet den Timer weiterhin ab
+wie bisher (keine Regression, extra Testfall dafuer).
+
+Pruefstand 312 -> 317 (inkl. `FakeVaillant::refresh()`, vorher fehlte diese Attrappen-
+Methode komplett -- `updateVaillant()` haette bei einem abgelaufenen Test-Token echten
+Netzzugriff versucht). Eine neue Mutation gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben
