@@ -1644,6 +1644,17 @@ class WPHub extends IPSModule
             $controlIdentifier = $client->getControlIdentifier($bundle, $systemId);
             if ($controlIdentifier === 'tli') {
                 $system = $client->getSystem($bundle, $systemId);
+                // Fund 25.09.2026 (m_rothenpieler, Forum-Post #26): Vorlauf-
+                // und Puffertemperatur kamen bei seiner Kaskade identisch an,
+                // Warmwasser/Betriebszustaende/Energie fehlten komplett --
+                // ob das an seiner Anlagentopologie liegt oder an einer
+                // falschen Feldzuordnung, laesst sich nur mit dem echten
+                // Rohsystem klaeren (myPyllants eigenes Modell kennt DHW/
+                // Kreise/Geraete als eigene Listen, nicht nur flache
+                // state.system.*-Felder -- WPHub liest bislang nur Letzteres).
+                if ($system !== null) {
+                    $this->SendDebug('Vaillant/tli-Rohdaten', json_encode($system, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
+                }
             } elseif ($controlIdentifier === 'vrc700') {
                 $system = $client->getSystemVrc700($bundle, $systemId);
                 if ($system !== null) {

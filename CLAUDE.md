@@ -399,6 +399,36 @@ nicht ohne echten Netzzugriff pruefen. Pruefstand 305 -> 311, sechs neue Mutatio
 gefangen (inkl. der Verdrahtung in `failApi()`, direkt am echten Client statt nur an der
 Attrappe getestet).
 
+## Erste echte Vaillant-Bestaetigung + offene Datenluecken (0.11.2, Forum-Post #26, 25.09.2026)
+
+Markus (m_rothenpieler) hat 0.11.1 installiert: **Login funktioniert, erste Werte kommen
+an** -- Erreichbarkeit OK, Aussentemperatur 14,4 °C, Vorlauftemperatur 31,2 °C,
+Puffertemperatur oben 31,2 °C, Systemdruck 1,90 bar. Damit ist der camelCase-Fix (0.11.0)
+UND die Kontingent-Sperrfrist (0.11.1) an echter Hardware bestaetigt -- der erste
+tatsaechlich funktionierende Vaillant-Login im gesamten Modul.
+
+**Zwei offene Punkte, NICHT geraten geloest:**
+1. **Vorlauf- und Puffertemperatur sind bei ihm exakt identisch und aendern sich synchron.**
+   Koennte an seiner Anlagentopologie liegen (Kaskade mit hydraulischer Weiche/Puffer, wo
+   Systemvorlauf = Puffer-oben-Temperatur physikalisch plausibel gleich sein KOENNTE) oder
+   an einer falschen Feldzuordnung im Code. Ohne sein rohes System-JSON nicht zu klaeren.
+2. **Warmwasser/Betriebszustaende/Energie/Kaskaden-Einzelgeraete fehlen komplett**, obwohl
+   in der myVAILLANT-App teilweise sichtbar. Beim Nachlesen im myPyllant-Datenmodell
+   (models.py, 25.09.2026): DHW steckt in `System.domestic_hot_water` (eigene LISTE,
+   eigene Klasse `DomesticHotWater` mit `current_dhw_temperature`/`tapping_setpoint`/
+   `operation_mode_dhw`), Kreise in `System.circuits` (Liste), Kaskaden-Einzelgeraete in
+   `System.devices` (Liste, `System.primary_heat_generator`), Energie ueber
+   `Device.data`/`DeviceData`-Klassen (eigene History-Buckets). **WPHub liest bislang nur
+   flache `state.system.*`-Felder** -- die reichhaltigeren Listen-Strukturen sind noch NICHT
+   angebunden. Das ist ein groesserer Ausbau als die bisherigen Fixes (mehrere neue
+   Unterstrukturen, nicht nur ein Feldname), noch keine Dietmar-Entscheidung dazu.
+
+**Sofortmassnahme:** tli-Rohdaten gehen jetzt ebenso wie vrc700 per
+`SendDebug('Vaillant/tli-Rohdaten', ...)` raus (vorher nur vrc700) -- Markus um seinen
+Dump gebeten, um beide Punkte an echten Daten statt an weiteren Vermutungen zu klaeren
+(genau das Muster, das bei IDM/Proxon/SamsungEhs/WPBsbLan schon funktioniert hat).
+Pruefstand 311 -> 312.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

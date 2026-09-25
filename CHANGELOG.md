@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.11.2 (Build 76) — 25.09.2026
+
+- **Erste echte Vaillant-Bestätigung: Markus (m_rothenpieler) hat 0.11.1 an seiner sensoCOMFORT-Kaskade laufen** — Anmeldung und erste Messwerte funktionieren (Außentemperatur, Vorlauf, Puffertemperatur, Systemdruck). Zwei offene Punkte: Vorlauf- und Puffertemperatur kommen bei ihm identisch an (könnte an seiner Anlagentopologie liegen oder an einer noch ungenauen Feldzuordnung), Warmwasser/Betriebszustände/Energie/Kaskaden-Einzelgeräte fehlen noch komplett. Damit sich das an echten Daten statt an Vermutungen klären lässt: die komplette Rohantwort einer tli-Anlage geht jetzt ebenfalls über die Instanz-Debugausgabe raus (bisher nur für vrc700).
+- Prüfstand: 312 Prüfungen (vorher 311), eine neue Mutation der Zielstelle geprüft.
+
 ## 0.11.1 (Build 75) — 25.09.2026
 
 - **Vaillant: Sperrfrist nach einem API-Kontingent-Fehler.** m_rothenpieler (Forum-Post #24, aroTHERM-split-Kaskade über sensoCOMFORT) meldete nach einigen Aktualisierungszyklen `HTTP 403 "Out of call volume quota"` — die Erreichbarkeits-Variable kippte danach auf Alarm. WPHub versucht nach so einem Fehler jetzt nicht mehr bei jedem 60-Sekunden-Zyklus erneut (was die Sperre nur verlängert hätte), sondern liest die von Vaillant selbst genannte Wartezeit ("Quota will be replenished in HH:MM:SS") aus der Fehlermeldung und pausiert bis dahin, mit einer klar erkennbaren Protokollmeldung statt der bisherigen generischen Fehlermeldung.

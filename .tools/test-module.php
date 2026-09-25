@@ -39,6 +39,7 @@ $GLOBALS['ips'] = [
     'nextVarId'  => 10000,
     'properties' => [],
     'log'        => [],
+    'debug'      => [],
 ];
 
 function IPS_VariableProfileExists(string $name): bool
@@ -253,6 +254,7 @@ class IPSModule
     }
     protected function SendDebug(string $topic, string $text, int $format): void
     {
+        $GLOBALS['ips']['debug'][] = ['topic' => $topic, 'text' => $text];
     }
     protected function LogMessage(string $text, int $type): void
     {
@@ -1491,6 +1493,13 @@ $fakeVai->systemsVrc700ById = [
 $vaiBundle = ['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600];
 $vaiDevices = $refreshDevicesVaillant->invoke($mod, $vaiBundle, $fakeVai);
 check('refreshDevicesVaillant() liefert tli- UND vrc700-Anlage, scf bleibt aussen vor', is_array($vaiDevices) && count($vaiDevices) === 2, json_encode($vaiDevices));
+$tliDebugFund = null;
+foreach ($GLOBALS['ips']['debug'] as $d) {
+    if ($d['topic'] === 'Vaillant/tli-Rohdaten') {
+        $tliDebugFund = $d;
+    }
+}
+check('refreshDevicesVaillant(): tli-Rohdaten gehen per SendDebug raus (Fund m_rothenpieler, Forum-Post #26)', $tliDebugFund !== null && strpos($tliDebugFund['text'], 'outdoor_temperature') !== false, json_encode($tliDebugFund));
 check('refreshDevicesVaillant() uebernimmt den Anlagennamen', ($vaiDevices[0]['name'] ?? null) === 'Zuhause');
 check('refreshDevicesVaillant() ruft getSystemVrc700() fuer die vrc700-Anlage auf', $fakeVai->vrc700Calls === ['sys-vrc700-1']);
 check('refreshDevicesVaillant() schreibt VAI_DeviceList (getrennt von CC_DeviceList)', count($readDeviceList->invoke($mod)) === 2);
