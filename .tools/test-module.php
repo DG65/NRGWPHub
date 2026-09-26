@@ -458,8 +458,10 @@ class FakeVaillant extends WPHUB_VaillantClient
         $this->homesCalls++;
         return $this->homesResult;
     }
+    public array $controlIdentifierCalls = [];
     public function getControlIdentifier(array $bundle, string $systemId): string
     {
+        $this->controlIdentifierCalls[] = $systemId;
         return $this->controlIdentifiers[$systemId] ?? 'tli';
     }
     public function getSystem(array $bundle, string $systemId): ?array
@@ -483,6 +485,11 @@ class FakeVaillant extends WPHUB_VaillantClient
     {
         $this->refreshCalls++;
         return $this->refreshResult;
+    }
+    public $loginResult = null; // null oder array -- fester Rueckgabewert fuer login()
+    public function login(string $email, string $password): ?array
+    {
+        return $this->loginResult;
     }
 }
 
@@ -1672,6 +1679,56 @@ foreach ($vaiDevices as $d) {
 check('vrc700-Anlage: erkannt, erreichbar und mit Namen "Altbau"', $vrc700Device !== null && $vrc700Device['reachable'] === true && $vrc700Device['name'] === 'Altbau', json_encode($vrc700Device));
 check('vrc700-Anlage: Aussentemperatur uebernommen (dieselbe Feldlogik wie tli)', $vrc700Device !== null && ($GLOBALS['ips']['variables'][$vrc700Device['prefix'] . 'Aussentemperatur']['value'] ?? null) === 3.5, json_encode($GLOBALS['ips']['variables'][($vrc700Device['prefix'] ?? '') . 'Aussentemperatur'] ?? null));
 
+// vaillantSystemsCache() (Fund 26.09.2026, m_rothenpieler, Forum-Post #38):
+// getHomes()/getControlIdentifier() sollen NICHT bei jedem Zyklus erneut
+// aufgerufen werden -- der obige erste refreshDevicesVaillant()-Aufruf hat
+// bereits einen Cache angelegt, jetzt pruefen: erster Aufruf = genau 1x
+// getHomes() + 1x getControlIdentifier() je Anlage (3 Anlagen), ein
+// SOFORT folgender zweiter Aufruf darf beides NICHT erneut aufrufen.
+check('vaillantSystemsCache(): erster Aufruf ruft getHomes() genau einmal auf', $fakeVai->homesCalls === 1);
+check('vaillantSystemsCache(): erster Aufruf ruft getControlIdentifier() je Anlage auf (3x, auch fuer die uebersprungene scf-Anlage)', $fakeVai->controlIdentifierCalls === ['sys-tli-1', 'sys-vrc700-1', 'sys-scf-1']);
+$homesCallsBeforeSecondRun = $fakeVai->homesCalls;
+$controlIdentifierCallsBeforeSecondRun = count($fakeVai->controlIdentifierCalls);
+$refreshDevicesVaillant->invoke($mod, $vaiBundle, $fakeVai);
+check('vaillantSystemsCache(): zweiter Aufruf (Cache noch frisch) ruft getHomes() NICHT erneut auf', $fakeVai->homesCalls === $homesCallsBeforeSecondRun);
+check('vaillantSystemsCache(): zweiter Aufruf (Cache noch frisch) ruft getControlIdentifier() NICHT erneut auf', count($fakeVai->controlIdentifierCalls) === $controlIdentifierCallsBeforeSecondRun);
+check('vaillantSystemsCache(): getSystem()/getSystemVrc700() laufen trotz Cache-Treffer weiter jeden Zyklus (Messwerte selbst)', count($fakeVai->vrc700Calls) === 2, json_encode($fakeVai->vrc700Calls));
+
+// Abgelaufener Cache (aeltere als VAI_SYSTEMS_CACHE_TTL_SECONDS) loest einen
+// frischen Abruf aus -- simuliert durch das Attribut direkt in die
+// Vergangenheit zu schreiben (kein Warten auf die echte TTL im Test).
+$writeAttrInt = new ReflectionMethod(WPHub::class, 'WriteAttributeInteger');
+$writeAttrInt->setAccessible(true);
+$writeAttrInt->invoke($mod, 'VAI_SystemsCacheAt', time() - 100000);
+$refreshDevicesVaillant->invoke($mod, $vaiBundle, $fakeVai);
+check('vaillantSystemsCache(): abgelaufener Cache loest erneuten getHomes()-Aufruf aus', $fakeVai->homesCalls === $homesCallsBeforeSecondRun + 1);
+
+// LoginVaillant() erzwingt eine frische Anlagenliste, auch wenn der Cache
+// noch innerhalb der TTL waere (z. B. neu hinzugefuegte Anlage im
+// myVAILLANT-Konto zwischen zwei manuellen Anmeldungen) -- Cache absichtlich
+// "warm" vorbelegen, um zu pruefen, dass LoginVaillant() ihn trotzdem verwirft.
+$loginVaillant = new ReflectionMethod(WPHub::class, 'LoginVaillant');
+$loginVaillant->setAccessible(true);
+$GLOBALS['ips']['properties']['VAI_Email'] = 'test@example.com';
+$GLOBALS['ips']['properties']['VAI_Password'] = 'geheim';
+$fakeVaiLogin = new FakeVaillant('germany');
+$fakeVaiLogin->loginResult = ['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600];
+$fakeVaiLogin->homesResult = [['systemId' => 'sys-login-1', 'homeName' => 'Login-Test']];
+$fakeVaiLogin->controlIdentifiers = ['sys-login-1' => 'tli'];
+$fakeVaiLogin->systemsById = ['sys-login-1' => ['connected' => true, 'state' => ['system' => ['outdoor_temperature' => 1.0]]]];
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiLogin) {
+    return $fakeVaiLogin;
+};
+$writeAttrInt->invoke($mod, 'VAI_SystemsCacheAt', time()); // Cache "gerade eben" aufgefrischt
+$loginVaillant->invoke($mod);
+check('LoginVaillant() ruft getHomes() trotz warmem Cache auf (erzwungene Neusuche)', $fakeVaiLogin->homesCalls === 1);
+unset($GLOBALS['ips']['vaillantClientFactory']);
+// Aufraeumen: LoginVaillant() hat VAI_Token/VAI_SystemsCache* gesetzt, das
+// wuerde sonst nachfolgende Tests (z. B. "vaillantTokenBundle() ohne Token")
+// aus dem falschen Grund bestehen lassen.
+$setAttr->invoke($mod, 'VAI_Token', '');
+$writeAttrInt->invoke($mod, 'VAI_SystemsCacheAt', 0);
+
 // snakeCaseKeysDeep(): reine Konvertierungslogik direkt getestet, mit
 // realistischem camelCase wie es die echte myVAILLANT-API liefert (Quelltext
 // myPyllant.utils.dict_to_snake_case gegengelesen 25.09.2026).
@@ -1757,6 +1814,11 @@ $GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiQuota) {
     return $fakeVaiQuota;
 };
 
+// VAI_SystemsCache aus fruehreren Testblock-Laeufen desselben $mod zuruecksetzen
+// (dieselbe Randfalle wie bei VAI_RetryNotBefore weiter unten: ein warmer Cache
+// wuerde getHomes() der Attrappe gar nicht erst aufrufen und die folgenden
+// Pruefungen aus dem falschen Grund bestehen lassen).
+$writeRetry->invoke($mod, 'VAI_SystemsCacheAt', 0);
 $setStatus->invoke($mod, 999); // Wachposten-Wert, den nur ein echter Durchlauf aendern wuerde
 $writeRetry->invoke($mod, 'VAI_RetryNotBefore', time() + 120);
 $logCountBeforeBlocked = count($GLOBALS['ips']['log']);

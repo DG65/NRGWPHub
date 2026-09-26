@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.12.1 (Build 83) — 26.09.2026
+
+- **Vaillant: API-Kontingent spürbar geschont (Caching von Anlagenliste + Regler-Typ).** Markus (m_rothenpieler, Forum-Post #38) hatte angemerkt, dass `getHomes()` bei jedem Zyklus erneut abgefragt wird — tatsächlich waren es sogar drei API-Calls je Zyklus (`getHomes()`, `getControlIdentifier()`, `getSystem()`/`getSystemVrc700()`), nicht nur einer. Anlagenliste und Regler-Typ ändern sich praktisch nie und werden jetzt 24 Stunden lang aus einem Cache verwendet — die eigentlichen Messwerte (`getSystem()`/`getSystemVrc700()`) laufen unverändert jeden Zyklus. Bei einem Ein-Anlagen-Konto sinkt der Bedarf damit im Dauerbetrieb von 3 auf 1 API-Call/Zyklus. Eine manuelle (Neu-)Anmeldung im Formular erzwingt weiterhin sofort eine frische Anlagenliste.
+- Prüfstand: 374 Prüfungen (vorher 365), fünf neue Mutationen der Zielstellen geprüft.
+
 ## 0.12.0 (Build 82) — 26.09.2026
 
 - **Vaillant: normierte Betriebsart (`BetriebsartNorm`) im Verbund-Vertrag befüllt.** Markus (m_rothenpieler, Forum-Post #38) hat einen echten Warmwasser-Ladevorgang über mehrere Zyklen beobachtet und damit die drei bislang unbestätigten Rohwerte von `energy_manager_state` festgenagelt: `STANDBY` = Bereitschaft, `HEATING` = Heizbetrieb, `DHW` = Warmwasserbereitung. Damit füllt WPHub jetzt auch für Vaillant das gemeinsame `operatingModeNormID`-Vertragsfeld (dasselbe Enum wie bei Panasonic/HeishaMon/SamsungEhs) — bisher blieb es bei jeder Vaillant-Anlage leer. „Kühlen" ist für Vaillant noch nie beobachtet worden und wird bewusst nicht geraten: jeder unbekannte Rohwert bleibt „Unbekannt" (-1).

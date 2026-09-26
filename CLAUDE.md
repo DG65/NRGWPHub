@@ -647,6 +647,58 @@ Pruefstand 357 -> 365 (direkter Unit-Test fuer `normalizeVaillantEnergyManagerSt
 mit allen drei bestaetigten Werten + unbekanntem Rohwert, beide bestehenden Vaillant-
 Fixtures um die BetriebsartNorm-Erwartung ergaenzt). Sechs neue Mutationen gefangen.
 
+## Vaillant: Anlagenliste/Regler-Typ gecacht (0.12.1, Forum-Post #38, 26.09.2026)
+
+Umsetzung der zuvor zurueckgestellten Idee (siehe 0.12.0-Abschnitt oben), diesmal
+nach genauerer Analyse und mit Dietmars ausdruecklicher Freigabe ("Ja, umsetzen"
+nach einer separat vorgelegten Skizze).
+
+**Genauer als urspruenglich angenommen:** `refreshDevicesVaillant()` machte nicht
+EINEN, sondern DREI API-Calls je Zyklus -- `getHomes()` (1x insgesamt), dazu
+`getControlIdentifier()` UND `getSystem()`/`getSystemVrc700()` JE ANLAGE. Bei einem
+Ein-Anlagen-Konto (Normalfall) also 3 Calls, nicht 1 -- Markus' eigene Vermutung war
+sogar zu vorsichtig.
+
+**Umsetzung:** neue Methode `vaillantSystemsCache(array $bundle, WPHUB_VaillantClient
+$client): ?array`, davor in `refreshDevicesVaillant()` geschoben:
+- Neue Attribute `VAI_SystemsCache` (JSON: `[{systemId, homeName,
+  controlIdentifier}, ...]`) + `VAI_SystemsCacheAt` (Zeitstempel).
+- Cache juenger als `VAI_SYSTEMS_CACHE_TTL_SECONDS` (24 h) -> direkt verwenden,
+  `getHomes()`/`getControlIdentifier()` entfallen komplett.
+- Cache leer/abgelaufen -> `getHomes()` + `getControlIdentifier()` je Anlage wie
+  bisher, Ergebnis in den Cache schreiben.
+- `getSystem()`/`getSystemVrc700()` bleiben UNVERAENDERT jeden Zyklus bestehen (das
+  sind die eigentlichen Messwerte, kein Caching-Kandidat).
+- Ein Fehler beim Neu-Abruf (Kontingent oder sonstiger Fehlschlag von `getHomes()`)
+  wird weiterhin als NULL nach oben gereicht -- dieselbe, bereits zweimal gebuggte
+  `VAI_RetryNotBefore`-Sperrfrist-Logik in `updateVaillant()` deckt also unveraendert
+  BEIDE Pfade ab (kein separater Fehlerpfad noetig).
+- `LoginVaillant()` setzt `VAI_SystemsCacheAt` auf 0, BEVOR es `refreshDevicesVaillant()`
+  aufruft -- eine manuelle (Neu-)Anmeldung erzwingt damit immer eine frische
+  Anlagenliste, auch wenn der Cache noch innerhalb der TTL waere (z. B. eine neu
+  hinzugefuegte Anlage im myVAILLANT-Konto).
+
+**Bewusst NICHT umgesetzt (siehe Skizze, mit Dietmar abgestimmt):** kein Versuch,
+eine entfernte Anlage vorzeitig ueber den HTTP-Statuscode von `getSystem()` zu
+erkennen -- dafuer gibt es noch keinen beobachteten Fall, das waere ein Rateweg.
+Eine entfernte Anlage faellt spaetestens nach Ablauf der 24h-TTL automatisch weg,
+sofort nach einer erneuten manuellen Anmeldung.
+
+**Testaufwand:** `FakeVaillant` um `controlIdentifierCalls` (Liste der angefragten
+systemIds) und `loginResult`/`login()`-Override erweitert (Letzteres war fuer
+`LoginVaillant()` bislang komplett ungetestet, da `login()` sonst einen echten
+ALTCHA-Loesungsversuch + Netzzugriff ausgeloest haette). Direkte Tests: erster
+Aufruf ruft `getHomes()`/`getControlIdentifier()` auf, ein SOFORT folgender zweiter
+Aufruf NICHT mehr, ein abgelaufener Cache loest erneut aus, `getSystem()`/
+`getSystemVrc700()` laufen trotz Cache-Treffer weiter, `LoginVaillant()` erzwingt
+einen frischen Abruf trotz warmem Cache. Wie schon beim `VAI_RetryNotBefore`-Fund
+im selben Testfile: der gemeinsam genutzte `$mod` haette einen aus einem fruehreren
+Testblock uebrig gebliebenen warmen Cache sonst in die Kontingent-Tests
+durchgereicht und deren Erwartungen aus dem falschen Grund bestehen lassen --
+deshalb `VAI_SystemsCacheAt` dort jetzt explizit vor dem Testblock zurueckgesetzt.
+
+Pruefstand 365 -> 374, fuenf neue Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

@@ -85,6 +85,11 @@ class WPHub extends IPSModule
         'poland' => 'Polen', 'denmark' => 'Dänemark', 'unitedkingdom' => 'Vereinigtes Königreich',
     ];
 
+    // Wie lange die Anlagenliste/Regler-Typ-Zuordnung (VAI_SystemsCache)
+    // ungeprueft weiterverwendet wird, bevor getHomes()/getControlIdentifier()
+    // erneut aufgerufen werden -- siehe vaillantSystemsCache().
+    private const VAI_SYSTEMS_CACHE_TTL_SECONDS = 86400;
+
     public function Create()
     {
         parent::Create();
@@ -148,6 +153,12 @@ class WPHub extends IPSModule
         // Sperrfrist nach einem "Out of call volume quota"-Fehler (403) --
         // siehe updateVaillant()/VaillantClient::parseQuotaRetrySeconds().
         $this->RegisterAttributeInteger('VAI_RetryNotBefore', 0);
+        // Cache fuer Anlagenliste + Regler-Typ (getHomes()/getControlIdentifier())
+        // -- spart zwei von drei API-Calls je Zyklus (Fund 26.09.2026,
+        // m_rothenpieler, Forum-Post #38: Kontingent ist knapp, diese beiden
+        // aendern sich praktisch nie). Siehe vaillantSystemsCache().
+        $this->RegisterAttributeString('VAI_SystemsCache', '[]');
+        $this->RegisterAttributeInteger('VAI_SystemsCacheAt', 0);
         // Zuletzt automatisch ermittelte App-Version (hat Vorrang).
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt gesehener Feldwert von CC_AppVersion ('#unset' = noch nie
@@ -1599,6 +1610,10 @@ class WPHub extends IPSModule
         IPS_ApplyChanges($this->InstanceID);
         $this->UpdateFormField('VAI_Password', 'value', '');
 
+        // Manuelle Anmeldung erzwingt eine frische Anlagenliste, auch wenn
+        // VAI_SystemsCache noch innerhalb der TTL waere (z. B. neu
+        // hinzugefuegte Anlage im myVAILLANT-Konto) -- siehe vaillantSystemsCache().
+        $this->WriteAttributeInteger('VAI_SystemsCacheAt', 0);
         $devices = $this->refreshDevicesVaillant($bundle, $client);
         if ($devices === null) {
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Anlagenliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
@@ -1658,20 +1673,68 @@ class WPHub extends IPSModule
     }
 
     /**
-     * Anlagenliste laden und je Anlage die Basiswerte pflegen (siehe
-     * maintainDeviceVariablesVaillant()). Regler-Typ "tli" UND "vrc700"
-     * werden abgerufen (siehe VaillantClient::getSystem()/getSystemVrc700()) --
-     * "scf"/iQconnect-Anlagen bleiben uebersprungen (laut myPyllant-Quelltext
-     * strukturell ohne aggregiertes System, siehe VaillantClient.php-Kommentar).
-     * vrc700 ist Stand 25.09.2026 NUR im Verbindungsaufbau verifiziert
-     * (cbeham, Forum-Post #22/WPHub-Thread) -- welche Felder
-     * maintainDeviceVariablesVaillant() daraus tatsaechlich lesen kann, ist
-     * noch offen, deshalb geht das komplette Roh-System zusaetzlich per
-     * SendDebug raus.
+     * Anlagenliste + Regler-Typ, aus VAI_SystemsCache wenn noch frisch genug
+     * (VAI_SYSTEMS_CACHE_TTL_SECONDS), sonst per getHomes()/
+     * getControlIdentifier() neu ermittelt und in den Cache geschrieben.
+     *
+     * Fund 26.09.2026 (m_rothenpieler, Forum-Post #38): refreshDevicesVaillant()
+     * machte bislang DREI API-Calls je Zyklus (getHomes() einmal, dazu
+     * getControlIdentifier() UND getSystem()/getSystemVrc700() je Anlage) --
+     * bei einem Ein-Anlagen-Konto also 3 Calls, nicht 1. Anlagenliste und
+     * Regler-Typ aendern sich praktisch nie, im Gegensatz zu den eigentlichen
+     * Messwerten (getSystem()/getSystemVrc700(), bleibt bewusst jeden Zyklus
+     * bestehen). Ein Fehler HIER (Kontingent oder sonstiger Fehlschlag von
+     * getHomes()) wird wie zuvor mit NULL nach oben gereicht -- dieselbe,
+     * bereits zweimal gebuggte Sperrfrist-Logik (updateVaillant()) deckt
+     * also weiterhin BEIDE Pfade ab.
+     *
+     * Bewusst NICHT versucht: eine entfernte Anlage vorzeitig aus dem Cache
+     * zu erkennen (z. B. per HTTP-Statuscode von getSystem()) -- dafuer gibt
+     * es noch keinen beobachteten Fall, das waere ein Rateweg. Eine entfernte
+     * Anlage faellt spaetestens nach Ablauf der TTL automatisch weg, sofort
+     * nach einer erneuten Anmeldung (LoginVaillant() erzwingt einen frischen
+     * Cache, siehe dort).
+     */
+    private function vaillantSystemsCache(array $bundle, WPHUB_VaillantClient $client): ?array
+    {
+        $cacheAt = $this->ReadAttributeInteger('VAI_SystemsCacheAt');
+        $cached = json_decode((string)$this->ReadAttributeString('VAI_SystemsCache'), true);
+        if (is_array($cached) && $cacheAt > 0 && (time() - $cacheAt) < self::VAI_SYSTEMS_CACHE_TTL_SECONDS) {
+            return $cached;
+        }
+
+        $homes = $client->getHomes($bundle);
+        if ($homes === null) {
+            return null;
+        }
+        $systems = [];
+        foreach ($homes as $home) {
+            $systems[] = [
+                'systemId'          => $home['systemId'],
+                'homeName'          => $home['homeName'],
+                'controlIdentifier' => $client->getControlIdentifier($bundle, $home['systemId']),
+            ];
+        }
+        $this->WriteAttributeString('VAI_SystemsCache', json_encode($systems));
+        $this->WriteAttributeInteger('VAI_SystemsCacheAt', time());
+        return $systems;
+    }
+
+    /**
+     * Anlagenliste laden (siehe vaillantSystemsCache()) und je Anlage die
+     * Basiswerte pflegen (siehe maintainDeviceVariablesVaillant()). Regler-Typ
+     * "tli" UND "vrc700" werden abgerufen (siehe VaillantClient::getSystem()/
+     * getSystemVrc700()) -- "scf"/iQconnect-Anlagen bleiben uebersprungen
+     * (laut myPyllant-Quelltext strukturell ohne aggregiertes System, siehe
+     * VaillantClient.php-Kommentar). vrc700 ist Stand 25.09.2026 NUR im
+     * Verbindungsaufbau verifiziert (cbeham, Forum-Post #22/WPHub-Thread) --
+     * welche Felder maintainDeviceVariablesVaillant() daraus tatsaechlich
+     * lesen kann, ist noch offen, deshalb geht das komplette Roh-System
+     * zusaetzlich per SendDebug raus.
      */
     private function refreshDevicesVaillant(array $bundle, WPHUB_VaillantClient $client): ?array
     {
-        $homes = $client->getHomes($bundle);
+        $homes = $this->vaillantSystemsCache($bundle, $client);
         if ($homes === null) {
             return null;
         }
@@ -1679,7 +1742,7 @@ class WPHub extends IPSModule
         $devices = [];
         foreach ($homes as $home) {
             $systemId = $home['systemId'];
-            $controlIdentifier = $client->getControlIdentifier($bundle, $systemId);
+            $controlIdentifier = $home['controlIdentifier'];
             if ($controlIdentifier === 'tli') {
                 $system = $client->getSystem($bundle, $systemId);
                 // Fund 25.09.2026 (m_rothenpieler, Forum-Post #26): Vorlauf-
