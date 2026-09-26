@@ -1247,6 +1247,31 @@ class WPHub extends IPSModule
     }
 
     /**
+     * Vaillant state.system.energy_manager_state -> Verbund-Enum
+     * (WPHUB.BetriebsartNorm, dieselbe Bedeutung wie bei Panasonic/
+     * normalizeOperatingMode()). Zuordnung an einem echten, ueber mehrere
+     * Zyklen beobachteten Warmwasser-Ladevorgang bestaetigt (Markus/
+     * m_rothenpieler, Forum-Post #38, 26.09.2026): DHW waehrend aktiver
+     * Speicherladung, HEATING waehrend Heizbetrieb, STANDBY in Bereitschaft.
+     * "Kuehlen" (2/4/5) ist fuer Vaillant noch NIE beobachtet worden -- jeder
+     * andere/unbekannte Rohwert bleibt bewusst -1 (Unbekannt) statt geraten
+     * einem der Kuehl-Zustaende zugeordnet zu werden.
+     */
+    private function normalizeVaillantEnergyManagerState(?string $energyManagerState): int
+    {
+        switch ($energyManagerState) {
+            case 'STANDBY':
+                return 0;
+            case 'HEATING':
+                return 1;
+            case 'DHW':
+                return 3;
+            default:
+                return -1; // unbekannt (inkl. noch nie beobachteter Werte)
+        }
+    }
+
+    /**
      * Steuerung: WebFront/EMS aendert eine der per EnableAction() freige-
      * gebenen Variablen (Fluesterbetrieb, Leistungsbetrieb, Urlaubstimer,
      * Notbetriebe, Warmwasser-/Zonen-Sollwert). Der Praefix (9 Zeichen, siehe
@@ -1873,15 +1898,22 @@ class WPHub extends IPSModule
             $this->SetValue($prefix . 'Heizkreis2Betriebszustand', $circuitState2['calculated_energy_manager_state']);
         }
 
-        // Rohstatus-Werte (NEU 26.09.2026, Forum-Post #34, Markus) -- bewusst
-        // UNVERAENDERTE API-Strings, keine Normalisierung, kein eigenes
-        // Vertragsfeld. Markus will an echten Zyklen beobachten, welcher Wert
-        // eine aktive Warmwasserbereitung eindeutig kennzeichnet, bevor daraus
-        // eine feste Zuordnung (operatingModeNormID) gebaut wird -- bewusst
-        // noch kein Rateweg, erst die Rohwerte sichtbar machen.
+        // Rohstatus-Werte (NEU 26.09.2026, Forum-Post #34, Markus) -- die drei
+        // Rohwerte von state.system.energy_manager_state (STANDBY/HEATING/DHW)
+        // wurden inzwischen an einem echten, ueber mehrere Zyklen beobachteten
+        // Warmwasser-Ladevorgang bestaetigt (Forum-Post #38, 26.09.2026) --
+        // deshalb zusaetzlich zum Rohwert jetzt auch BetriebsartNorm (Verbund-
+        // Enum, contractVersion 1.4, siehe normalizeVaillantEnergyManagerState()).
+        // circuit_state/calculated_energy_manager_state/current_special_function
+        // bleiben bewusst UNNORMALISIERT -- current_special_function hat sich
+        // laut Markus' Beobachtung sogar als NICHT aussagekraeftig fuer aktive
+        // Warmwasserbereitung erwiesen (blieb durchgehend REGULAR), die beiden
+        // anderen sind reine Diagnosewerte ohne eigenes Vertragsfeld.
         if (isset($state['energy_manager_state']) && is_string($state['energy_manager_state']) && $state['energy_manager_state'] !== '') {
             $this->MaintainVariable($prefix . 'Systemstatus', $name . ': Systemstatus (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
             $this->SetValue($prefix . 'Systemstatus', $state['energy_manager_state']);
+            $this->MaintainVariable($prefix . 'BetriebsartNorm', $name . ': Betriebsart (normiert)', VARIABLETYPE_INTEGER, 'WPHUB.BetriebsartNorm', $pos++, true);
+            $this->SetValue($prefix . 'BetriebsartNorm', $this->normalizeVaillantEnergyManagerState($state['energy_manager_state']));
         }
         if (isset($circuitState['circuit_state']) && is_string($circuitState['circuit_state']) && $circuitState['circuit_state'] !== '') {
             $this->MaintainVariable($prefix . 'Heizkreis1Status', $name . ': Heizkreis 1 Status (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);

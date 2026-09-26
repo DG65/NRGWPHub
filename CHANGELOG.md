@@ -1,5 +1,11 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.12.0 (Build 82) — 26.09.2026
+
+- **Vaillant: normierte Betriebsart (`BetriebsartNorm`) im Verbund-Vertrag befüllt.** Markus (m_rothenpieler, Forum-Post #38) hat einen echten Warmwasser-Ladevorgang über mehrere Zyklen beobachtet und damit die drei bislang unbestätigten Rohwerte von `energy_manager_state` festgenagelt: `STANDBY` = Bereitschaft, `HEATING` = Heizbetrieb, `DHW` = Warmwasserbereitung. Damit füllt WPHub jetzt auch für Vaillant das gemeinsame `operatingModeNormID`-Vertragsfeld (dasselbe Enum wie bei Panasonic/HeishaMon/SamsungEhs) — bisher blieb es bei jeder Vaillant-Anlage leer. „Kühlen" ist für Vaillant noch nie beobachtet worden und wird bewusst nicht geraten: jeder unbekannte Rohwert bleibt „Unbekannt" (-1).
+- **Ebenfalls aus Markus' Beobachtung geklärt:** `current_special_function` (Warmwasser-Sonderfunktion) zeigt eine aktive Warmwasserbereitung NICHT an — blieb während der gesamten Speicherladung auf `REGULAR`. Bleibt deshalb weiterhin nur als reiner Rohwert ohne Normalisierung stehen.
+- Prüfstand: 365 Prüfungen (vorher 357), sechs neue Mutationen der Zielstellen geprüft.
+
 ## 0.11.7 (Build 81) — 26.09.2026
 
 - **Neu: Heizkreis 2 (Vorlauf Ist/Soll + Rohstatus) bei Vaillant.** cbeham (Forum-Post #36) hat einen frischen vrc700-Rohdump geschickt: Seine Anlage hat zwei eigenständige, gleichzeitig unterschiedlich aktive Heizkreise (`state.circuits[1]` war komplett unsichtbar). Zone2Ist/Zone2Soll sowie Heizkreis-2-Status/-Betriebszustand kommen jetzt dazu — gleicher Ident wie bei SamsungEhs, damit `GetFunctions()` sie automatisch über `z2WaterTempID`/`z2WaterTargetTempID` auflöst, ohne dass sich am Vertrag selbst etwas ändert.

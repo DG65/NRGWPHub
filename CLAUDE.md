@@ -600,6 +600,53 @@ Pruefstand 345 -> 357 (Zone2-Fixture aus cbehams beiden echten Rohdumps, Randfal
 inkl. Abgrenzung von dessen `index`-Feld-Verwechslungsgefahr). Vier neue Mutationen
 gefangen.
 
+## Vaillant BetriebsartNorm endlich befuellt (0.12.0, Forum-Post #38, 26.09.2026)
+
+Markus hat genau das geliefert, worum in 0.11.6 gebeten wurde: einen ueber mehrere
+Zyklen beobachteten echten Warmwasser-Ladevorgang, mit `state.system.
+energy_manager_state` als Tabelle protokolliert (Warmwasser-Ist stieg dabei von
+45,0 auf 51,5 °C):
+
+| Uhrzeit | Systemstatus | Heizkreisstatus |
+|---|---|---|
+| 13:24-13:34 | DHW (Warmwasserbereitung laeuft) | STANDBY |
+| 13:44 | HEATING | HEATING |
+| ab 14:04 | STANDBY | STANDBY |
+
+Drei Werte, alle drei jetzt real bestaetigt -- kein Rateweg mehr noetig fuer genau
+diese Zuordnung. Bemerkenswert: waehrend der Warmwasserbereitung selbst steht der
+Heizkreis auf STANDBY (kein Widerspruch -- der Heizkreis heizt in dem Moment
+tatsaechlich nicht den Raum, das macht die Zuordnung erst eindeutig). `normalizeVaillantEnergyManagerState()` bildet STANDBY->0,
+HEATING->1, DHW->3 auf das bestehende `WPHUB.BetriebsartNorm`-Profil ab (dasselbe
+Profil/Enum wie bei Panasonic ueber `normalizeOperatingMode()`, contractVersion
+1.4 seit HeishaMon-Abstimmung 13.08.2026) -- `GetFunctions()`s
+`operatingModeNormID => contractFieldID($prefix, 'BetriebsartNorm')` ist bereits
+herstellerneutral, keine Aenderung dort noetig.
+
+**Bewusst NICHT auf "Kuehlen" erweitert:** Kein einziger Vaillant-Tester hat bisher
+einen Kuehl-Zustand gemeldet, deshalb bleibt jeder unbekannte Rohwert -1 (Unbekannt)
+statt geraten einem der Kuehl-Enum-Werte (2/4/5) zugeordnet zu werden.
+
+**Nebenbefund, den Markus selbst explizit macht:** `current_special_function`
+(Warmwasser-Sonderfunktion, seit 0.11.6 als reiner Rohwert gepflegt) blieb waehrend
+der GESAMTEN Warmwasserbereitung auf `REGULAR` stehen -- damit ist klar, dass dieses
+Feld NICHT die urspruenglich vermutete Anzeige fuer "Warmwasserbereitung aktiv" ist.
+Bleibt unnormalisiert, keine Vertragsanbindung dafuer gebaut.
+
+**Zurueckgestellt, nicht umgesetzt:** Markus schlaegt vor, `client->getHomes()` nicht
+mehr bei JEDEM Zyklus aufzurufen (aktuell in `refreshDevicesVaillant()` unbedingt),
+sondern die bekannte systemId zu cachen, um API-Kontingent zu sparen -- er nennt es
+selbst "bei Gelegenheit". Nicht in dieser Version umgesetzt: das ist eine echte
+Architekturaenderung an der Kernabruf-Schleife (wie oft neu abrufen? wie neue/
+entfernte Anlagen erkennen? Wechselwirkung mit VAI_DeviceList, das aktuell jeden
+Zyklus aus `getHomes()` neu geschrieben wird), an der Kontingent-Code-Pfad schon
+zweimal echte Bugs hatte (0.11.1/0.11.3) -- verdient eigene, sorgfaeltige Planung
+statt eines schnellen Nebenbei-Fixes. Als Idee dokumentiert, noch keine Umsetzung.
+
+Pruefstand 357 -> 365 (direkter Unit-Test fuer `normalizeVaillantEnergyManagerState()`
+mit allen drei bestaetigten Werten + unbekanntem Rohwert, beide bestehenden Vaillant-
+Fixtures um die BetriebsartNorm-Erwartung ergaenzt). Sechs neue Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

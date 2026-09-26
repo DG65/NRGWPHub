@@ -804,6 +804,18 @@ check('Auto Kühlen + Warmwasser -> 5 (cooling+dhw)', $norm->invoke($mod, 4, tru
 check('Unbekannter Rohwert -> -1 (unbekannt)', $norm->invoke($mod, 99, false) === -1);
 check('Kein Wert (null) -> -1 (unbekannt)', $norm->invoke($mod, null, false) === -1);
 
+// normalizeVaillantEnergyManagerState(): Zuordnung 1:1 an Markus' echtem,
+// ueber mehrere Zyklen beobachteten Warmwasser-Ladevorgang bestaetigt
+// (Forum-Post #38, 26.09.2026) -- STANDBY/HEATING/DHW sind die einzigen
+// bislang live gesehenen Werte, alles andere bleibt -1.
+$normVai = new ReflectionMethod(WPHub::class, 'normalizeVaillantEnergyManagerState');
+$normVai->setAccessible(true);
+check('normalizeVaillantEnergyManagerState(): STANDBY -> 0', $normVai->invoke($mod, 'STANDBY') === 0);
+check('normalizeVaillantEnergyManagerState(): HEATING -> 1', $normVai->invoke($mod, 'HEATING') === 1);
+check('normalizeVaillantEnergyManagerState(): DHW -> 3', $normVai->invoke($mod, 'DHW') === 3);
+check('normalizeVaillantEnergyManagerState(): unbekannter Rohwert -> -1 (kein Rateweg auf "Kühlen")', $normVai->invoke($mod, 'COOLING') === -1);
+check('normalizeVaillantEnergyManagerState(): null -> -1', $normVai->invoke($mod, null) === -1);
+
 // ---------------------------------------------------------------------------
 echo "Block 4: Client-Hilfsfunktionen (ohne Netz)\n";
 // ---------------------------------------------------------------------------
@@ -1520,6 +1532,8 @@ check('Vaillant: Raumfeuchte nutzt NRG.Percent', ($GLOBALS['ips']['variables']['
 check('Vaillant: Systemdruck uebernommen (Panasonic-loses Feld)', ($GLOBALS['ips']['variables']['HPVAITST_Systemdruck']['value'] ?? null) === 2.0);
 check('Vaillant: Erreichbar uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Erreichbar']['value'] ?? null) === true);
 check('Vaillant: Systemstatus (Rohwert) aus state.system.energy_manager_state (NEU, Forum-Post #34)', ($GLOBALS['ips']['variables']['HPVAITST_Systemstatus']['value'] ?? null) === 'HEATING');
+check('Vaillant: BetriebsartNorm = 1 (Heizen) aus energy_manager_state=HEATING (NEU, Forum-Post #38, an echtem Zyklus bestaetigt)', ($GLOBALS['ips']['variables']['HPVAITST_BetriebsartNorm']['value'] ?? null) === 1);
+check('Vaillant: BetriebsartNorm nutzt das gemeinsame WPHUB.BetriebsartNorm-Profil (wie bei Panasonic)', ($GLOBALS['ips']['variables']['HPVAITST_BetriebsartNorm']['profile'] ?? '') === 'WPHUB.BetriebsartNorm');
 check('Vaillant: Heizkreis1Status (Rohwert) aus state.circuits[0].circuit_state (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Heizkreis1Status']['value'] ?? null) === 'HEATING');
 check('Vaillant: Heizkreis1Betriebszustand (Rohwert) aus state.circuits[0].calculated_energy_manager_state (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Heizkreis1Betriebszustand']['value'] ?? null) === 'HEATING_ACTIVE');
 check('Vaillant: WarmwasserSonderfunktion (Rohwert) aus state.dhw[0].current_special_function (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_WarmwasserSonderfunktion']['value'] ?? null) === 'REGULAR');
@@ -1573,6 +1587,7 @@ check('vrc700: Warmwasser ueber den flachen Systemfeld-Fallback gefunden (state.
 check('vrc700: WarmwasserSoll unveraendert aus configuration.dhw[0].tapping_setpoint', ($GLOBALS['ips']['variables']['HPVAIVRC_WarmwasserSoll']['value'] ?? null) === 52.0);
 check('vrc700: Zone1Ist unveraendert aus state.circuits[0] (erster Kreis, nicht der zweite)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone1Ist']['value'] ?? null) === 25.5);
 check('vrc700: Systemstatus (Rohwert) -- bei cbeham "STANDBY", obwohl Heizkreis 1 aktiv heizt (interessant fuer Markus\' Beobachtung, kein Bug)', ($GLOBALS['ips']['variables']['HPVAIVRC_Systemstatus']['value'] ?? null) === 'STANDBY');
+check('vrc700: BetriebsartNorm = 0 (Standby) aus energy_manager_state=STANDBY', ($GLOBALS['ips']['variables']['HPVAIVRC_BetriebsartNorm']['value'] ?? null) === 0);
 check('vrc700: Zone2Ist aus state.circuits[1] (NEU, Forum-Post #36, cbehams echter Zweikreis-Anlage)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone2Ist']['value'] ?? null) === 33.1875);
 check('vrc700: Zone2Soll aus state.circuits[1].heating_circuit_flow_setpoint (NEU)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone2Soll']['value'] ?? null) === 32.17296);
 check('vrc700: Heizkreis2Status (Rohwert) aus state.circuits[1].circuit_state (NEU)', ($GLOBALS['ips']['variables']['HPVAIVRC_Heizkreis2Status']['value'] ?? null) === 'HEATING');
