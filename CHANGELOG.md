@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.11.6 (Build 80) — 26.09.2026
+
+- **Neu: vier zusätzliche Rohstatus-Werte bei Vaillant (Systemstatus, Heizkreis-1-Status, Heizkreis-1-Betriebszustand, Warmwasser-Sonderfunktion).** Markus (m_rothenpieler, Forum-Post #34) hat bestätigt, dass 0.11.4 bei ihm sauber läuft, und möchte beobachten, welcher API-Rohwert eine aktive Warmwasserbereitung eindeutig kennzeichnet, bevor daraus ein fester Betriebsart-Wert gebaut wird. Dafür gehen jetzt die unveränderten API-Strings (`energy_manager_state`, `circuit_state`, `calculated_energy_manager_state`, `current_special_function`) als eigene String-Variablen raus — bewusst noch keine Normalisierung, kein eigenes Vertragsfeld.
+- Prüfstand: 345 Prüfungen (vorher 337), fünf neue Mutationen der Zielstellen geprüft.
+
 ## 0.11.5 (Build 79) — 25.09.2026
 
 - **Fix: Puffertemperatur und Warmwasser fehlten bei vrc700-Anlagen komplett.** cbeham (Forum-Post #32, VRC700-Kaskade) hat auf seine 0.11.4-Installation die Rohdaten aus der Instanz-Debugausgabe gepostet: Bei ihm sind es keine fehlenden Werte, sondern andere Feldnamen als bei Markus' tli-Anlage — vrc700 benennt den Puffer-Sensor `cylinder_temperature_sensor_top_central_heating` statt `_top_c_h`, und führt die Warmwassertemperatur als flaches Systemfeld `cylinder_temperature_sensor_top_dhw` statt in der `state.dhw[]`-Liste (die bei ihm nur Status, keine Temperatur enthält). tli und vrc700 sind zwei eigenständige Datenmodelle für denselben Messpunkt, keine reine Namensvariante. Beide Pfade werden jetzt der Reihe nach durchprobiert (`firstValidTemperature()`), ohne die bestehende tli-Zuordnung anzufassen.

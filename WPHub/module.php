@@ -1829,6 +1829,29 @@ class WPHub extends IPSModule
             $this->SetValue($prefix . 'Zone1Soll', (float)$circuitState['heating_circuit_flow_setpoint']);
         }
 
+        // Rohstatus-Werte (NEU 26.09.2026, Forum-Post #34, Markus) -- bewusst
+        // UNVERAENDERTE API-Strings, keine Normalisierung, kein eigenes
+        // Vertragsfeld. Markus will an echten Zyklen beobachten, welcher Wert
+        // eine aktive Warmwasserbereitung eindeutig kennzeichnet, bevor daraus
+        // eine feste Zuordnung (operatingModeNormID) gebaut wird -- bewusst
+        // noch kein Rateweg, erst die Rohwerte sichtbar machen.
+        if (isset($state['energy_manager_state']) && is_string($state['energy_manager_state']) && $state['energy_manager_state'] !== '') {
+            $this->MaintainVariable($prefix . 'Systemstatus', $name . ': Systemstatus (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->SetValue($prefix . 'Systemstatus', $state['energy_manager_state']);
+        }
+        if (isset($circuitState['circuit_state']) && is_string($circuitState['circuit_state']) && $circuitState['circuit_state'] !== '') {
+            $this->MaintainVariable($prefix . 'Heizkreis1Status', $name . ': Heizkreis 1 Status (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->SetValue($prefix . 'Heizkreis1Status', $circuitState['circuit_state']);
+        }
+        if (isset($circuitState['calculated_energy_manager_state']) && is_string($circuitState['calculated_energy_manager_state']) && $circuitState['calculated_energy_manager_state'] !== '') {
+            $this->MaintainVariable($prefix . 'Heizkreis1Betriebszustand', $name . ': Heizkreis 1 Betriebszustand (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->SetValue($prefix . 'Heizkreis1Betriebszustand', $circuitState['calculated_energy_manager_state']);
+        }
+        if (isset($dhwState['current_special_function']) && is_string($dhwState['current_special_function']) && $dhwState['current_special_function'] !== '') {
+            $this->MaintainVariable($prefix . 'WarmwasserSonderfunktion', $name . ': Warmwasser Sonderfunktion (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->SetValue($prefix . 'WarmwasserSonderfunktion', $dhwState['current_special_function']);
+        }
+
         // Reiner Zusatzwert, nicht Teil des Verbund-Vertrags (kein
         // gemeinsames *PressureID-Feld) -- Comfort Cloud liefert das gar
         // nicht erst, daher hier bewusst kein Ident-Gleichlauf noetig.

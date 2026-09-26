@@ -525,6 +525,42 @@ Pruefstand 329 -> 337 (neue vrc700-Fixture 1:1 aus cbehams echtem Rohdump, direk
 Test von `firstValidTemperature()` inkl. Prioritaets-/Ueberspring-Verhalten). Sechs
 neue Mutationen gefangen.
 
+## Neu: vier Vaillant-Rohstatus-Werte (0.11.6, Forum-Post #34, 26.09.2026)
+
+Markus (m_rothenpieler) hat 0.11.4 bestaetigt (Warmwasser Ist/Soll, Zone1 Ist/Soll,
+Raumtemperatur/-feuchte -- alles korrekt gefuellt) und einen konkreten Anschluss-
+wunsch formuliert: Fuer die Symcon-Visualisierung will er erkennen, ob die Anlage
+gerade heizt, Warmwasser bereitet oder in Bereitschaft ist. Aus seinem tli-Rohdatensatz
+kennt er bereits vier Kandidatenfelder, weiss aber selbst noch nicht, welches davon
+eine aktive Warmwasserbereitung eindeutig anzeigt -- das will er anhand echter
+Zyklen (naechste Warmwasserbereitung) selbst beobachten.
+
+**Bewusst KEIN Rateweg:** Statt jetzt zu raten, welcher der vier Rohwerte "aktive
+Warmwasserbereitung" bedeutet (und daraus verfrueht `operatingModeNormID` zu bauen),
+gehen alle vier unveraendert als eigene String-Variablen raus:
+- `Systemstatus` <- `state.system.energy_manager_state`
+- `Heizkreis1Status` <- `state.circuits[0].circuit_state`
+- `Heizkreis1Betriebszustand` <- `state.circuits[0].calculated_energy_manager_state`
+- `WarmwasserSonderfunktion` <- `state.dhw[0].current_special_function`
+
+**Wichtiger Unterschied zwischen den beiden Heizkreis-Feldern, bereits an echten
+Daten beobachtet:** In Markus' allererstem Rohdump (Forum-Post #30) hatten die
+NICHT aktiven Heizkreise (`circuits[1]`/`circuits[2]`) nur `calculated_energy_
+manager_state` ("HEATING_STANDBY"), aber GAR KEIN `circuit_state`-Feld. `circuit_state`
+scheint also nur bei aktivem Kreis ueberhaupt vorhanden zu sein, waehrend
+`calculated_energy_manager_state` immer da ist -- deshalb werden beide unabhaengig
+voneinander gepflegt (jedes mit eigenem `isset()`), keines haengt vom anderen ab.
+
+Bei cbehams vrc700-Anlage (Forum-Post #32-Rohdump) faellt zusaetzlich auf:
+`energy_manager_state` stand bei ihm auf `"STANDBY"`, obwohl beide Heizkreise
+gleichzeitig `"circuit_state":"HEATING"` meldeten -- vermutlich ein Bereitschafts-
+zustand des Waermeerzeugers trotz laufender Umwaelzung, aber bewusst nicht
+interpretiert, genau der Fall, den Markus jetzt an echten Zyklen beobachten will.
+
+Pruefstand 337 -> 345 (beide echten Rohdatensaetze um die vier Statusfelder ergaenzt,
+plus Randfall "circuit_state fehlt, calculated_energy_manager_state trotzdem da").
+Fuenf neue Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

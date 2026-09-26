@@ -1480,12 +1480,13 @@ $vaiSystem = [
             'system_flow_temperature' => 33.4375,
             'cylinder_temperature_sensor_top_c_h' => 33.4375,
             'system_water_pressure' => 2,
+            'energy_manager_state' => 'HEATING',
         ],
         'dhw' => [
-            ['index' => 255, 'current_dhw_temperature' => 49],
+            ['index' => 255, 'current_dhw_temperature' => 49, 'current_special_function' => 'REGULAR'],
         ],
         'circuits' => [
-            ['index' => 0, 'current_circuit_flow_temperature' => 29.5625, 'heating_circuit_flow_setpoint' => 30],
+            ['index' => 0, 'current_circuit_flow_temperature' => 29.5625, 'heating_circuit_flow_setpoint' => 30, 'circuit_state' => 'HEATING', 'calculated_energy_manager_state' => 'HEATING_ACTIVE'],
         ],
         'zones' => [
             ['index' => 0, 'current_room_temperature' => 20.1, 'current_room_humidity' => 53],
@@ -1505,6 +1506,10 @@ check('Vaillant: Raumfeuchte aus state.zones[0].current_room_humidity (NEU, Zusa
 check('Vaillant: Raumfeuchte nutzt NRG.Percent', ($GLOBALS['ips']['variables']['HPVAITST_Raumfeuchte']['profile'] ?? '') === 'NRG.Percent');
 check('Vaillant: Systemdruck uebernommen (Panasonic-loses Feld)', ($GLOBALS['ips']['variables']['HPVAITST_Systemdruck']['value'] ?? null) === 2.0);
 check('Vaillant: Erreichbar uebernommen', ($GLOBALS['ips']['variables']['HPVAITST_Erreichbar']['value'] ?? null) === true);
+check('Vaillant: Systemstatus (Rohwert) aus state.system.energy_manager_state (NEU, Forum-Post #34)', ($GLOBALS['ips']['variables']['HPVAITST_Systemstatus']['value'] ?? null) === 'HEATING');
+check('Vaillant: Heizkreis1Status (Rohwert) aus state.circuits[0].circuit_state (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Heizkreis1Status']['value'] ?? null) === 'HEATING');
+check('Vaillant: Heizkreis1Betriebszustand (Rohwert) aus state.circuits[0].calculated_energy_manager_state (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Heizkreis1Betriebszustand']['value'] ?? null) === 'HEATING_ACTIVE');
+check('Vaillant: WarmwasserSonderfunktion (Rohwert) aus state.dhw[0].current_special_function (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_WarmwasserSonderfunktion']['value'] ?? null) === 'REGULAR');
 
 // Randfall: fehlende dhw/circuits/zones-Listen (aeltere/andere Vaillant-
 // Konten) duerfen nicht knallen -- firstListEntry() faengt das ab.
@@ -1532,13 +1537,14 @@ $vaiSystemVrc700 = [
             'cylinder_temperature_sensor_top_dhw' => 57.125,
             'cylinder_temperature_sensor_bottom_dhw' => 54.375,
             'system_water_pressure' => 2.2,
+            'energy_manager_state' => 'STANDBY',
         ],
         'dhw' => [
             ['index' => 255, 'current_special_function' => 'NONE'],
         ],
         'circuits' => [
-            ['index' => 0, 'current_circuit_flow_temperature' => 25.5, 'heating_circuit_flow_setpoint' => 25.705233],
-            ['index' => 1, 'current_circuit_flow_temperature' => 33.1875, 'heating_circuit_flow_setpoint' => 32.17296],
+            ['index' => 0, 'current_circuit_flow_temperature' => 25.5, 'heating_circuit_flow_setpoint' => 25.705233, 'circuit_state' => 'HEATING', 'calculated_energy_manager_state' => 'HEATING_ACTIVE'],
+            ['index' => 1, 'current_circuit_flow_temperature' => 33.1875, 'heating_circuit_flow_setpoint' => 32.17296, 'circuit_state' => 'HEATING', 'calculated_energy_manager_state' => 'HEATING_ACTIVE'],
         ],
         'zones' => [
             ['index' => 0, 'current_room_temperature' => 23.4375, 'current_room_humidity' => 50],
@@ -1551,6 +1557,19 @@ check('vrc700: Puffertemperatur ueber den vrc700-eigenen Feldnamen gefunden (FIX
 check('vrc700: Warmwasser ueber den flachen Systemfeld-Fallback gefunden (state.dhw[] hat bei cbeham keine Temperatur)', ($GLOBALS['ips']['variables']['HPVAIVRC_Warmwasser']['value'] ?? null) === 57.125);
 check('vrc700: WarmwasserSoll unveraendert aus configuration.dhw[0].tapping_setpoint', ($GLOBALS['ips']['variables']['HPVAIVRC_WarmwasserSoll']['value'] ?? null) === 52.0);
 check('vrc700: Zone1Ist unveraendert aus state.circuits[0] (erster Kreis, nicht der zweite)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone1Ist']['value'] ?? null) === 25.5);
+check('vrc700: Systemstatus (Rohwert) -- bei cbeham "STANDBY", obwohl Heizkreis 1 aktiv heizt (interessant fuer Markus\' Beobachtung, kein Bug)', ($GLOBALS['ips']['variables']['HPVAIVRC_Systemstatus']['value'] ?? null) === 'STANDBY');
+check('vrc700: WarmwasserSonderfunktion (Rohwert) = NONE bei inaktiver Warmwasserbereitung', ($GLOBALS['ips']['variables']['HPVAIVRC_WarmwasserSonderfunktion']['value'] ?? null) === 'NONE');
+
+// Randfall: circuit_state fehlt (z. B. ein Standby-Heizkreis liefert bei
+// Markus laut seinem ERSTEN Rohdump nur calculated_energy_manager_state,
+// gar kein circuit_state) -- darf nicht knallen, Heizkreis1Betriebszustand
+// muss trotzdem gesetzt werden, Heizkreis1Status bleibt einfach unangelegt.
+$vaiSystemStandbyCircuit = $vaiSystem;
+unset($vaiSystemStandbyCircuit['state']['circuits'][0]['circuit_state']);
+$vaiSystemStandbyCircuit['state']['circuits'][0]['calculated_energy_manager_state'] = 'HEATING_STANDBY';
+$maintainVarsVaillant->invoke($mod, 'HPVAISTBY_', 'Test-Standby-Heizkreis', $vaiSystemStandbyCircuit, true);
+check('Vaillant: Heizkreis1Status bleibt unangelegt, wenn circuit_state fehlt (keine Exception)', !isset($GLOBALS['ips']['variables']['HPVAISTBY_Heizkreis1Status']));
+check('Vaillant: Heizkreis1Betriebszustand wird trotzdem gesetzt, wenn nur calculated_energy_manager_state vorliegt', ($GLOBALS['ips']['variables']['HPVAISTBY_Heizkreis1Betriebszustand']['value'] ?? null) === 'HEATING_STANDBY');
 
 // GetFunctions() ist bereits herstellerneutral (contractFieldID() loest nur
 // Idents auf) -- Vaillants eigene Vorlauf-/Puffertemperatur muessen ohne
