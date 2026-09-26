@@ -561,6 +561,45 @@ Pruefstand 337 -> 345 (beide echten Rohdatensaetze um die vier Statusfelder erga
 plus Randfall "circuit_state fehlt, calculated_energy_manager_state trotzdem da").
 Fuenf neue Mutationen gefangen.
 
+## Neu: Heizkreis 2 aus echtem Zweikreis-Rohdump (0.11.7, Forum-Post #36, 26.09.2026)
+
+cbeham hat einen frischen vrc700-Rohdump gepostet (12:05:42, als Antwort auf die
+0.11.6-Bitte um Bestaetigung). Zwei Dinge fielen auf, die ueber den reinen Bugfix-
+Umfang hinausgehen:
+
+**1. Sein System hat ZWEI eigenstaendige, unterschiedlich aktive Heizkreise.**
+`state.circuits[1]` ("GASTWOHNUNG") ist ein komplett separater Kreis von
+`state.circuits[0]` ("EG UND OG") -- bisher wurde nur circuits[0] gelesen (Zone1Ist/
+Zone1Soll/Heizkreis1Status/Heizkreis1Betriebszustand), Kreis 2 war unsichtbar. Neu:
+`Zone2Ist`/`Zone2Soll` + `Heizkreis2Status`/`Heizkreis2Betriebszustand`, exakt
+dieselbe Feldlogik wie fuer Kreis 1, nur an Array-Position 1 statt 0. Ident bewusst
+"Zone2Ist"/"Zone2Soll" wie bei SamsungEhs, damit `GetFunctions()` sie automatisch ueber
+`z2WaterTempID`/`z2WaterTargetTempID` auflöst -- keine Aenderung an `GetFunctions()`
+noetig, exakt dasselbe Muster wie bei Zone1 (0.11.4).
+
+**Wichtige Klarstellung zur Array-Position:** `firstListEntry()` (0.11.4) nahm bisher
+IMMER Position 0. Fuer Kreis 2 wurde daraus `listEntryAt($system, $index, ...$path)`
+generalisiert (Index als Parameter), `firstListEntry()` ist jetzt nur noch die
+Kurzform mit Index 0. Die Array-POSITION (0/1) ist dabei bewusst NICHT dasselbe wie
+das `index`-Feld IM Element (das kann fachlich etwas anderes sein, siehe Markus'
+`dhw[0].index == 255`) -- direkt mit einem Unit-Test gegen genau diese Verwechslung
+abgesichert.
+
+**2. Beobachtung, bewusst NICHT interpretiert:** In cbehams zweitem Rohdump ist
+`circuits[0]` inzwischen im Bereitschaftsmodus (`circuit_state: "STANDBY"`) statt
+aktiv heizend wie im ersten Dump. Dabei faellt auf: `heating_circuit_flow_setpoint`
+steht dann auf `0` (nicht fehlend/null) -- vermutlich ein "kein Sollwert waehrend
+Bereitschaft"-Platzhalter, keine echte 0-°C-Vorgabe. Bewusst NICHT herausgefiltert
+(waere eine Interpretation ohne weitere Bestaetigung an mehreren Anlagen) -- der
+Rohwert 0.0 geht unveraendert durch, mit einem erklaerenden Codekommentar direkt an
+der Stelle. Gilt fuer Kreis 1 ebenso (latent seit 0.11.4, jetzt erstmals an echten
+Daten beobachtet und dokumentiert statt still hingenommen).
+
+Pruefstand 345 -> 357 (Zone2-Fixture aus cbehams beiden echten Rohdumps, Randfall
+"nur ein Heizkreis" mit Markus' Anlage, direkter Unit-Test fuer `listEntryAt()`
+inkl. Abgrenzung von dessen `index`-Feld-Verwechslungsgefahr). Vier neue Mutationen
+gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

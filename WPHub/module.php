@@ -1710,14 +1710,15 @@ class WPHub extends IPSModule
      * funktioniert -- der Vertrag ist bereits herstellerneutral.
      */
     /**
-     * Erstes Element einer myVAILLANT-Liste (dhw/circuits/zones -- jeweils
-     * ein Array mit eigenem 'index'-Feld, NICHT zwingend bei Array-Position
-     * 0 inhaltlich "das erste", aber bislang das einzige real gesehene
-     * Muster, siehe Markus' Rohdaten 25.09.2026: dhw[0].index ist z. B. 255,
-     * nicht 0). v1 nimmt bewusst nur den ersten Eintrag -- mehrere DHW-
-     * Stationen/Heizkreise pro Konto sind noch nicht verifiziert.
+     * Element einer myVAILLANT-Liste an einer festen Array-POSITION (dhw/
+     * circuits/zones -- jeweils ein Array mit eigenem 'index'-Feld, das NICHT
+     * zwingend der Array-Position entspricht, siehe Markus' Rohdaten
+     * 25.09.2026: dhw[0].index ist z. B. 255, nicht 0). Die Array-Position
+     * entspricht bei circuits/zones aber dem Heizkreis/Zone (0 = Kreis 1,
+     * 1 = Kreis 2 usw., an cbehams echter Zwei-Kreis-Anlage bestaetigt,
+     * Forum-Post #36, 26.09.2026).
      */
-    private function firstListEntry(array $system, string ...$path): array
+    private function listEntryAt(array $system, int $index, string ...$path): array
     {
         $node = $system;
         foreach ($path as $key) {
@@ -1726,7 +1727,17 @@ class WPHub extends IPSModule
             }
             $node = $node[$key];
         }
-        return (is_array($node) && is_array($node[0] ?? null)) ? $node[0] : [];
+        return (is_array($node) && is_array($node[$index] ?? null)) ? $node[$index] : [];
+    }
+
+    /**
+     * Erstes Element einer myVAILLANT-Liste -- Kurzform von listEntryAt() mit
+     * Index 0 (dhw/Warmwasser hat bislang nur EINEN Eintrag pro Konto,
+     * mehrere DHW-Stationen sind noch nicht verifiziert).
+     */
+    private function firstListEntry(array $system, string ...$path): array
+    {
+        return $this->listEntryAt($system, 0, ...$path);
     }
 
     /**
@@ -1827,6 +1838,39 @@ class WPHub extends IPSModule
         if (isset($circuitState['heating_circuit_flow_setpoint']) && $this->isValidTemperature($circuitState['heating_circuit_flow_setpoint'])) {
             $this->MaintainVariable($prefix . 'Zone1Soll', $name . ': Heizkreis 1 Vorlauf-Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Zone1Soll', (float)$circuitState['heating_circuit_flow_setpoint']);
+        }
+
+        // Heizkreis 2 (NEU 26.09.2026, Forum-Post #36, cbeham) -- seine
+        // vrc700-Anlage hat ZWEI eigenstaendige, gleichzeitig unterschiedlich
+        // aktive Kreise (state.circuits[1] = "GASTWOHNUNG", separat von
+        // circuits[0] = "EG UND OG"), bisher wurde nur circuits[0] gelesen,
+        // Kreis 2 war komplett unsichtbar. Ident "Zone2Ist"/"Zone2Soll" wie
+        // bei SamsungEhs, damit GetFunctions() sie automatisch ueber
+        // z2WaterTempID/z2WaterTargetTempID auflöst (keine Aenderung an
+        // GetFunctions() noetig).
+        // Vorsicht bei der Interpretation: heating_circuit_flow_setpoint
+        // stand bei cbehams NICHT aktivem Kreis auf 0 (nicht leer/fehlend) --
+        // das ist vermutlich ein "kein Sollwert, weil Kreis in Bereitschaft"-
+        // Platzhalter, keine echte 0-°C-Vorgabe. Bewusst NICHT herausgefiltert
+        // (waere Interpretation ohne weitere Bestaetigung), der Rohwert geht
+        // unveraendert durch -- siehe Heizkreis2Status fuer den zugehoerigen
+        // Bereitschaftsstatus.
+        $circuitState2 = $this->listEntryAt($system, 1, 'state', 'circuits');
+        if (isset($circuitState2['current_circuit_flow_temperature']) && $this->isValidTemperature($circuitState2['current_circuit_flow_temperature'])) {
+            $this->MaintainVariable($prefix . 'Zone2Ist', $name . ': Heizkreis 2 Vorlauftemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Zone2Ist', (float)$circuitState2['current_circuit_flow_temperature']);
+        }
+        if (isset($circuitState2['heating_circuit_flow_setpoint']) && $this->isValidTemperature($circuitState2['heating_circuit_flow_setpoint'])) {
+            $this->MaintainVariable($prefix . 'Zone2Soll', $name . ': Heizkreis 2 Vorlauf-Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->SetValue($prefix . 'Zone2Soll', (float)$circuitState2['heating_circuit_flow_setpoint']);
+        }
+        if (isset($circuitState2['circuit_state']) && is_string($circuitState2['circuit_state']) && $circuitState2['circuit_state'] !== '') {
+            $this->MaintainVariable($prefix . 'Heizkreis2Status', $name . ': Heizkreis 2 Status (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->SetValue($prefix . 'Heizkreis2Status', $circuitState2['circuit_state']);
+        }
+        if (isset($circuitState2['calculated_energy_manager_state']) && is_string($circuitState2['calculated_energy_manager_state']) && $circuitState2['calculated_energy_manager_state'] !== '') {
+            $this->MaintainVariable($prefix . 'Heizkreis2Betriebszustand', $name . ': Heizkreis 2 Betriebszustand (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->SetValue($prefix . 'Heizkreis2Betriebszustand', $circuitState2['calculated_energy_manager_state']);
         }
 
         // Rohstatus-Werte (NEU 26.09.2026, Forum-Post #34, Markus) -- bewusst

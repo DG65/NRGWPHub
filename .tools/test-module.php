@@ -1462,6 +1462,19 @@ check('firstValidTemperature(): null-Kandidat wird uebersprungen, naechster guel
 check('firstValidTemperature(): ungueltiger (ausserhalb Temperaturbereich) Kandidat wird uebersprungen', $firstValidTemp->invoke($mod, [999.0, 22.0]) === 22.0);
 check('firstValidTemperature(): kein gueltiger Kandidat -> null', $firstValidTemp->invoke($mod, [null, 999.0]) === null);
 
+// listEntryAt(): direkte Auswahl per Array-Position (Heizkreis 2 = Index 1),
+// nicht ueber das 'index'-Feld im Element selbst (siehe Kommentar an der
+// Methode -- 'index' kann fachlich etwas anderes sein, z. B. dhw[0].index=255).
+$listEntryAt = new ReflectionMethod(WPHub::class, 'listEntryAt');
+$listEntryAt->setAccessible(true);
+$firstListEntry = new ReflectionMethod(WPHub::class, 'firstListEntry');
+$firstListEntry->setAccessible(true);
+$twoCircuits = ['state' => ['circuits' => [['index' => 0, 'v' => 'erster'], ['index' => 1, 'v' => 'zweiter']]]];
+check('listEntryAt(): Index 0 liefert das erste Element', $listEntryAt->invoke($mod, $twoCircuits, 0, 'state', 'circuits')['v'] === 'erster');
+check('listEntryAt(): Index 1 liefert das zweite Element (nicht ueber dessen "index"-Feld gesucht)', $listEntryAt->invoke($mod, $twoCircuits, 1, 'state', 'circuits')['v'] === 'zweiter');
+check('listEntryAt(): Index ausserhalb der Liste liefert leeres Array, keine Exception', $listEntryAt->invoke($mod, $twoCircuits, 5, 'state', 'circuits') === []);
+check('firstListEntry() bleibt Kurzform fuer listEntryAt() mit Index 0', $firstListEntry->invoke($mod, $twoCircuits, 'state', 'circuits')['v'] === 'erster');
+
 // Variablenpflege einer Vaillant-Anlage -- Fixture 1:1 aus Markus'
 // (m_rothenpieler) echtem tli-Rohsystem (VRC720-Kaskade, Forum-Post #30,
 // 25.09.2026: state.dhw[]/state.circuits[]/state.zones[] als eigene Listen,
@@ -1510,6 +1523,8 @@ check('Vaillant: Systemstatus (Rohwert) aus state.system.energy_manager_state (N
 check('Vaillant: Heizkreis1Status (Rohwert) aus state.circuits[0].circuit_state (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Heizkreis1Status']['value'] ?? null) === 'HEATING');
 check('Vaillant: Heizkreis1Betriebszustand (Rohwert) aus state.circuits[0].calculated_energy_manager_state (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_Heizkreis1Betriebszustand']['value'] ?? null) === 'HEATING_ACTIVE');
 check('Vaillant: WarmwasserSonderfunktion (Rohwert) aus state.dhw[0].current_special_function (NEU)', ($GLOBALS['ips']['variables']['HPVAITST_WarmwasserSonderfunktion']['value'] ?? null) === 'REGULAR');
+check('Vaillant: Zone2Ist bleibt unangelegt bei nur einem Heizkreis (Markus\' Kaskade, keine Exception)', !isset($GLOBALS['ips']['variables']['HPVAITST_Zone2Ist']));
+check('Vaillant: Heizkreis2Status bleibt unangelegt bei nur einem Heizkreis (keine Exception)', !isset($GLOBALS['ips']['variables']['HPVAITST_Heizkreis2Status']));
 
 // Randfall: fehlende dhw/circuits/zones-Listen (aeltere/andere Vaillant-
 // Konten) duerfen nicht knallen -- firstListEntry() faengt das ab.
@@ -1558,6 +1573,21 @@ check('vrc700: Warmwasser ueber den flachen Systemfeld-Fallback gefunden (state.
 check('vrc700: WarmwasserSoll unveraendert aus configuration.dhw[0].tapping_setpoint', ($GLOBALS['ips']['variables']['HPVAIVRC_WarmwasserSoll']['value'] ?? null) === 52.0);
 check('vrc700: Zone1Ist unveraendert aus state.circuits[0] (erster Kreis, nicht der zweite)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone1Ist']['value'] ?? null) === 25.5);
 check('vrc700: Systemstatus (Rohwert) -- bei cbeham "STANDBY", obwohl Heizkreis 1 aktiv heizt (interessant fuer Markus\' Beobachtung, kein Bug)', ($GLOBALS['ips']['variables']['HPVAIVRC_Systemstatus']['value'] ?? null) === 'STANDBY');
+check('vrc700: Zone2Ist aus state.circuits[1] (NEU, Forum-Post #36, cbehams echter Zweikreis-Anlage)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone2Ist']['value'] ?? null) === 33.1875);
+check('vrc700: Zone2Soll aus state.circuits[1].heating_circuit_flow_setpoint (NEU)', ($GLOBALS['ips']['variables']['HPVAIVRC_Zone2Soll']['value'] ?? null) === 32.17296);
+check('vrc700: Heizkreis2Status (Rohwert) aus state.circuits[1].circuit_state (NEU)', ($GLOBALS['ips']['variables']['HPVAIVRC_Heizkreis2Status']['value'] ?? null) === 'HEATING');
+check('vrc700: Heizkreis2Betriebszustand (Rohwert) aus state.circuits[1].calculated_energy_manager_state (NEU)', ($GLOBALS['ips']['variables']['HPVAIVRC_Heizkreis2Betriebszustand']['value'] ?? null) === 'HEATING_ACTIVE');
+
+// Randfall: cbehams ZWEITEM Rohdump (26.09.2026, 12:05:42) zufolge steht
+// heating_circuit_flow_setpoint bei einem NICHT aktiven Kreis auf 0 (nicht
+// fehlend) -- das ist wohl ein "kein Sollwert waehrend Bereitschaft"-
+// Platzhalter. Bewusst NICHT gefiltert: der Rohwert 0.0 kommt unveraendert
+// durch, zusammen mit dem zugehoerigen Status "STANDBY" zur Einordnung.
+$vaiSystemVrc700Standby = $vaiSystemVrc700;
+$vaiSystemVrc700Standby['state']['circuits'][0] = ['index' => 0, 'current_circuit_flow_temperature' => 25.25, 'heating_circuit_flow_setpoint' => 0, 'circuit_state' => 'STANDBY', 'calculated_energy_manager_state' => 'HEATING_STANDBY'];
+$maintainVarsVaillant->invoke($mod, 'HPVAISTBY2_', 'Test-vrc700-Standby-Kreis', $vaiSystemVrc700Standby, true);
+check('vrc700: Heizkreis-Sollwert 0.0 waehrend Bereitschaft wird NICHT gefiltert (Rohwert bleibt 0.0, keine Interpretation)', ($GLOBALS['ips']['variables']['HPVAISTBY2_Zone1Soll']['value'] ?? null) === 0.0);
+check('vrc700: zugehoeriger Heizkreis1Status zeigt "STANDBY" zur Einordnung von Zone1Soll=0', ($GLOBALS['ips']['variables']['HPVAISTBY2_Heizkreis1Status']['value'] ?? null) === 'STANDBY');
 check('vrc700: WarmwasserSonderfunktion (Rohwert) = NONE bei inaktiver Warmwasserbereitung', ($GLOBALS['ips']['variables']['HPVAIVRC_WarmwasserSonderfunktion']['value'] ?? null) === 'NONE');
 
 // Randfall: circuit_state fehlt (z. B. ein Standby-Heizkreis liefert bei

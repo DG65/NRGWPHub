@@ -1,5 +1,11 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.11.7 (Build 81) — 26.09.2026
+
+- **Neu: Heizkreis 2 (Vorlauf Ist/Soll + Rohstatus) bei Vaillant.** cbeham (Forum-Post #36) hat einen frischen vrc700-Rohdump geschickt: Seine Anlage hat zwei eigenständige, gleichzeitig unterschiedlich aktive Heizkreise (`state.circuits[1]` war komplett unsichtbar). Zone2Ist/Zone2Soll sowie Heizkreis-2-Status/-Betriebszustand kommen jetzt dazu — gleicher Ident wie bei SamsungEhs, damit `GetFunctions()` sie automatisch über `z2WaterTempID`/`z2WaterTargetTempID` auflöst, ohne dass sich am Vertrag selbst etwas ändert.
+- **Beobachtung dokumentiert, bewusst nicht interpretiert:** Bei einem nicht aktiven Heizkreis liefert vrc700 `heating_circuit_flow_setpoint` als `0` statt eines fehlenden Felds — vermutlich ein „kein Sollwert während Bereitschaft“-Platzhalter, keine echte 0-°C-Vorgabe. Der Rohwert geht unverändert durch, keine Filterung ohne weitere Bestätigung.
+- Prüfstand: 357 Prüfungen (vorher 345), vier neue Mutationen der Zielstellen geprüft.
+
 ## 0.11.6 (Build 80) — 26.09.2026
 
 - **Neu: vier zusätzliche Rohstatus-Werte bei Vaillant (Systemstatus, Heizkreis-1-Status, Heizkreis-1-Betriebszustand, Warmwasser-Sonderfunktion).** Markus (m_rothenpieler, Forum-Post #34) hat bestätigt, dass 0.11.4 bei ihm sauber läuft, und möchte beobachten, welcher API-Rohwert eine aktive Warmwasserbereitung eindeutig kennzeichnet, bevor daraus ein fester Betriebsart-Wert gebaut wird. Dafür gehen jetzt die unveränderten API-Strings (`energy_manager_state`, `circuit_state`, `calculated_energy_manager_state`, `current_special_function`) als eigene String-Variablen raus — bewusst noch keine Normalisierung, kein eigenes Vertragsfeld.
