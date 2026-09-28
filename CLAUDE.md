@@ -699,6 +699,63 @@ deshalb `VAI_SystemsCacheAt` dort jetzt explizit vor dem Testblock zurueckgesetz
 
 Pruefstand 365 -> 374, fuenf neue Mutationen gefangen.
 
+## Fix: ApplyChanges()+UpdateFormField()-Antipattern (0.12.2, HeishaMon-Fund, 28.09.2026)
+
+HeishaMon hat sich per Cross-Session-Nachricht gemeldet: Symcon hat deren v1.33.0 im
+Store-Review abgelehnt, weil `AdoptMeterHubAssignment()` (dort wie bei uns benannt)
+`IPS_SetProperty()`+`IPS_ApplyChanges($this->InstanceID)` aufruft und DANACH
+`UpdateFormField()` auf dieselbe (dadurch bereits neu geladene) Formular-Session --
+Reviewer-Zitat: "Das funktioniert so nicht. Bei ApplyChanges wird das Formular neu
+geladen und die UpdateFormField gehen verloren." HeishaMon hat daraufhin bei uns
+denselben Fund gemacht und weitergegeben (Prinzip "keine fremden Arbeitsverzeichnisse"
+-- Fund melden statt selbst im fremden Repo zu aendern, genau wie wir es umgekehrt
+schon mehrfach gehandhabt haben).
+
+**Zwei betroffene Stellen, zwei unterschiedliche Ausgangslagen:**
+
+1. **`AdoptMeterHubAssignment()`** -- `Ext_PowerVariable`/`Ext_EnergyVariable` sind
+   ECHTE `RegisterPropertyInteger()`-Felder. Der generische "Änderungen übernehmen"-
+   Knopf am Formularende kann sie also selbst speichern, sobald ihr `value` im
+   offenen Formular gesetzt ist. Fix (1:1 wie HeishaMons eigener, bereits umgesetzter
+   Fix an derselben Stelle): `IPS_SetProperty()`/`IPS_ApplyChanges()` komplett
+   entfernt, nur noch `UpdateFormField(..., 'value', ...)` -- der Nutzer prueft den
+   Vorschlag und speichert selbst. Die Erfolgsmeldung weist jetzt explizit darauf hin
+   ("...zum Speichern unten „Änderungen übernehmen" klicken").
+   Kleine, bewusste Abweichung von HeishaMons Fix: die `if ($found['powerID'] > 0)`-
+   Wache blieb bestehen (bei HeishaMon schreibt die neue Version unbedingt, auch bei
+   0) -- so wird ein bereits im offenen (noch ungespeicherten) Formular eingetragener
+   Wert nicht durch eine "nichts gefunden"-0 ueberschrieben, wenn nur EINER der beiden
+   Kanaele (Leistung/Energie) eine MeterHub-Zuordnung hat.
+
+2. **`SetManagedBy()`** -- grundlegend anders: `ManagedBy_<prefix>` ist ein rein
+   SYNTHETISCHES Formularfeld (kein eigenes `RegisterProperty`), die echte Property
+   `DeviceManagedBy` ist ein EINZELNES JSON-Objekt fuer ALLE Geraete. Der generische
+   "Übernehmen"-Knopf kennt dieses Feld gar nicht -- `IPS_SetProperty()`+
+   `IPS_ApplyChanges()` bleibt hier der EINZIGE Persistenzweg, anders als bei
+   `AdoptMeterHubAssignment()`. Der fruehere Kommentar an dieser Stelle ("zulaessig,
+   weil echte Nutzeraktion") war deshalb in der Sache richtig, hat aber die eigentliche
+   Reviewer-Kritik nicht getroffen: Der mechanische Effekt (UpdateFormField nach
+   ApplyChanges wirkungslos) gilt UNABHAENGIG davon, ob die Persistenz legitim ist.
+   Analyse ergab: `GetConfigurationForm()` berechnet die Select-Beschriftung
+   (`managedBySelectCaption()`) bereits bei JEDEM Aufbau frisch aus der Property --
+   der automatische Formular-Reload nach `ApplyChanges()` liefert die korrekte
+   Beschriftung also von selbst. Die vormals nachfolgenden `UpdateFormField()`-Aufrufe
+   waren damit bereits vorher tote, wirkungslose Last (kein funktionaler Bug fuer den
+   Nutzer, aber exakt das Code-Muster, das der Reviewer pattern-matcht) -- einfach
+   entfernt, keine Verhaltensaenderung.
+
+**Nicht uebernommen (Feedback der HeishaMon-Nachricht, aber nicht unser Fund):** zwei
+weitere generische Store-Review-Punkte (Archiv-Default aus statt an; sortierbare
+Listen mit echter Objektbaum-Position) wurden an EMS/SUITE.md weitergegeben, betreffen
+WPHub aber nicht direkt genug fuer eine eigene Aenderung in dieser Version.
+
+Pruefstand 374 -> 378 (beide Funktionen komplett neu durchgetestet: kein
+`IPS_SetProperty`/kein `IPS_ApplyChanges` mehr bei `AdoptMeterHubAssignment()`, nur
+noch Formular-Vorschlag; `SetManagedBy()` ruft nachweislich kein `UpdateFormField()`
+fuer die Caption mehr auf, die Korrektheit nach Reload bleibt ueber den bereits
+bestehenden frischen-`GetConfigurationForm()`-Test abgesichert). Vier neue Mutationen
+gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

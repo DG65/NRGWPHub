@@ -1152,15 +1152,30 @@ class WPHub extends IPSModule
      * Setzt die Steuerhoheit fuer ein Geraet -- ausschliesslich auf Klick/
      * Auswahl im Formular (dynamisch je Geraet erzeugtes Select, siehe
      * GetConfigurationForm()), nie automatisch. Gleiches Muster wie
-     * AdoptMeterHubAssignment(): IPS_SetProperty+ApplyChanges ist hier
-     * zulaessig, weil es eine echte, vom Nutzer ausgeloeste Konfigurations-
-     * aenderung ist, keine stille Selbstpersistenz (Store-Review-Regel 1).
-     * Store-Review Punkt 13 ("Sichtbare Rueckmeldung bei jeder Aktion"):
-     * nach ApplyChanges() zusaetzlich per UpdateFormField() die eigene
-     * Select-Beschriftung live nachziehen -- sonst bliebe das ⚠️-Praefix bis
-     * zum naechsten frischen Oeffnen des Formulars bestehen, obwohl die
-     * Zuordnung laengst gesetzt ist (gleicher Fehlertyp wie der urspruengliche
-     * DiscoverySummary-Bug, siehe refreshDiscoverySummary()).
+     * SetManagedBy(): IPS_SetProperty()+IPS_ApplyChanges() ist hier der
+     * EINZIGE Persistenzweg -- ManagedBy_<prefix> ist ein rein synthetisches
+     * Formularfeld (kein eigenes RegisterProperty), die echte Property
+     * DeviceManagedBy ist ein einzelnes JSON-Objekt fuer ALLE Geraete. Der
+     * generische "Änderungen übernehmen"-Knopf am Formularende kann dieses
+     * Feld also gar nicht selbst speichern -- anders als bei
+     * AdoptMeterHubAssignment() (siehe dort), wo Ext_PowerVariable/
+     * Ext_EnergyVariable echte RegisterProperty-Felder sind.
+     *
+     * Store-Review-Fund (HeishaMon, 28.09.2026, urspruenglich an deren
+     * AdoptMeterHubAssignment() bemaengelt, dieselbe Stelle auch hier
+     * gefunden): IPS_ApplyChanges() gefolgt von UpdateFormField() auf
+     * dieselbe Formular-Session ist wirkungslos, weil ApplyChanges() das
+     * offene Formular automatisch neu laedt (Symcon-Reviewer-Zitat: "Bei
+     * ApplyChanges wird das Formular neu geladen und die UpdateFormField
+     * gehen verloren"). Der fruehere Kommentar hier hat nur begruendet, WARUM
+     * die Property-Aenderung selbst legitim ist -- das war nie die Frage,
+     * der mechanische Effekt gilt unabhaengig davon. Die vormals nachfolgenden
+     * UpdateFormField()-Aufrufe wurden deshalb entfernt: Sie waren tatsaechlich
+     * bereits wirkungslose tote Last, denn der automatische Formular-Reload
+     * nach ApplyChanges() ruft GetConfigurationForm() ohnehin neu auf, und die
+     * dort berechnete Select-Beschriftung (managedBySelectCaption()) liest
+     * bereits live von der (jetzt aktuellen) Property -- die Beschriftung ist
+     * nach dem Reload also von selbst korrekt.
      */
     public function SetManagedBy(string $prefix, string $value): void
     {
@@ -1174,20 +1189,6 @@ class WPHub extends IPSModule
         $map[$prefix] = $value;
         IPS_SetProperty($this->InstanceID, 'DeviceManagedBy', json_encode($map));
         IPS_ApplyChanges($this->InstanceID);
-
-        $devices = $this->readDeviceList();
-        $deviceName = 'Wärmepumpe';
-        foreach ($devices as $d) {
-            if ((string)($d['prefix'] ?? '') === $prefix) {
-                $deviceName = (string)($d['name'] ?? $deviceName);
-                break;
-            }
-        }
-        $this->UpdateFormField(
-            'ManagedBy_' . $prefix,
-            'caption',
-            $this->managedBySelectCaption($prefix, $deviceName, $this->heishaMonCoexistenceWarning() !== null)
-        );
     }
 
     /**
@@ -1196,6 +1197,19 @@ class WPHub extends IPSModule
      * Formular-Schaltflaeche (siehe GetConfigurationForm), nie automatisch im
      * Update()-Zyklus: die Verknuepfung ist eine Entscheidung des Nutzers,
      * kein stiller Hintergrundabgleich (gleiches Prinzip wie AcceptAgreements).
+     *
+     * Store-Review-Fund (HeishaMon, 28.09.2026): Diese Funktion rief bisher
+     * IPS_SetProperty()+IPS_ApplyChanges() auf UND danach UpdateFormField()
+     * auf dieselbe Formular-Session -- wirkungslos, weil ApplyChanges() das
+     * offene Formular automatisch neu laedt (Symcon-Reviewer-Zitat: "Bei
+     * ApplyChanges wird das Formular neu geladen und die UpdateFormField
+     * gehen verloren"). Ext_PowerVariable/Ext_EnergyVariable sind echte
+     * RegisterProperty-Felder -- deshalb genuegt es, nur noch die WERTE ins
+     * offene Formular zu schreiben (UpdateFormField 'value'); der generische
+     * "Änderungen übernehmen"-Knopf am Formularende persistiert sie, sobald
+     * der Nutzer den Vorschlag geprueft hat und selbst klickt -- kein
+     * automatisches Speichern mehr, analog HeishaMons eigenem Fix derselben
+     * Stelle.
      */
     public function AdoptMeterHubAssignment(): void
     {
@@ -1206,15 +1220,12 @@ class WPHub extends IPSModule
             return;
         }
         if ($found['powerID'] > 0) {
-            IPS_SetProperty($this->InstanceID, 'Ext_PowerVariable', $found['powerID']);
+            $this->UpdateFormField('Ext_PowerVariable', 'value', $found['powerID']);
         }
         if ($found['energyID'] > 0) {
-            IPS_SetProperty($this->InstanceID, 'Ext_EnergyVariable', $found['energyID']);
+            $this->UpdateFormField('Ext_EnergyVariable', 'value', $found['energyID']);
         }
-        IPS_ApplyChanges($this->InstanceID);
-        $this->UpdateFormField('Ext_PowerVariable', 'value', $found['powerID']);
-        $this->UpdateFormField('Ext_EnergyVariable', 'value', $found['energyID']);
-        $this->UpdateFormField('MeterHubResult', 'caption', '✅ Von MeterHub „' . $found['label'] . '" übernommen.');
+        $this->UpdateFormField('MeterHubResult', 'caption', '✅ Von MeterHub „' . $found['label'] . '" ins geöffnete Formular übernommen -- zum Speichern unten „Änderungen übernehmen" klicken.');
         $this->UpdateFormField('MeterHubResult', 'visible', true);
         $this->UpdateFormField('MeterHubSuggestion', 'visible', false);
     }

@@ -1153,26 +1153,47 @@ check('Vorschlag sichtbar', ($suggestion['visible'] ?? false) === true);
 check('Vorschlag nennt den MeterHub-Zaehlernamen', strpos($suggestion['caption'] ?? '', 'Wärmepumpe — Wirkarbeit Bezug') !== false);
 check('Uebernehmen-Schaltflaeche sichtbar', ($adoptBtn['visible'] ?? false) === true);
 
-// Uebernahme per Klick -> Properties gesetzt, Formular-Rueckmeldung, Vorschlag ausgeblendet.
+// Uebernahme per Klick -> Store-Review-Fund (HeishaMon, 28.09.2026):
+// IPS_SetProperty()+ApplyChanges() gefolgt von UpdateFormField() ist
+// wirkungslos (ApplyChanges laedt das offene Formular neu). Deshalb jetzt
+// NUR noch ein Vorschlag im offenen Formular (UpdateFormField 'value'),
+// keine automatische Persistierung mehr -- der Nutzer speichert selbst per
+// "Änderungen übernehmen" (Ext_PowerVariable/Ext_EnergyVariable sind echte
+// RegisterProperty-Felder, der generische Knopf kann sie also speichern).
+$GLOBALS['ips']['applied'] = false;
 $GLOBALS['ips']['formFieldUpdates'] = [];
 $mod->AdoptMeterHubAssignment();
-check('Ext_PowerVariable uebernommen', ($GLOBALS['ips']['properties']['Ext_PowerVariable'] ?? 0) === 88010);
-check('Ext_EnergyVariable uebernommen', ($GLOBALS['ips']['properties']['Ext_EnergyVariable'] ?? 0) === 88011);
-check('Aenderungen angewendet (IPS_ApplyChanges)', ($GLOBALS['ips']['applied'] ?? false) === true);
+check('Ext_PowerVariable NICHT automatisch persistiert (nur Formularvorschlag)', ($GLOBALS['ips']['properties']['Ext_PowerVariable'] ?? 0) === 0);
+check('Ext_EnergyVariable NICHT automatisch persistiert (nur Formularvorschlag)', ($GLOBALS['ips']['properties']['Ext_EnergyVariable'] ?? 0) === 0);
+check('Kein IPS_ApplyChanges() mehr (Store-Review-Fund)', ($GLOBALS['ips']['applied'] ?? false) === false);
+check('Ext_PowerVariable-Wert im offenen Formular vorgeschlagen', ($GLOBALS['ips']['formFieldUpdates']['Ext_PowerVariable']['value'] ?? null) === 88010);
+check('Ext_EnergyVariable-Wert im offenen Formular vorgeschlagen', ($GLOBALS['ips']['formFieldUpdates']['Ext_EnergyVariable']['value'] ?? null) === 88011);
 check('Erfolgsmeldung im Formular', strpos($GLOBALS['ips']['formFieldUpdates']['MeterHubResult']['caption'] ?? '', '✅') === 0);
+check('Erfolgsmeldung verweist auf "Änderungen übernehmen"', strpos($GLOBALS['ips']['formFieldUpdates']['MeterHubResult']['caption'] ?? '', 'Änderungen übernehmen') !== false);
 check('Vorschlag nach Uebernahme ausgeblendet', ($GLOBALS['ips']['formFieldUpdates']['MeterHubSuggestion']['visible'] ?? true) === false);
 
-// Formular zeigt den Vorschlag danach nicht mehr an (schon verknuepft).
+// Formular zeigt den Vorschlag weiterhin an, solange die Properties nicht
+// tatsaechlich per "Änderungen übernehmen" gespeichert wurden (anders als
+// vorher, wo AdoptMeterHubAssignment() selbst schon persistiert hatte).
 $formJson2 = json_decode($mod->GetConfigurationForm(), true);
 $suggestion2 = findFormElement($formJson2['elements'], 'MeterHubSuggestion');
-check('Kein erneuter Vorschlag nach Uebernahme', ($suggestion2['visible'] ?? false) === false);
+check('Vorschlag bleibt sichtbar, bis der Nutzer selbst speichert', ($suggestion2['visible'] ?? false) === true);
+
+// Erst die tatsaechliche (simulierte) Speicherung durch den Nutzer laesst
+// den Vorschlag beim naechsten Formular-Aufbau verschwinden.
+$GLOBALS['ips']['properties']['Ext_PowerVariable'] = 88010;
+$GLOBALS['ips']['properties']['Ext_EnergyVariable'] = 88011;
+$formJson2b = json_decode($mod->GetConfigurationForm(), true);
+$suggestion2b = findFormElement($formJson2b['elements'], 'MeterHubSuggestion');
+check('Kein erneuter Vorschlag nach tatsaechlicher Speicherung', ($suggestion2b['visible'] ?? false) === false);
 
 // Aufraeumen fuer nachfolgende Bloecke.
 foreach (['Ext_PowerVariable', 'Ext_EnergyVariable'] as $extProp) {
     $GLOBALS['ips']['properties'][$extProp] = 0;
 }
 
-// Nur Energie zugeordnet (kein Momentanleistungs-Kanal) -> nur EnergyID uebernommen.
+// Nur Energie zugeordnet (kein Momentanleistungs-Kanal) -> nur EnergyID-Feld
+// im offenen Formular vorgeschlagen, PowerVariable-Feld unangetastet.
 $GLOBALS['ips']['meterHubFunctions'][77001] = json_encode([
     'instanceID'  => 77001,
     'assignments' => [
@@ -1181,8 +1202,8 @@ $GLOBALS['ips']['meterHubFunctions'][77001] = json_encode([
 ]);
 $GLOBALS['ips']['formFieldUpdates'] = [];
 $mod->AdoptMeterHubAssignment();
-check('Nur Energie: Ext_PowerVariable bleibt 0', ($GLOBALS['ips']['properties']['Ext_PowerVariable'] ?? -1) === 0);
-check('Nur Energie: Ext_EnergyVariable uebernommen', ($GLOBALS['ips']['properties']['Ext_EnergyVariable'] ?? 0) === 88020);
+check('Nur Energie: Ext_PowerVariable-Feld NICHT vorgeschlagen (keine Momentanleistung gefunden)', !isset($GLOBALS['ips']['formFieldUpdates']['Ext_PowerVariable']));
+check('Nur Energie: Ext_EnergyVariable-Wert im offenen Formular vorgeschlagen', ($GLOBALS['ips']['formFieldUpdates']['Ext_EnergyVariable']['value'] ?? null) === 88020);
 foreach (['Ext_PowerVariable', 'Ext_EnergyVariable'] as $extProp) {
     $GLOBALS['ips']['properties'][$extProp] = 0;
 }
@@ -1330,12 +1351,15 @@ $formResolved = json_decode($mod->GetConfigurationForm(), true);
 $selectResolved = findFormElement($formResolved['elements'], 'ManagedBy_' . $prefix);
 check('Select-Caption ohne Warnung nach explizitem Setzen', strpos($selectResolved['caption'] ?? '', '⚠️') === false, $selectResolved['caption'] ?? 'null');
 
-// Store-Review Punkt 13: SetManagedBy() muss die Select-Caption im BEREITS
-// OFFENEN Formular per UpdateFormField() live nachziehen, nicht erst beim
-// naechsten frischen GetConfigurationForm()-Aufruf (gleicher Fehlertyp wie
-// der urspruengliche DiscoverySummary-Bug).
-$liveCaption = $GLOBALS['ips']['formFieldUpdates']['ManagedBy_' . $prefix]['caption'] ?? null;
-check('SetManagedBy() aktualisiert die Select-Caption live per UpdateFormField', $liveCaption !== null && strpos($liveCaption, '⚠️') === false, $liveCaption ?? 'null');
+// Store-Review-Fund (HeishaMon, 28.09.2026): IPS_ApplyChanges() gefolgt von
+// UpdateFormField() auf dieselbe Formular-Session ist wirkungslos (ApplyChanges
+// laedt das offene Formular automatisch neu, siehe SetManagedBy()-Kommentar).
+// SetManagedBy() ruft deshalb KEIN UpdateFormField() mehr fuer die Select-
+// Caption auf -- die korrekte Beschriftung kommt stattdessen vom automatischen
+// Formular-Reload (bereits oben ueber einen frischen GetConfigurationForm()-
+// Aufruf geprueft). Diese Pruefung verhindert, dass die fruehere, tatsaechlich
+// wirkungslose UpdateFormField()-Anweisung wieder eingebaut wird.
+check('SetManagedBy() ruft KEIN UpdateFormField() fuer die Select-Caption mehr auf (Store-Review-Fund)', !isset($GLOBALS['ips']['formFieldUpdates']['ManagedBy_' . $prefix]));
 
 $GLOBALS['ips']['heishaMonInstances'] = [];
 $GLOBALS['ips']['heishaMonInstanceStatus'] = [];

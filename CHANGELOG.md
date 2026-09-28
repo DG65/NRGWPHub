@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.12.2 (Build 84) — 28.09.2026
+
+- **Fix: zwei Formular-Aktionen aktualisierten das offene Formular nicht sichtbar (Store-Review-Fund, HeishaMon).** `AdoptMeterHubAssignment()` und `SetManagedBy()` riefen `IPS_ApplyChanges()` auf und danach `UpdateFormField()` auf dieselbe (dadurch bereits neu geladene) Formular-Session — laut Symcon-Reviewer wirkungslos. `AdoptMeterHubAssignment()` schreibt jetzt nur noch einen Vorschlag ins offene Formular (Ext_PowerVariable/Ext_EnergyVariable sind echte Property-Felder, „Änderungen übernehmen" speichert sie); `SetManagedBy()` verzichtet auf die inzwischen nachweislich wirkungslosen UpdateFormField()-Aufrufe, da der automatische Formular-Reload nach `ApplyChanges()` die Select-Beschriftung ohnehin korrekt neu berechnet.
+- Prüfstand: 378 Prüfungen (vorher 374), vier neue Mutationen der Zielstellen geprüft.
+
 ## 0.12.1 (Build 83) — 26.09.2026
 
 - **Vaillant: API-Kontingent spürbar geschont (Caching von Anlagenliste + Regler-Typ).** Markus (m_rothenpieler, Forum-Post #38) hatte angemerkt, dass `getHomes()` bei jedem Zyklus erneut abgefragt wird — tatsächlich waren es sogar drei API-Calls je Zyklus (`getHomes()`, `getControlIdentifier()`, `getSystem()`/`getSystemVrc700()`), nicht nur einer. Anlagenliste und Regler-Typ ändern sich praktisch nie und werden jetzt 24 Stunden lang aus einem Cache verwendet — die eigentlichen Messwerte (`getSystem()`/`getSystemVrc700()`) laufen unverändert jeden Zyklus. Bei einem Ein-Anlagen-Konto sinkt der Bedarf damit im Dauerbetrieb von 3 auf 1 API-Call/Zyklus. Eine manuelle (Neu-)Anmeldung im Formular erzwingt weiterhin sofort eine frische Anlagenliste.
