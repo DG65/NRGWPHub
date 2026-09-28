@@ -281,6 +281,24 @@ class WPHub extends IPSModule
         // MeterHub-Vorschlag: nur solange noch nichts verknuepft ist (0/0) --
         // wer schon manuell/per Uebernahme verknuepft hat, soll nicht bei
         // jedem Formularaufruf erneut beworben werden.
+        //
+        // EMS-Klarstellung (28.09.2026, Verbundpruefung gegen SUITE.md
+        // "Verbund-Verbindungen im Formular sichtbar machen"): Das ist KEIN
+        // 🔗-Automatik-Fall im Sinne dieser Regel, obwohl AdoptMeterHubAssignment()
+        // den Vorschlag per UpdateFormField(...,'value',...) ins Eingabefeld
+        // schreibt -- die Regel verbietet das nur dort, wo die Verbindung
+        // selbst einen laufend aktuellen MESSWERT liefert (Beispiel EMS/
+        // Szenariorechner: "PV-Leistung: 9,18 kWp"), weil ein Uebernehmen-Klick
+        // dann eine Momentaufnahme einfrieren und spaeteren Aenderungen der
+        // Quelle nicht mehr folgen wuerde. Hier liefert MeterHub dagegen nur
+        // eine VARIABLEN-ID (welche Symcon-Variable vermutlich die
+        // Waermepumpe misst) fuer ein SelectVariable-Feld -- nach der
+        // Uebernahme liest WPHub jeden Zyklus ganz normal den LIVE-Wert der
+        // verknuepften Variable (extVariableID()/GetValue(), identisch zu
+        // jedem anderen manuell verlinkten Ext_*Variable-Feld). Keine
+        // Momentaufnahme, kein Nachfolge-Problem -- architektonisch dasselbe
+        // "manuelle Fallback-Feld mit Vorbefuellungs-Hilfe" wie die Auswahl
+        // selbst, nur mit einem intelligenten Vorschlag statt leerem Start.
         $assignment = $this->meterHubHeatpumpAssignment();
         if ($assignment !== null
             && $this->ReadPropertyInteger('Ext_PowerVariable') <= 0
@@ -1197,6 +1215,9 @@ class WPHub extends IPSModule
      * Formular-Schaltflaeche (siehe GetConfigurationForm), nie automatisch im
      * Update()-Zyklus: die Verknuepfung ist eine Entscheidung des Nutzers,
      * kein stiller Hintergrundabgleich (gleiches Prinzip wie AcceptAgreements).
+     * Kein SUITE.md-🔗-Automatik-Fall trotz UpdateFormField(...,'value',...) --
+     * Begruendung siehe Kommentar an der MeterHubSuggestion-Stelle in
+     * GetConfigurationForm() (EMS-Klarstellung 28.09.2026).
      *
      * Store-Review-Fund (HeishaMon, 28.09.2026): Diese Funktion rief bisher
      * IPS_SetProperty()+IPS_ApplyChanges() auf UND danach UpdateFormField()
