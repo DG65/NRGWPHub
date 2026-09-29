@@ -756,6 +756,51 @@ fuer die Caption mehr auf, die Korrektheit nach Reload bleibt ueber den bereits
 bestehenden frischen-`GetConfigurationForm()`-Test abgesichert). Vier neue Mutationen
 gefangen.
 
+## Neu: manueller EMF-Energiedaten-Test (0.13.0, Forum-Post #48/#49, 29.09.2026)
+
+Markus (m_rothenpieler) hat den naechsten, laengst angekuendigten Wunsch konkretisiert:
+Stromverbrauch (Heizung/Warmwasser getrennt) und erzeugte Waermemenge, so wie es die
+myVAILLANT-App bereits anzeigt. Seine eigene Vermutung aus Forum-Post #38 ("das kommt
+vermutlich ueber /emf/v2/...") am myPyllant-Quelltext verifiziert (28.09.2026, KEIN
+Rateweg):
+
+- `get_data_by_device()` -> `GET {base}/emf/v2/{systemId}/devices/{deviceUuid}/buckets`
+  mit Query `resolution`/`operationMode`/`energyType`/`startDate`/`endDate` -- die
+  eigentlichen Verbrauchs-/Ertragswerte.
+- `get_systems()` (currentSystem-Teil) -> `GET {base}/emf/v2/{systemId}/currentSystem`,
+  keine Query-Parameter -- liefert laut Quelltext eine Geraeteuebersicht (`devices[]`)
+  mit den je Geraet verfuegbaren Energiekanaelen (`data[].operation_mode`/`value_type`).
+
+**Nur der zweite (einfachere, parameterlose) Endpunkt wurde gebaut.** Der erste braucht
+Kanal-Angaben, die erst aus einer echten `currentSystem`-Antwort hervorgehen -- welche
+`operationMode`/`energyType`-Werte Markus' Anlage tatsaechlich liefert, ist unbekannt,
+ein Rateweg waere hier fehl am Platz (gleiche Disziplin wie beim gesamten Vaillant-Zweig
+seit dem ersten camelCase-Fund). `VaillantClient::getCurrentSystemEmf()` ruft den
+Endpunkt ab und parst mit der bereits vorhandenen `parseTliBody()`
+(snake_case-Konvertierung identisch zu allen anderen tli-Endpunkten).
+
+**Neuer Knopf "🔋 Energiedaten testweise abrufen"** im Vaillant-Formular
+(`TestEmfEndpoint()`), AUSSCHLIESSLICH manuell -- Markus hat in Post #48 ausdruecklich
+gebeten, das nicht in den 300/600s-Takt zu haengen ("Für Energie reichen aus meiner
+Sicht deutlich größere Intervalle vollkommen aus"). Dumpt die Rohantwort per SendDebug
+(Topic "Vaillant/emf-currentSystem-Rohdaten"), baut aber noch KEINE eigenen Variablen --
+naechster Schritt ist, Markus (und ggf. cbeham fuer vrc700) um den Knopfdruck + die
+Debug-Ausgabe zu bitten, dann erst den `buckets`-Endpunkt mit den echten Kanal-Werten
+bauen.
+
+**Regler-Typ-Unsicherheit dokumentiert, nicht geraten:** myPyllants `get_api_base()`
+faellt beim `currentSystem`-Aufruf ohne expliziten `control_identifier`-Parameter auf
+"tli" zurueck -- ob der Endpunkt bei einer reinen vrc700-Anlage (cbeham) ueberhaupt
+funktioniert, ist aus dem gegengelesenen Quelltext nicht sicher zu sagen. Ueber
+`API_BASE_TLI` implementiert wie im Referenzprojekt, Unsicherheit im Code dokumentiert
+statt stillschweigend als "funktioniert ueberall" angenommen.
+
+Pruefstand 378 -> 386 (Verkabelung von `TestEmfEndpoint()`: kein Login -> Fehlermeldung
+ohne Debug-Eintrag, keine bekannte Anlage -> Fehlermeldung ohne API-Aufruf, Erfolg ->
+SendDebug + Erfolgsmeldung mit Zaehler, Fehlschlag -> Fehlermeldung statt stiller Leere;
+`getCurrentSystemEmf()` selbst nur ueber `FakeVaillant` getestet, wie alle anderen
+HTTP-basierten Client-Methoden dieser Klasse). Drei neue Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

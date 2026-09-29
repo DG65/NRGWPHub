@@ -1664,6 +1664,57 @@ class WPHub extends IPSModule
     }
 
     /**
+     * Manueller Test-Abruf der EMF-Energiedaten (Forum-Post #48/#49,
+     * m_rothenpieler: Stromverbrauch/erzeugte Waermemenge fehlen noch
+     * komplett -- laut myPyllant-Quelltext ueber /emf/v2/{systemId}/
+     * currentSystem verfuegbar, siehe VaillantClient::getCurrentSystemEmf()).
+     * AUSSCHLIESSLICH auf Klick, NIE Teil des normalen Update()-Zyklus --
+     * Markus hat ausdruecklich gebeten, das Kontingent nicht mit einer
+     * zweiten Abfrage im 300/600s-Takt zu belasten. Baut noch NICHTS aus der
+     * Antwort, dumpt sie nur per SendDebug: der nachgelagerte .../buckets-
+     * Endpunkt fuer die eigentlichen Verbrauchs-/Ertragswerte braucht
+     * Kanal-Angaben (operationMode/energyType), die aus einer echten
+     * currentSystem-Antwort stammen muessen -- noch niemand hat eine
+     * gesehen, ein Rateweg waere hier fehl am Platz.
+     */
+    public function TestEmfEndpoint(): void
+    {
+        $say = function (string $m) {
+            $this->UpdateFormField('VAI_EmfResult', 'caption', $m);
+            $this->UpdateFormField('VAI_EmfResult', 'visible', true);
+        };
+
+        $bundle = $this->vaillantEnsureToken();
+        if ($bundle === null) {
+            $say('❌ Nicht angemeldet (oder Anmeldung gerade wegen Kontingent gesperrt) -- zuerst oben anmelden.');
+            return;
+        }
+        $devices = $this->readDeviceList();
+        if (count($devices) === 0) {
+            $say('❌ Keine Anlage bekannt -- zuerst oben anmelden und Anlagen suchen.');
+            return;
+        }
+        $client = $this->vaillantClient();
+        $ok = 0;
+        foreach ($devices as $d) {
+            $systemId = (string)($d['guid'] ?? '');
+            if ($systemId === '') {
+                continue;
+            }
+            $emf = $client->getCurrentSystemEmf($bundle, $systemId);
+            if ($emf !== null) {
+                $this->SendDebug('Vaillant/emf-currentSystem-Rohdaten', json_encode($emf, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
+                $ok++;
+            }
+        }
+        if ($ok === 0) {
+            $say('❌ Kein Abruf erfolgreich (' . $client->getLastError() . ') -- Details in der Instanz-Debugausgabe.');
+            return;
+        }
+        $say('✅ ' . $ok . ' Abruf(e) erfolgreich -- Rohdaten stehen in der Instanz-Debugausgabe (Eintrag „Vaillant/emf-currentSystem-Rohdaten").');
+    }
+
+    /**
      * Vaillant-Update -- mit Sperrfrist nach einem API-Kontingent-Fehler
      * (Fund 25.09.2026, m_rothenpieler: "Out of call volume quota", HTTP 403
      * nach mehreren 60s-Zyklen). OHNE diese Sperrfrist wuerde jeder weitere

@@ -491,6 +491,13 @@ class FakeVaillant extends WPHUB_VaillantClient
     {
         return $this->loginResult;
     }
+    public array $emfById = [];   // systemId => rohes EMF-Array | null
+    public array $emfCalls = [];
+    public function getCurrentSystemEmf(array $bundle, string $systemId): ?array
+    {
+        $this->emfCalls[] = $systemId;
+        return $this->emfById[$systemId] ?? null;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1752,6 +1759,64 @@ unset($GLOBALS['ips']['vaillantClientFactory']);
 // aus dem falschen Grund bestehen lassen.
 $setAttr->invoke($mod, 'VAI_Token', '');
 $writeAttrInt->invoke($mod, 'VAI_SystemsCacheAt', 0);
+
+// TestEmfEndpoint() (Forum-Post #48/#49, m_rothenpieler: Energiedaten-
+// Wunsch) -- AUSSCHLIESSLICH manuell, NIE Teil des normalen Update()-
+// Zyklus. Reine Verkabelungs-Pruefung, keine echten EMF-Feldnamen (die
+// kennt noch niemand, siehe VaillantClient::getCurrentSystemEmf()-Kommentar).
+$GLOBALS['ips']['debug'] = [];
+$setAttr->invoke($mod, 'VAI_Token', '');
+$mod->TestEmfEndpoint();
+$emfResultNoLogin = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['caption'] ?? null;
+check('TestEmfEndpoint() ohne Anmeldung: Fehlermeldung statt Absturz', $emfResultNoLogin !== null && strpos($emfResultNoLogin, '❌') === 0, $emfResultNoLogin ?? 'null');
+check('TestEmfEndpoint() ohne Anmeldung: kein EMF-Debug-Eintrag', !array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/emf-currentSystem-Rohdaten'));
+
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
+$setAttr->invoke($mod, 'VAI_DeviceList', '[]');
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$fakeVaiEmfNoDevices = new FakeVaillant('germany');
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiEmfNoDevices) {
+    return $fakeVaiEmfNoDevices;
+};
+$mod->TestEmfEndpoint();
+$emfResultNoDevices = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['caption'] ?? null;
+check('TestEmfEndpoint() ohne bekannte Anlage: Fehlermeldung', $emfResultNoDevices !== null && strpos($emfResultNoDevices, '❌') === 0, $emfResultNoDevices ?? 'null');
+check('TestEmfEndpoint() ohne bekannte Anlage: ruft getCurrentSystemEmf() gar nicht erst auf', $fakeVaiEmfNoDevices->emfCalls === []);
+
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['guid' => 'sys-emf-1', 'prefix' => 'HPEMF_', 'name' => 'Test-Wärmepumpe']]));
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$GLOBALS['ips']['debug'] = [];
+$fakeVaiEmfOk = new FakeVaillant('germany');
+$fakeVaiEmfOk->emfById = ['sys-emf-1' => ['devices' => [['device_uuid' => 'dev-1', 'data' => []]]]];
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiEmfOk) {
+    return $fakeVaiEmfOk;
+};
+$mod->TestEmfEndpoint();
+check('TestEmfEndpoint() erfolgreich: ruft getCurrentSystemEmf() fuer die bekannte Anlage auf', $fakeVaiEmfOk->emfCalls === ['sys-emf-1']);
+$emfResultOk = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['caption'] ?? null;
+check('TestEmfEndpoint() erfolgreich: Erfolgsmeldung', $emfResultOk !== null && strpos($emfResultOk, '✅') === 0, $emfResultOk ?? 'null');
+$emfDebugEntry = null;
+foreach ($GLOBALS['ips']['debug'] as $d) {
+    if ($d['topic'] === 'Vaillant/emf-currentSystem-Rohdaten') {
+        $emfDebugEntry = $d;
+    }
+}
+check('TestEmfEndpoint() erfolgreich: Rohdaten gehen per SendDebug raus', $emfDebugEntry !== null && strpos($emfDebugEntry['text'], 'dev-1') !== false, json_encode($emfDebugEntry));
+
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$fakeVaiEmfFail = new FakeVaillant('germany');
+$fakeVaiEmfFail->emfById = ['sys-emf-1' => null];
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiEmfFail) {
+    return $fakeVaiEmfFail;
+};
+$mod->TestEmfEndpoint();
+$emfResultFail = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['caption'] ?? null;
+check('TestEmfEndpoint() bei Fehlschlag: Fehlermeldung statt stiller Leere', $emfResultFail !== null && strpos($emfResultFail, '❌') === 0, $emfResultFail ?? 'null');
+unset($GLOBALS['ips']['vaillantClientFactory']);
+
+// Aufraeumen fuer nachfolgende Bloecke.
+$setAttr->invoke($mod, 'VAI_Token', '');
+$setAttr->invoke($mod, 'VAI_DeviceList', '[]');
 
 // snakeCaseKeysDeep(): reine Konvertierungslogik direkt getestet, mit
 // realistischem camelCase wie es die echte myVAILLANT-API liefert (Quelltext

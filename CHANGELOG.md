@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.13.0 (Build 85) — 29.09.2026
+
+- **Neu: manueller Test-Abruf der Vaillant-Energiedaten.** Markus (m_rothenpieler, Forum-Post #48/#49) wünscht sich Stromverbrauch/erzeugte Wärmemenge für Heizung und Warmwasser. Laut myVAILLANT-Referenzprojekt (myPyllant) käme das über einen bisher ungenutzten API-Bereich (`/emf/v2/.../currentSystem`) — ein neuer Knopf „🔋 Energiedaten testweise abrufen" im Vaillant-Formular ruft diesen Endpunkt einmalig ab und schreibt die Rohantwort in die Instanz-Debugausgabe. Bewusst **nicht** im normalen Aktualisierungstakt (Markus' ausdrücklicher Wunsch, das Kontingent nicht zusätzlich zu belasten) und bewusst **ohne** eigene neue Variablen — der nachgelagerte Endpunkt für die eigentlichen Verbrauchswerte braucht Angaben, die erst aus einer echten Antwort dieses Abrufs hervorgehen, kein Rateweg vor echten Daten.
+- Prüfstand: 386 Prüfungen (vorher 378), drei neue Mutationen der Zielstellen geprüft.
+
 ## 0.12.2 (Build 84) — 28.09.2026
 
 - **Fix: zwei Formular-Aktionen aktualisierten das offene Formular nicht sichtbar (Store-Review-Fund, HeishaMon).** `AdoptMeterHubAssignment()` und `SetManagedBy()` riefen `IPS_ApplyChanges()` auf und danach `UpdateFormField()` auf dieselbe (dadurch bereits neu geladene) Formular-Session — laut Symcon-Reviewer wirkungslos. `AdoptMeterHubAssignment()` schreibt jetzt nur noch einen Vorschlag ins offene Formular (Ext_PowerVariable/Ext_EnergyVariable sind echte Property-Felder, „Änderungen übernehmen" speichert sie); `SetManagedBy()` verzichtet auf die inzwischen nachweislich wirkungslosen UpdateFormField()-Aufrufe, da der automatische Formular-Reload nach `ApplyChanges()` die Select-Beschriftung ohnehin korrekt neu berechnet.

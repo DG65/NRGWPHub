@@ -265,6 +265,18 @@
                     "name": "VAI_Result",
                     "caption": "",
                     "visible": false
+                },
+                {
+                    "type": "Button",
+                    "name": "VAI_TestEmfButton",
+                    "caption": "🔋  Energiedaten testweise abrufen (nicht im normalen Takt)",
+                    "onClick": "WPHUB_TestEmfEndpoint($id);"
+                },
+                {
+                    "type": "Label",
+                    "name": "VAI_EmfResult",
+                    "caption": "",
+                    "visible": false
                 }
             ]
         },

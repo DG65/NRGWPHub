@@ -227,6 +227,43 @@ class WPHUB_VaillantClient
     }
 
     /**
+     * Rohes "currentSystem"-JSON aus der EMF-Energie-API (Endpunkt/Query
+     * 1:1 aus myPyllant.api.get_systems()/get_data_by_device() gegengelesen,
+     * 28.09.2026 -- KEIN Rateweg): GET {base}/emf/v2/{systemId}/currentSystem,
+     * keine Query-Parameter. Liefert laut Quelltext eine Geraeteuebersicht
+     * (devices[]) mit den je Geraet verfuegbaren Energiekanaelen
+     * (data[].operation_mode/value_type) -- genau die Angaben, die der
+     * NACHGELAGERTE .../devices/{deviceUuid}/buckets-Endpunkt als Query-
+     * Parameter braucht. buckets() ist bewusst NOCH NICHT gebaut: welche
+     * operation_mode/value_type-Werte eine echte Vaillant-Anlage liefert,
+     * ist unbekannt, ohne eine echte currentSystem-Antwort waere das
+     * geraten. Nur ueber den manuellen "Energiedaten testweise abrufen"-
+     * Knopf aufgerufen (TestEmfEndpoint() in module.php), NIE im normalen
+     * Update()-Zyklus -- Forum-Post #48/#49, m_rothenpieler: ausdruecklich
+     * NICHT in den 300/600s-Takt haengen, das API-Kontingent ist knapp.
+     * Regler-Typ-Abhaengigkeit (tli/vrc700) fuer DIESEN Endpunkt ungeprueft:
+     * myPyllants eigener Code ruft get_api_base() dabei ohne expliziten
+     * control_identifier auf (faellt intern auf "tli" zurueck) -- ob das
+     * bei einer reinen vrc700-Anlage (z. B. cbeham) ueberhaupt funktioniert,
+     * ist offen. Deshalb bewusst ueber API_BASE_TLI, mit derselben
+     * Unsicherheit wie hier dokumentiert statt stillschweigend angenommen.
+     */
+    public function getCurrentSystemEmf(array $bundle, string $systemId): ?array
+    {
+        $this->lastError = '';
+        $r = $this->apiRequest($bundle, 'GET', self::API_BASE_TLI . '/emf/v2/' . rawurlencode($systemId) . '/currentSystem');
+        if ($r === null || $r['status'] !== 200) {
+            $this->failApi('EMF-Energiedaten (emf/v2/' . $systemId . '/currentSystem)', $r);
+            return null;
+        }
+        $parsed = self::parseTliBody((string)$r['body']);
+        if ($parsed === null) {
+            $this->failApi('EMF-Energiedaten (emf/v2/' . $systemId . '/currentSystem) -- ungueltiges JSON', $r);
+        }
+        return $parsed;
+    }
+
+    /**
      * Reine Dekodierfunktion fuer eine tli-System-Antwort -- ausgelagert,
      * damit der Pruefstand sie OHNE echtes HTTP direkt mit einem
      * vorgefertigten JSON-Body testen kann (dieselbe Funktion, die auch
