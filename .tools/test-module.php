@@ -498,12 +498,14 @@ class FakeVaillant extends WPHUB_VaillantClient
         $this->emfCalls[] = $systemId;
         return $this->emfById[$systemId] ?? null;
     }
-    public ?array $bucketsResult = null; // fester Rueckgabewert fuer JEDEN getDeviceDataBuckets()-Aufruf (null oder Array)
-    public array $bucketsCalls = [];    // [['deviceUuid'=>..,'operationMode'=>..,'energyType'=>..], ...]
+    public ?array $bucketsResult = null;   // Fallback-Rueckgabewert, wenn kein passender Eintrag in bucketsByChannel existiert
+    public array $bucketsByChannel = [];   // "deviceUuid/operationMode/energyType" => Array|null, hat Vorrang vor bucketsResult
+    public array $bucketsCalls = [];       // [['deviceUuid'=>..,'operationMode'=>..,'energyType'=>..], ...]
     public function getDeviceDataBuckets(array $bundle, string $systemId, string $deviceUuid, string $operationMode, string $energyType, string $resolution, \DateTimeImmutable $from, \DateTimeImmutable $to): ?array
     {
         $this->bucketsCalls[] = ['deviceUuid' => $deviceUuid, 'operationMode' => $operationMode, 'energyType' => $energyType, 'resolution' => $resolution];
-        return $this->bucketsResult;
+        $key = $deviceUuid . '/' . $operationMode . '/' . $energyType;
+        return array_key_exists($key, $this->bucketsByChannel) ? $this->bucketsByChannel[$key] : $this->bucketsResult;
     }
 }
 
@@ -1851,7 +1853,7 @@ $GLOBALS['ips']['formFieldUpdates'] = [];
 $GLOBALS['ips']['debug'] = [];
 $fakeVaiEmfOk = new FakeVaillant('germany');
 $fakeVaiEmfOk->emfById = ['sys-emf-1' => $realEmfFixture];
-$fakeVaiEmfOk->bucketsResult = ['buckets' => [['value' => 12.3]]]; // Aufbau noch nicht real bestaetigt, nur fuer die Verkabelungspruefung
+$fakeVaiEmfOk->bucketsResult = ['start_date' => '2026-09-26T00:00:00Z', 'end_date' => '2026-09-29T00:00:00Z', 'resolution' => 'DAY', 'total_consumption' => 1000, 'data' => []]; // Aufbau seit 29.09.2026 an Markus' echter Antwort bestaetigt, hier nur fuer die Verkabelungspruefung
 $GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiEmfOk) {
     return $fakeVaiEmfOk;
 };
@@ -1889,7 +1891,107 @@ $emfResultFail = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['caption']
 check('TestEmfEndpoint() bei Fehlschlag: Fehlermeldung statt stiller Leere', $emfResultFail !== null && strpos($emfResultFail, '❌') === 0, $emfResultFail ?? 'null');
 unset($GLOBALS['ips']['vaillantClientFactory']);
 
+$readAttrInt = new ReflectionMethod(WPHub::class, 'ReadAttributeInteger');
+$readAttrInt->setAccessible(true);
+
+// maintainDeviceEnergyVaillant()/maintainDailyEnergyVariable(): Aggregation
+// ueber ALLE drei Geraete von $realEmfFixture, mit Wh-Werten grob nach
+// Markus' echter Buckets-Antwort (29.09.2026), aber auf glatte Vielfache von
+// 1000 Wh gerundet (exakte Float-Vergleiche in den Pruefungen unten, keine
+// Rundungsfragen). electric_backup_heater hat laut echter Antwort GAR KEINEN
+// EARNED_ENVIRONMENT_ENERGY-Kanal (reiner Widerstandsheizer, keine Umwelt-
+// energie) -- secondary_heat_generators[0] hat KEINE DOMESTIC_HOT_WATER-
+// Kanaele (nur der Haupt-Waermeerzeuger bereitet Warmwasser). Beides bewusst
+// in der Fixture nachgebildet, keine erfundene Symmetrie.
+$maintainDeviceEnergyVaillant = new ReflectionMethod(WPHub::class, 'maintainDeviceEnergyVaillant');
+$maintainDeviceEnergyVaillant->setAccessible(true);
+$fakeVaiEnergy = new FakeVaillant('germany');
+$fakeVaiEnergy->bucketsByChannel = [
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 2000],
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 3000],
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/EARNED_ENVIRONMENT_ENERGY' => ['total_consumption' => 10000],
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/EARNED_ENVIRONMENT_ENERGY' => ['total_consumption' => 8000],
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/HEAT_GENERATED' => ['total_consumption' => 12000],
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/HEAT_GENERATED' => ['total_consumption' => 11000],
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 0],
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/HEATING/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 1000],
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/DOMESTIC_HOT_WATER/HEAT_GENERATED' => ['total_consumption' => 0],
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/HEATING/HEAT_GENERATED' => ['total_consumption' => 1000],
+    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 8000],
+    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/EARNED_ENVIRONMENT_ENERGY' => ['total_consumption' => 30000],
+    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/HEAT_GENERATED' => ['total_consumption' => 38000],
+];
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
+$energyBundle = ['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600];
+$maintainDeviceEnergyVaillant->invoke($mod, 'HPVAIEN_', 'Test-Energie-Wärmepumpe', $fakeVaiEnergy, $energyBundle, 'sys-energy-1', $realEmfFixture);
+check('Energie: EnergieHeizenHeute = 11.0 kWh (2000+1000+8000 Wh ueber alle Geraete)', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['value'] ?? null) === 11.0);
+check('Energie: EnergieWarmwasserHeute = 3.0 kWh (nur primary_heat_generator liefert DHW)', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieWarmwasserHeute']['value'] ?? null) === 3.0);
+check('Energie: EnergieGesamtHeute = 14.0 kWh (Heizen+Warmwasser)', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieGesamtHeute']['value'] ?? null) === 14.0);
+check('Energie: WaermeHeizenHeute = 51.0 kWh (erzeugte Waerme, alle drei Geraete)', ($GLOBALS['ips']['variables']['HPVAIEN_WaermeHeizenHeute']['value'] ?? null) === 51.0);
+check('Energie: WaermeWarmwasserHeute = 11.0 kWh', ($GLOBALS['ips']['variables']['HPVAIEN_WaermeWarmwasserHeute']['value'] ?? null) === 11.0);
+check('Energie: UmweltenergieHeizenHeute = 40.0 kWh (electric_backup_heater hat KEINEN EARNED-Kanal, faellt korrekt raus)', ($GLOBALS['ips']['variables']['HPVAIEN_UmweltenergieHeizenHeute']['value'] ?? null) === 40.0);
+check('Energie: UmweltenergieWarmwasserHeute = 8.0 kWh (nur primary_heat_generator)', ($GLOBALS['ips']['variables']['HPVAIEN_UmweltenergieWarmwasserHeute']['value'] ?? null) === 8.0);
+check('Energie: alle Variablen nutzen NRG.kWh', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['profile'] ?? '') === 'NRG.kWh');
+check('Energie: EnergieHeizenHeute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['id']] ?? false) === true);
+check('Energie: ruft getDeviceDataBuckets() fuer alle 13 Kanaele der drei Geraete auf (kein Kanal ausgelassen/doppelt)', count($fakeVaiEnergy->bucketsCalls) === 13, count($fakeVaiEnergy->bucketsCalls));
+
+// GetFunctions(): dailyEnergyHeatingID/-DHWID/-TotalID sind dieselben Idents
+// wie bei Panasonic, bereits herstellerneutral -- keine eigene Verkabelung
+// fuer Vaillant noetig, hier nur gegengeprueft.
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['guid' => 'sys-energy-1', 'prefix' => 'HPVAIEN_', 'name' => 'Test-Energie-Wärmepumpe']]));
+$functionsEnergy = $mod->GetFunctions();
+check('GetFunctions(): dailyEnergyHeatingID zeigt auf EnergieHeizenHeute', is_array($functionsEnergy) && count($functionsEnergy) === 1 && ($functionsEnergy[0]['dailyEnergyHeatingID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['id']);
+check('GetFunctions(): dailyEnergyDHWID zeigt auf EnergieWarmwasserHeute', is_array($functionsEnergy) && ($functionsEnergy[0]['dailyEnergyDHWID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAIEN_EnergieWarmwasserHeute']['id']);
+check('GetFunctions(): dailyEnergyTotalID zeigt auf EnergieGesamtHeute', is_array($functionsEnergy) && ($functionsEnergy[0]['dailyEnergyTotalID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAIEN_EnergieGesamtHeute']['id']);
+check('GetFunctions(): dailyEnergyCoolingID bleibt 0 (keine Kuehl-Kanaele bei Vaillant bekannt)', ($functionsEnergy[0]['dailyEnergyCoolingID'] ?? -1) === 0);
+
+// Randfall: keinerlei Kanal liefert einen Wert -> KEINE Variablen angelegt
+// (gleiche Linie wie alle anderen optionalen Vaillant-Felder), kein Absturz.
+$emptyEmfFixture = ['primary_heat_generator' => ['device_uuid' => 'dev-leer', 'data' => []], 'gateway' => null, 'solar_station' => null, 'ventilation' => null, 'secondary_heat_generators' => []];
+$fakeVaiEnergyEmpty = new FakeVaillant('germany');
+$maintainDeviceEnergyVaillant->invoke($mod, 'HPVAILEER2_', 'Leere Energie-Anlage', $fakeVaiEnergyEmpty, $energyBundle, 'sys-energy-leer', $emptyEmfFixture);
+check('Energie: ohne jeden Kanal keine EnergieHeizenHeute-Variable (kein Rateweg, kein Platzhalterwert)', !isset($GLOBALS['ips']['variables']['HPVAILEER2_EnergieHeizenHeute']));
+check('Energie: ohne jeden Kanal auch keine EnergieGesamtHeute-Variable', !isset($GLOBALS['ips']['variables']['HPVAILEER2_EnergieGesamtHeute']));
+
+// updateVaillantEnergy(): eigener, viel selterer Takt als der Haupt-Zyklus --
+// erster Aufruf holt Daten, ein SOFORT folgender zweiter Aufruf (TTL noch
+// frisch) ruft getCurrentSystemEmf() NICHT erneut auf.
+$updateVaillantEnergy = new ReflectionMethod(WPHub::class, 'updateVaillantEnergy');
+$updateVaillantEnergy->setAccessible(true);
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', 0);
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['guid' => 'sys-energy-2', 'prefix' => 'HPVAIEN2_', 'name' => 'Takt-Test-Wärmepumpe']]));
+$fakeVaiEnergyTakt = new FakeVaillant('germany');
+$fakeVaiEnergyTakt->emfById = ['sys-energy-2' => $realEmfFixture];
+$fakeVaiEnergyTakt->bucketsResult = ['total_consumption' => 500];
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiEnergyTakt);
+check('updateVaillantEnergy(): erster Aufruf ruft getCurrentSystemEmf() auf', $fakeVaiEnergyTakt->emfCalls === ['sys-energy-2']);
+check('updateVaillantEnergy(): erster Aufruf setzt VAI_EnergyRefreshedAt', $readAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt') > 0);
+$emfCallsBeforeSecondRun = count($fakeVaiEnergyTakt->emfCalls);
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiEnergyTakt);
+check('updateVaillantEnergy(): zweiter Aufruf (Takt noch frisch) ruft getCurrentSystemEmf() NICHT erneut auf', count($fakeVaiEnergyTakt->emfCalls) === $emfCallsBeforeSecondRun);
+
+// Abgelaufener Takt (aelter als VAI_ENERGY_REFRESH_INTERVAL_SECONDS) loest
+// einen frischen Abruf aus.
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', time() - 100000);
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiEnergyTakt);
+check('updateVaillantEnergy(): abgelaufener Takt loest erneuten getCurrentSystemEmf()-Aufruf aus', count($fakeVaiEnergyTakt->emfCalls) === $emfCallsBeforeSecondRun + 1);
+
+// Kontingent-Fehler beim Energie-Abruf setzt dieselbe Sperrfrist wie der
+// Haupt-Refresh (gleiches Konto/Kontingent) -- verhindert, dass der naechste
+// Haupt-Zyklus sofort erneut in dieselbe Sperre laeuft. Kein Crash, kein
+// Einfluss auf bereits gesetzte Temperaturwerte.
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', 0);
+$writeAttrInt->invoke($mod, 'VAI_RetryNotBefore', 0);
+$fakeVaiEnergyQuota = new FakeVaillant('germany');
+$fakeVaiEnergyQuota->emfById = ['sys-energy-2' => null];
+$fakeVaiEnergyQuota->quotaRetryAfterSeconds = 77;
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiEnergyQuota);
+check('updateVaillantEnergy(): Kontingent-Fehler setzt VAI_RetryNotBefore', $readAttrInt->invoke($mod, 'VAI_RetryNotBefore') >= time() + 77);
+check('updateVaillantEnergy(): Kontingent-Fehler setzt VAI_EnergyRefreshedAt NICHT (naechster Zyklus versucht es wieder)', $readAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt') === 0);
+
 // Aufraeumen fuer nachfolgende Bloecke.
+$writeAttrInt->invoke($mod, 'VAI_RetryNotBefore', 0);
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', 0);
 $setAttr->invoke($mod, 'VAI_Token', '');
 $setAttr->invoke($mod, 'VAI_DeviceList', '[]');
 

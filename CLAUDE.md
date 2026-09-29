@@ -855,6 +855,63 @@ um die vollstaendige Buckets-Schleife erweitert getestet: alle 13 Kanaele aufger
 richtige operationMode/energyType/Aufloesung je Aufruf, SendDebug je Kanal). Sechs neue
 Mutationen gefangen.
 
+## Vaillant-Energiedaten automatisch befuellt (0.14.0, Forum-Post, 29.09.2026)
+
+Markus hat den 0.13.1-Testknopf gedrueckt und die KOMPLETTE Buckets-Debugausgabe als Datei
+geschickt (alle 13 Kanaele) -- damit war der Response-AUFBAU endlich bestaetigt, nicht mehr
+nur die Anfrage-Seite:
+
+```
+{
+  "start_date": "...", "end_date": "...", "resolution": "DAY",
+  "operation_mode": "...", "energy_type": "...",
+  "total_consumption": <Zahl, Wh, Summe ueber das gesamte Zeitfenster>,
+  "data": [ {"start_date": "...", "end_date": "...", "value": <Zahl, Wh>}, ... ]
+}
+```
+
+**Physik-Gegenprobe an Markus' echten Zahlen bestanden** (wichtiger als jede Doku): fuer
+jedes Geraet und jede Betriebsart gilt exakt `CONSUMED_ELECTRICAL_ENERGY +
+EARNED_ENVIRONMENT_ENERGY = HEAT_GENERATED` (z. B. primary_heat_generator/HEATING:
+2000 + 10000 = 12000 Wh). Bestaetigt: Werte sind in Wh, `total_consumption` ist bereits
+korrekt aufsummiert -- kein manuelles Aufsummieren der `data[]`-Eintraege noetig, wenn das
+angefragte Zeitfenster (hier: heute 00:00 UTC bis jetzt) ohnehin nur einen Bucket ergibt.
+
+**Nebenbefund aus Markus' echten Daten, wichtig fuer die Aggregation:**
+- `electric_backup_heater` hat GAR KEINEN `EARNED_ENVIRONMENT_ENERGY`-Kanal (reiner
+  Widerstandsheizer, keine Umweltenergie) -- nur CONSUMED/HEAT_GENERATED fuer beide
+  Betriebsarten.
+- `secondary_heat_generators[0]` hat KEINE `DOMESTIC_HOT_WATER`-Kanaele ueberhaupt (nur
+  der Haupt-Waermeerzeuger bereitet bei ihm Warmwasser).
+- Der Zusatzheizer lief bei Markus nur mit ~0,24 kWh/3 Tage (~70 Wh/Tag) -- Markus selbst
+  hat das treffend als Elektronik-/Hydraulikstation-Standby eingeordnet, kein echter
+  Heizstabeinsatz. Keine Interpretation dazu im Code, nur der Rohwert flieszt in die
+  Summe ein.
+
+**Umsetzung:** `updateVaillantEnergy()` (eigener Takt, `VAI_ENERGY_REFRESH_INTERVAL_
+SECONDS` = 1 Stunde, `VAI_EnergyRefreshedAt`-Attribut) wird von `updateVaillant()` NACH
+dem erfolgreichen Haupt-Refresh aufgerufen -- ein Fehlschlag dort (auch Kontingent)
+beeinflusst niemals den Haupt-Zyklus-Status, nur die Energie-Variablen bleiben beim letzten
+Stand. `maintainDeviceEnergyVaillant()` summiert je (operation_mode, energy_type)-Kombination
+ueber ALLE `emfDeviceRoles()`-Geraete (Markus' eigener Wunsch, Forum-Post: "eine Aufteilung
+auf die beiden einzelnen Wärmepumpen wäre für mich gar nicht zwingend nötig") und befuellt:
+- `EnergieHeizenHeute`/`EnergieWarmwasserHeute`/`EnergieGesamtHeute` -- DIESELBEN Idents wie
+  bei Panasonic (`dailyEnergyHeatingID`/`-DHWID`/`-TotalID` in `GetFunctions()`, bereits
+  herstellerneutral) -- keine Vertragsaenderung noetig.
+- `WaermeHeizenHeute`/`WaermeWarmwasserHeute`/`UmweltenergieHeizenHeute`/
+  `UmweltenergieWarmwasserHeute` -- NEU, (noch) kein Verbund-Vertragsfeld dafuer (kein
+  SUITE.md-Eintrag), reine Zusatzwerte wie Systemdruck/Raumtemperatur.
+
+Zeitfenster bewusst "heute 00:00 UTC bis jetzt" (nicht lokale Mitternacht) -- passt zu den
+UTC-ausgerichteten Bucket-Grenzen der API selbst, einfacher als Zeitzonenumrechnung, minimale
+Ungenauigkeit (1-2h Versatz zur deutschen Mitternacht durch CET/CEST).
+
+Pruefstand 397 -> 419 (Aggregation ueber drei Geraete direkt getestet, inkl. der beiden
+Luecken-Faelle "kein EARNED-Kanal beim Zusatzheizer"/"kein DHW-Kanal beim Zweit-
+Waermeerzeuger"; GetFunctions()-Verkabelung gegengeprueft; Takt-Gating (frisch/abgelaufen)
+und Kontingent-Fehlerpfad der neuen updateVaillantEnergy() einzeln getestet). Sieben neue
+Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

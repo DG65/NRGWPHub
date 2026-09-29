@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.14.0 (Build 87) — 29.09.2026
+
+- **Neu: Vaillant-Energiedaten (Stromverbrauch, erzeugte Wärmemenge, Umweltenergie).** Markus (m_rothenpieler) hat mit dem 0.13.1-Testknopf die vollständige Buckets-Antwort geschickt — Aufbau bestätigt (`total_consumption` + tagesweise `data[]`, Werte in Wh, physikalisch konsistent: Stromverbrauch + Umweltenergie = erzeugte Wärmemenge). Darauf aufbauend jetzt automatisch befüllt: `EnergieHeizenHeute`/`EnergieWarmwasserHeute`/`EnergieGesamtHeute` (dieselben Vertragsfelder wie bei Panasonic, `dailyEnergyHeatingID` usw.) sowie neu `WaermeHeizenHeute`/`WaermeWarmwasserHeute`/`UmweltenergieHeizenHeute`/`UmweltenergieWarmwasserHeute` als Zusatzwerte. Summiert über alle Geräte einer Kaskade (Haupt-/Zweit-Wärmepumpe, Zusatzheizer), auf Markus' eigenen Wunsch keine geräteweise Aufteilung. Läuft in einem eigenen, deutlich selteneren Takt (aktuell stündlich) — ausdrücklich **nicht** im normalen 300/600s-Aktualisierungszyklus, ein Fehlschlag dort beeinflusst die Temperatur-/Statuswerte nicht.
+- Prüfstand: 419 Prüfungen (vorher 397), sieben neue Mutationen der Zielstellen geprüft.
+
 ## 0.13.1 (Build 86) — 29.09.2026
 
 - **EMF-Energiedaten-Test erweitert: echte Geräte- und Kanalstruktur bestätigt, Buckets-Testabruf ergänzt.** Markus (m_rothenpieler) hat den „Energiedaten testweise abrufen"-Knopf gedrückt und die echte Antwort geschickt — damit ist die Vermutung aus 0.13.0 widerlegt: Es gibt kein generisches `devices[]`-Array, sondern benannte Geräte-Rollen (`primary_heat_generator`, `electric_backup_heater`, `secondary_heat_generators[]` bei einer Kaskade). Für jeden dort gefundenen Energiekanal (bei ihm 13: Stromverbrauch/erzeugte Wärmemenge/Umweltenergie je Heizung/Warmwasser und Gerät) ruft der Testknopf jetzt zusätzlich ein kurzes Testfenster des nachgelagerten `buckets`-Endpunkts ab (letzte 3 Tage, Tages-Auflösung) und schreibt auch das in die Debugausgabe — weiterhin ohne eigene Variablen, der Aufbau einer einzelnen Buckets-Antwort ist noch nicht an echten Daten bestätigt.

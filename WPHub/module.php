@@ -90,6 +90,16 @@ class WPHub extends IPSModule
     // erneut aufgerufen werden -- siehe vaillantSystemsCache().
     private const VAI_SYSTEMS_CACHE_TTL_SECONDS = 86400;
 
+    // Wie oft die EMF-Energiedaten (Stromverbrauch/erzeugte Waerme/Umwelt-
+    // energie) neu abgerufen werden -- bewusst VIEL seltener als der Haupt-
+    // Update()-Zyklus (Markus/m_rothenpieler, Forum-Post 29.09.2026: Energie
+    // ausdruecklich nicht im 300/600s-Takt). 1 Stunde als erster, konservativer
+    // Standardwert -- passt zur DAY-Bucket-Granularitaet der API (haeufigeres
+    // Abfragen braechte keine neue Information) und zu Markus' eigener
+    // Beobachtung, dass sich das Kontingent offenbar stuendlich erneuert.
+    // Siehe updateVaillantEnergy().
+    private const VAI_ENERGY_REFRESH_INTERVAL_SECONDS = 3600;
+
     public function Create()
     {
         parent::Create();
@@ -159,6 +169,11 @@ class WPHub extends IPSModule
         // aendern sich praktisch nie). Siehe vaillantSystemsCache().
         $this->RegisterAttributeString('VAI_SystemsCache', '[]');
         $this->RegisterAttributeInteger('VAI_SystemsCacheAt', 0);
+        // Letzter erfolgreicher Energiedaten-Abruf (EMF/buckets) -- eigener,
+        // viel selterer Takt als der Haupt-Update()-Zyklus (Forum-Post,
+        // m_rothenpieler, 29.09.2026: Energie ausdruecklich NICHT im 300/600s-
+        // Takt). Siehe updateVaillantEnergy().
+        $this->RegisterAttributeInteger('VAI_EnergyRefreshedAt', 0);
         // Zuletzt automatisch ermittelte App-Version (hat Vorrang).
         $this->RegisterAttributeString('CC_AppVersionAuto', '');
         // Zuletzt gesehener Feldwert von CC_AppVersion ('#unset' = noch nie
@@ -1809,6 +1824,7 @@ class WPHub extends IPSModule
             return;
         }
         $this->refreshDiscoverySummary();
+        $this->updateVaillantEnergy($bundle, $client);
 
         $needsAttention = $this->managedByNeedsAttention();
         if (count($needsAttention) > 0) {
@@ -1819,6 +1835,134 @@ class WPHub extends IPSModule
             return;
         }
         $this->SetStatus(102);
+    }
+
+    /**
+     * Energiedaten (EMF/buckets) fuer alle bekannten Anlagen -- eigener,
+     * viel selterer Takt als der Haupt-Update()-Zyklus (siehe
+     * VAI_ENERGY_REFRESH_INTERVAL_SECONDS). Wird von updateVaillant() NACH
+     * dem erfolgreichen Haupt-Refresh aufgerufen, beeinflusst aber niemals
+     * dessen Status/Rueckgabewert -- ein Fehlschlag hier (auch Kontingent)
+     * lässt die bereits aktualisierten Temperaturen/Status unberuehrt, nur
+     * die Energie-Variablen bleiben beim letzten bekannten Stand. Ein
+     * Kontingent-Fehler setzt trotzdem dieselbe VAI_RetryNotBefore-Sperrfrist
+     * wie der Haupt-Refresh (gleiches Konto, gleiches Kontingent) -- verhindert,
+     * dass der naechste Haupt-Zyklus sofort in dieselbe Sperre laeuft.
+     */
+    private function updateVaillantEnergy(array $bundle, WPHUB_VaillantClient $client): void
+    {
+        $refreshedAt = $this->ReadAttributeInteger('VAI_EnergyRefreshedAt');
+        if ($refreshedAt > 0 && (time() - $refreshedAt) < self::VAI_ENERGY_REFRESH_INTERVAL_SECONDS) {
+            return;
+        }
+        $devices = $this->readDeviceList();
+        $anySuccess = false;
+        foreach ($devices as $d) {
+            $systemId = (string)($d['guid'] ?? '');
+            $prefix = (string)($d['prefix'] ?? '');
+            $name = (string)($d['name'] ?? 'Wärmepumpe');
+            if ($systemId === '' || $prefix === '') {
+                continue;
+            }
+            $emf = $client->getCurrentSystemEmf($bundle, $systemId);
+            if ($emf === null) {
+                if ($client->quotaRetryAfterSeconds !== null) {
+                    $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
+                    $this->LogMessage('Vaillant-API-Kontingent beim Energie-Abruf aufgebraucht -- naechster Versuch in ' . $client->quotaRetryAfterSeconds . ' s (' . $client->getLastError() . ').', KL_WARNING);
+                }
+                continue;
+            }
+            $this->maintainDeviceEnergyVaillant($prefix, $name, $client, $bundle, $systemId, $emf);
+            $anySuccess = true;
+        }
+        if ($anySuccess) {
+            $this->WriteAttributeInteger('VAI_EnergyRefreshedAt', time());
+        }
+    }
+
+    /**
+     * Fasst die heutigen Energiewerte (UTC-Mitternacht bis jetzt, DAY-
+     * Aufloesung) ueber ALLE Geraete einer Anlage zusammen (primary_heat_
+     * generator + secondary_heat_generators[] + electric_backup_heater) --
+     * auf Markus' eigenen Wunsch (Forum-Post 29.09.2026: "eine Aufteilung auf
+     * die beiden einzelnen Wärmepumpen wäre für mich gar nicht zwingend
+     * nötig"), keine Geraete-getrennten Variablen. Response-Aufbau (start_date/
+     * end_date/resolution/operation_mode/energy_type/total_consumption/data[])
+     * an Markus' echter Buckets-Antwort bestaetigt (29.09.2026) -- total_
+     * consumption ist bereits die Summe ueber das angefragte Zeitfenster, in
+     * Wh. Physik-Gegenprobe an seinen echten Werten bestanden: CONSUMED_
+     * ELECTRICAL_ENERGY + EARNED_ENVIRONMENT_ENERGY = HEAT_GENERATED (auf
+     * jedem Geraet, jeder Betriebsart).
+     *
+     * EnergieHeizenHeute/EnergieWarmwasserHeute/EnergieGesamtHeute sind
+     * dieselben Idents wie bei Panasonic (dailyEnergyHeatingID/-DHWID/
+     * -TotalID in GetFunctions(), bereits herstellerneutral) -- keine
+     * GetFunctions()-Aenderung noetig. WaermeXHeute/UmweltenergieXHeute sind
+     * NEU und (noch) nicht Teil des Verbund-Vertrags (kein SUITE.md-Feld
+     * dafuer) -- reine Zusatzwerte wie Systemdruck/Raumtemperatur.
+     */
+    private function maintainDeviceEnergyVaillant(string $prefix, string $name, WPHUB_VaillantClient $client, array $bundle, string $systemId, array $emf): void
+    {
+        $to = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $from = $to->setTime(0, 0, 0);
+
+        $sums = [];
+        foreach ($this->emfDeviceRoles($emf) as $device) {
+            $deviceUuid = (string)($device['device_uuid'] ?? '');
+            $channels = is_array($device['data'] ?? null) ? $device['data'] : [];
+            if ($deviceUuid === '') {
+                continue;
+            }
+            foreach ($channels as $channel) {
+                $opMode = (string)($channel['operation_mode'] ?? '');
+                $valType = (string)($channel['value_type'] ?? '');
+                if ($opMode === '' || $valType === '') {
+                    continue;
+                }
+                $bucket = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'DAY', $from, $to);
+                if ($bucket === null || !is_numeric($bucket['total_consumption'] ?? null)) {
+                    continue;
+                }
+                $key = $opMode . '/' . $valType;
+                $sums[$key] = ($sums[$key] ?? 0.0) + (float)$bucket['total_consumption'];
+            }
+        }
+
+        // Feste Positionsbloecke (200+), unabhaengig vom laufenden $pos-Zaehler
+        // in maintainDeviceVariablesVaillant() -- diese Funktion wird aus einem
+        // eigenen, viel selteneren Takt aufgerufen und kennt dessen aktuellen
+        // Zaehlerstand nicht. Platziert die Energie-Variablen bewusst HINTER
+        // allen Temperatur-/Statuswerten im WebFront.
+        $pos = 200;
+        $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieHeizenHeute', 'Energieverbrauch Heizen (heute)', $sums['HEATING/CONSUMED_ELECTRICAL_ENERGY'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieWarmwasserHeute', 'Energieverbrauch Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY'] ?? null, $pos++);
+        if (isset($sums['HEATING/CONSUMED_ELECTRICAL_ENERGY']) || isset($sums['DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY'])) {
+            $gesamt = ($sums['HEATING/CONSUMED_ELECTRICAL_ENERGY'] ?? 0.0) + ($sums['DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY'] ?? 0.0);
+            $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieGesamtHeute', 'Energieverbrauch gesamt (heute)', $gesamt, $pos++);
+        } else {
+            $pos++;
+        }
+        $this->maintainDailyEnergyVariable($prefix, $name, 'WaermeHeizenHeute', 'Erzeugte Wärmemenge Heizen (heute)', $sums['HEATING/HEAT_GENERATED'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'WaermeWarmwasserHeute', 'Erzeugte Wärmemenge Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/HEAT_GENERATED'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieHeizenHeute', 'Umweltenergie Heizen (heute)', $sums['HEATING/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieWarmwasserHeute', 'Umweltenergie Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
+    }
+
+    /**
+     * Legt eine Tages-Energievariable an/aktualisiert sie -- nur, wenn der
+     * Wert tatsaechlich verfuegbar ist (sonst bleibt die Variable ganz weg,
+     * gleiche Linie wie alle anderen optionalen Vaillant-Felder). Wert kommt
+     * in Wh aus der API, Variable wird in kWh gefuehrt (NRG.kWh-Profil,
+     * Verbund-Konvention).
+     */
+    private function maintainDailyEnergyVariable(string $prefix, string $name, string $ident, string $caption, ?float $valueWh, int $pos): void
+    {
+        if ($valueWh === null) {
+            return;
+        }
+        $this->MaintainVariable($prefix . $ident, $name . ': ' . $caption, VARIABLETYPE_FLOAT, 'NRG.kWh', $pos, true);
+        $this->ensureArchived($prefix . $ident);
+        $this->SetValue($prefix . $ident, $valueWh / 1000.0);
     }
 
     /**
