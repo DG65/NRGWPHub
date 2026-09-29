@@ -1873,7 +1873,7 @@ check('TestEmfEndpoint() erfolgreich: currentSystem-Rohdaten gehen per SendDebug
 // Kanaele in der echten Fixture), mit dem jeweils richtigen operationMode/
 // energyType, und die Rohantwort geht ebenfalls per SendDebug raus.
 check('TestEmfEndpoint(): ruft getDeviceDataBuckets() fuer alle 13 Kanaele der drei Geraete auf', count($fakeVaiEmfOk->bucketsCalls) === 13, count($fakeVaiEmfOk->bucketsCalls));
-check('TestEmfEndpoint(): Buckets-Aufruf nutzt DAY-Aufloesung', $fakeVaiEmfOk->bucketsCalls[0]['resolution'] === 'DAY');
+check('TestEmfEndpoint(): Buckets-Aufruf nutzt HOUR-Aufloesung (Fund 30.09.2026: DAY war bei UTC-Tag-uebergreifendem Fenster nicht geclippt)', $fakeVaiEmfOk->bucketsCalls[0]['resolution'] === 'HOUR', $fakeVaiEmfOk->bucketsCalls[0]['resolution']);
 check('TestEmfEndpoint(): Buckets-Aufruf uebernimmt operationMode/energyType unveraendert aus dem Kanal', $fakeVaiEmfOk->bucketsCalls[0]['operationMode'] === 'DOMESTIC_HOT_WATER' && $fakeVaiEmfOk->bucketsCalls[0]['energyType'] === 'CONSUMED_ELECTRICAL_ENERGY');
 $bucketsDebugEntries = array_values(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/emf-buckets-Rohdaten'));
 check('TestEmfEndpoint(): Buckets-Rohdaten gehen per SendDebug raus, einer je Kanal (13x)', count($bucketsDebugEntries) === 13, count($bucketsDebugEntries));
@@ -1990,21 +1990,52 @@ $readAttrInt->setAccessible(true);
 // in der Fixture nachgebildet, keine erfundene Symmetrie.
 $maintainDeviceEnergyVaillant = new ReflectionMethod(WPHub::class, 'maintainDeviceEnergyVaillant');
 $maintainDeviceEnergyVaillant->setAccessible(true);
+
+// Fund 30.09.2026 (Markus + Dashboard-Sitzung, echter Rohdump "dump (7).txt"):
+// total_consumption ist bei einem Fenster, das mehrere UTC-Tage beruehrt,
+// NICHT auf das Fenster geclippt -- die Fixtures bilden das jetzt nach
+// (siehe Klassenkommentar an maintainDeviceEnergyVaillant()): 'data'-Eintraege
+// mit echtem start_date statt eines einzelnen total_consumption-Werts, ein
+// Kanal bewusst mit einem "Gift"-Eintrag VOR dem Fenster (muss rausgefiltert
+// werden) UND einem irrefuehrend hohen total_consumption (muss ignoriert
+// werden).
+$vaillantTodayWindowUtcForFixture = new ReflectionMethod(WPHub::class, 'vaillantTodayWindowUtc');
+$vaillantTodayWindowUtcForFixture->setAccessible(true);
+[$fixtureFrom] = $vaillantTodayWindowUtcForFixture->invoke($mod);
+$fixtureNow = $fixtureFrom->modify('+1 hour');
+$fixtureBeforeWindow = $fixtureFrom->modify('-1 day');
+function vaiHourBucket(float $valueWh, \DateTimeImmutable $start, ?float $misleadingTotalConsumption = null): array
+{
+    return [
+        'total_consumption' => $misleadingTotalConsumption ?? $valueWh,
+        'data' => [['start_date' => $start->format('Y-m-d\TH:i:s\Z'), 'value' => $valueWh]],
+    ];
+}
 $fakeVaiEnergy = new FakeVaillant('germany');
 $fakeVaiEnergy->bucketsByChannel = [
-    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 2000],
-    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 3000],
-    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/EARNED_ENVIRONMENT_ENERGY' => ['total_consumption' => 10000],
-    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/EARNED_ENVIRONMENT_ENERGY' => ['total_consumption' => 8000],
-    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/HEAT_GENERATED' => ['total_consumption' => 12000],
-    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/HEAT_GENERATED' => ['total_consumption' => 11000],
-    '69c224b0-a96a-53b5-86f5-27e83bc58cad/DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 0],
-    '69c224b0-a96a-53b5-86f5-27e83bc58cad/HEATING/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 1000],
-    '69c224b0-a96a-53b5-86f5-27e83bc58cad/DOMESTIC_HOT_WATER/HEAT_GENERATED' => ['total_consumption' => 0],
-    '69c224b0-a96a-53b5-86f5-27e83bc58cad/HEATING/HEAT_GENERATED' => ['total_consumption' => 1000],
-    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/CONSUMED_ELECTRICAL_ENERGY' => ['total_consumption' => 8000],
-    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/EARNED_ENVIRONMENT_ENERGY' => ['total_consumption' => 30000],
-    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/HEAT_GENERATED' => ['total_consumption' => 38000],
+    // Absichtlich mit einem Eintrag VOR dem Fenster (5000 Wh, muss raus-
+    // gefiltert werden) UND einer irrefuehrenden total_consumption (7000,
+    // muss ignoriert werden) -- erwartete Summe bleibt 2000 (nur der
+    // Eintrag ab $from), exakt das Muster aus dem echten Fund.
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/CONSUMED_ELECTRICAL_ENERGY' => [
+        'total_consumption' => 7000,
+        'data' => [
+            ['start_date' => $fixtureBeforeWindow->format('Y-m-d\TH:i:s\Z'), 'value' => 5000],
+            ['start_date' => $fixtureFrom->format('Y-m-d\TH:i:s\Z'), 'value' => 2000],
+        ],
+    ],
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY' => vaiHourBucket(3000, $fixtureNow),
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/EARNED_ENVIRONMENT_ENERGY' => vaiHourBucket(10000, $fixtureNow),
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/EARNED_ENVIRONMENT_ENERGY' => vaiHourBucket(8000, $fixtureNow),
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/HEATING/HEAT_GENERATED' => vaiHourBucket(12000, $fixtureNow),
+    '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f/DOMESTIC_HOT_WATER/HEAT_GENERATED' => vaiHourBucket(11000, $fixtureNow),
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY' => vaiHourBucket(0, $fixtureNow),
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/HEATING/CONSUMED_ELECTRICAL_ENERGY' => vaiHourBucket(1000, $fixtureNow),
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/DOMESTIC_HOT_WATER/HEAT_GENERATED' => vaiHourBucket(0, $fixtureNow),
+    '69c224b0-a96a-53b5-86f5-27e83bc58cad/HEATING/HEAT_GENERATED' => vaiHourBucket(1000, $fixtureNow),
+    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/CONSUMED_ELECTRICAL_ENERGY' => vaiHourBucket(8000, $fixtureNow),
+    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/EARNED_ENVIRONMENT_ENERGY' => vaiHourBucket(30000, $fixtureNow),
+    '133bf9e8-9090-52d3-8366-bd5609e348b2/HEATING/HEAT_GENERATED' => vaiHourBucket(38000, $fixtureNow),
 ];
 $setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
 $energyBundle = ['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600];
@@ -2019,6 +2050,8 @@ check('Energie: UmweltenergieWarmwasserHeute = 8.0 kWh (nur primary_heat_generat
 check('Energie: alle Variablen nutzen NRG.kWh', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['profile'] ?? '') === 'NRG.kWh');
 check('Energie: EnergieHeizenHeute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['id']] ?? false) === true);
 check('Energie: ruft getDeviceDataBuckets() fuer alle 13 Kanaele der drei Geraete auf (kein Kanal ausgelassen/doppelt)', count($fakeVaiEnergy->bucketsCalls) === 13, count($fakeVaiEnergy->bucketsCalls));
+check('Energie: Buckets-Aufruf nutzt HOUR-Aufloesung (Fund 30.09.2026: DAY war bei UTC-Tag-uebergreifendem Fenster nicht geclippt)', $fakeVaiEnergy->bucketsCalls[0]['resolution'] === 'HOUR', $fakeVaiEnergy->bucketsCalls[0]['resolution']);
+check('Energie: "Gift"-Eintrag VOR dem Fenster (5000 Wh) wird rausgefiltert, irrefuehrende total_consumption (7000) ignoriert', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['value'] ?? null) === 11.0);
 
 // Fund 30.09.2026 (m_rothenpieler, 0,03 statt 0,9 kWh "Heizen heute"): die
 // Rohdaten des ECHTEN automatischen Energie-Takts waren bisher gar nicht

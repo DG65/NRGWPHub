@@ -1053,6 +1053,72 @@ Pruefung, dass das echte `index`-Feld [255] und nicht die Array-Position im
 Text steht, und eines direkten Tests fuer die state/configuration-Merge-
 Reihenfolge). Fuenf neue Mutationen gefangen.
 
+## Fix: "Heizen heute" -- Ursache endlich bestaetigt, DAY-Buckets nicht geclippt (0.15.1, Forum-Post + Dashboard-Weiterleitung, 30.09.2026)
+
+Die seit 0.14.1 offene 0,03-/2,10-vs-0,9-/1,0-kWh-Diskrepanz (siehe 0.14.2-
+Abschnitt oben, "noch nicht bestaetigt") ist jetzt geklaert -- Markus UND die
+Dashboard-Sitzung (Forum-Fund weitergereicht) haben unabhaengig denselben
+echten Rohdump geliefert (`dump (7).txt`, 30.09.2026, ueber den mit 0.14.2
+neu eingefuehrten `Vaillant/emf-buckets-Rohdaten`-Debug-Weg gewonnen).
+
+**Root Cause, am Rohdump bestaetigt, kein Rateweg mehr:** Bei `resolution=DAY`
+ist `total_consumption` schlicht die Summe ALLER `data[]`-Tages-Buckets, die
+das Anfragefenster ueberhaupt BERUEHRT -- NICHT auf das Fenster geclippt.
+Da unser "heute"-Fenster an Ortszeit-Mitternacht beginnt (in Deutschland z. B.
+22:00 UTC des Vortags), beruehrt es IMMER auch den kompletten vorherigen
+UTC-Tag. Konkreter Beleg aus dem Dump (primary_heat_generator/HEATING/
+CONSUMED_ELECTRICAL_ENERGY, Fenster 28.09. 22:00 UTC bis 29.09. 11:52 UTC):
+
+```
+data: [
+  {start: 2026-09-28T00:00:00Z, end: 2026-09-29T00:00:00Z, value: 2000},
+  {start: 2026-09-29T00:00:00Z, end: 2026-09-30T00:00:00Z, value: 0}
+]
+total_consumption: 2000
+```
+
+Der GANZE 28.09. (2000 Wh) floss ein, obwohl von ihm nur die letzten 2 Stunden
+(ab 22:00 Uhr) zu "heute" (Ortszeit) gehoeren -- exakt der Mechanismus, den
+Markus in seiner allerersten Nachricht (0.14.2-Abschnitt) vermutet hatte,
+nur mit staerkerer Auswirkung als zunaechst angenommen (nicht nur ein
+fehlendes Stueck, sondern ein KOMPLETT ZUSAETZLICHER, ungeclippter Tag).
+
+**Fix:** `resolution` von `DAY` auf `HOUR` umgestellt (sowohl im echten Takt
+als auch im manuellen `TestEmfEndpoint()`-Knopf, weiterhin dieselbe Stelle
+`vaillantTodayWindowUtc()` fuer beide). Alle bisher unterstuetzten Laender
+(`VAILLANT_COUNTRIES`, siehe `vaillantLocalTimezone()`) haben einen
+GANZZAHLIGEN Stunden-Versatz zu UTC (CET/CEST +1/+2, GMT/BST +0/+1) --
+Ortszeit-Mitternacht faellt deshalb IMMER exakt auf eine UTC-Stunden-Grenze,
+es gibt bei HOUR-Aufloesung also (anders als bei DAY) keinen Bucket mehr, der
+das Fenster nur TEILWEISE beruehrt. Zusaetzlich wird `total_consumption`
+grundsaetzlich NICHT mehr vertraut (haette bei DAY genau das Problem
+verursacht) -- `maintainDeviceEnergyVaillant()` summiert stattdessen die
+einzelnen `data[]`-Eintraege selbst, defensiv zusaetzlich auf `start_date >=
+$from` gefiltert (`parseVaillantIsoInstant()`, neu) -- ein Sicherheitsnetz
+fuer den Fall, dass ein kuenftiges Land/eine Sonderregel doch mal einen
+Bucket VOR dem Fenster mitliefert, genau das Muster, das bei DAY beobachtet
+wurde.
+
+**Store-Sync-Nebenfund (Dashboard-Weiterleitung, dasselbe Forum-Update):**
+Markus meldete zusaetzlich, der Symcon-Store zeige zwar 0.15.0/Build 90 an,
+seine Instanz bleibe aber auf 0.14.2/#89 (neuer Knopf fehlt, "Erneut
+installieren" ohne Wirkung). Gegengeprueft: `origin/beta` UND
+`origin/ems-integration` hatten zum Meldezeitpunkt bereits korrekt 0.15.0/
+Build 90 samt neuem `VAI_CapabilitiesButton` in `form.json` -- kein Fehler
+auf unserer Seite, sondern das laengst bekannte Muster aus
+[[nrg-stack-modulverwaltung-instabilitaet]] (Symcon-seitiger Sync-Fehler,
+NICHT durch uns behebbar; betrifft Markus' eigene Installation, nicht
+Dietmars System -- die dortigen MC_-Diagnosebefehle laufen nur lokal bei
+Dietmar).
+
+Pruefstand 438 -> 440 (Fixtures auf echte `data[]`-Buckets umgestellt statt
+eines einzelnen `total_consumption`-Werts, inkl. eines bewusst "vergifteten"
+Kanals mit einem Eintrag VOR dem Fenster [5000 Wh, muss rausgefiltert werden]
+und einer irrefuehrend hohen `total_consumption` [7000, muss ignoriert
+werden] -- erwartete Summe bleibt 2000, exakt das Muster aus dem echten
+Fund). Vier neue Mutationen gefangen (Aufloesung an beiden Stellen,
+`total_consumption` wieder vertraut, Clip-Filter entfernt).
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

@@ -1601,17 +1601,16 @@ class WPHub extends IPSModule
      * echten Takt UND TestEmfEndpoint() als manueller Testabruf), damit
      * beide IMMER dieselbe Anfrage stellen. Fund 30.09.2026 (m_rothenpieler,
      * Forum-Post): WPHub zeigte fuer "Heizen heute" 0,03 kWh, die
-     * myVAILLANT-App 0,9 kWh -- Warmwasser passte exakt. Markus' eigene
-     * Vermutung: bei resolution=DAY sind die API-Buckets UTC-tagesweise
-     * ausgerichtet, ein an Ortszeit-Mitternacht beginnendes Fenster ueberlappt
-     * im Sommer (CEST, UTC+2) zwei UTC-Tage (die ersten zwei Stunden des
-     * deutschen "heute" liegen noch im GESTRIGEN UTC-Bucket) -- NOCH NICHT
-     * bestaetigt, ob total_consumption diesen Fall korrekt behandelt. Vorher
-     * lief TestEmfEndpoint() mit einem eigenen "letzte 3 Tage"-Fenster, das
-     * dieses Randproblem gar nicht zeigen konnte (mehrere volle UTC-Tage,
-     * kein angeschnittener). Jetzt dasselbe Fenster wie der echte Takt --
-     * ein Klick liefert damit exakt die Rohdaten, die die falsche
-     * Heizen-heute-Zahl erzeugt haben.
+     * myVAILLANT-App 0,9 kWh -- Warmwasser passte exakt. Ein an Ortszeit-
+     * Mitternacht beginnendes Fenster ueberlappt im Sommer (CEST, UTC+2)
+     * zwei UTC-Tage -- CONFIRMED 30.09.2026 (echter Rohdump "dump (7).txt"):
+     * bei resolution=DAY ist total_consumption NICHT auf das Fenster geclippt,
+     * siehe maintainDeviceEnergyVaillant()-Kommentar fuer den Fix (resolution
+     * HOUR + eigene Summierung). Vorher lief TestEmfEndpoint() mit einem
+     * eigenen "letzte 3 Tage"-Fenster, das dieses Randproblem gar nicht
+     * zeigen konnte (mehrere volle UTC-Tage, kein angeschnittener). Jetzt
+     * dasselbe Fenster wie der echte Takt -- ein Klick liefert damit exakt
+     * die Rohdaten, die der echte Takt auch verwendet.
      */
     private function vaillantTodayWindowUtc(): array
     {
@@ -1620,6 +1619,25 @@ class WPHub extends IPSModule
             ->setTime(0, 0, 0)
             ->setTimezone(new \DateTimeZone('UTC'));
         return [$from, $to];
+    }
+
+    /**
+     * ISO8601-Zeitstempel (wie in den Buckets-data[]-Eintraegen, z. B.
+     * "2026-09-28T22:00:00Z") in eine DateTimeImmutable-Instanz -- liefert
+     * NULL statt einer Exception bei fehlendem/ungueltigem Wert (Rohdaten
+     * einer externen API, nie ungeprueft vertrauen). Siehe
+     * maintainDeviceEnergyVaillant() fuer die Verwendung.
+     */
+    private function parseVaillantIsoInstant(?string $iso): ?\DateTimeImmutable
+    {
+        if ($iso === null || $iso === '') {
+            return null;
+        }
+        try {
+            return new \DateTimeImmutable($iso);
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /** Token-Buendel aus dem Vaillant-Attribut, null wenn (noch) keines da ist. */
@@ -1775,7 +1793,10 @@ class WPHub extends IPSModule
      * Randfall (Fund m_rothenpieler, Forum-Post: "Heizen heute" 0,03 statt
      * 0,9 kWh laut myVAILLANT-App) gar nicht zeigen konnte. Jetzt liefert
      * ein Klick exakt die Rohdaten, die der naechste echte Energie-Takt
-     * auch verwenden wuerde.
+     * auch verwenden wuerde -- seit 30.09.2026 auch dieselbe Aufloesung
+     * (HOUR statt DAY, siehe Klassenkommentar an maintainDeviceEnergyVaillant()
+     * fuer die Begruendung: DAY-Buckets waren bei einem UTC-Tag-uebergreifenden
+     * Fenster nicht auf das Fenster geclippt).
      */
     public function TestEmfEndpoint(): void
     {
@@ -1822,7 +1843,7 @@ class WPHub extends IPSModule
                     if ($opMode === '' || $valType === '') {
                         continue;
                     }
-                    $buckets = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'DAY', $from, $to);
+                    $buckets = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'HOUR', $from, $to);
                     if ($buckets !== null) {
                         $this->SendDebug(
                             'Vaillant/emf-buckets-Rohdaten',
@@ -2157,6 +2178,32 @@ class WPHub extends IPSModule
      * selbst nach UTC zurueckgewandelt (getDeviceDataBuckets() formatiert
      * IMMER mit literalem "Z"-Suffix, erwartet also UTC-Instanzen).
      *
+     * Fund 30.09.2026 (Markus + Dashboard-Sitzung, echter Rohdump "dump (7).txt"):
+     * auch nach dem Ortszeit-Fix wich "Heizen heute" weiter ab (diesmal zu
+     * VIEL: 2,10 statt 1,0 kWh). Ursache am echten Rohdump bestaetigt, KEIN
+     * Rateweg mehr: bei resolution=DAY ist total_consumption schlicht die
+     * Summe ALLER data[]-Tages-Buckets, die das Anfragefenster ueberhaupt
+     * BERUEHRT -- nicht auf das Fenster geclippt. Da unser Fenster an
+     * Ortszeit-Mitternacht beginnt (in Deutschland z. B. 22:00 UTC des
+     * VORTAGS), beruehrt es IMMER auch den kompletten vorherigen UTC-Tag,
+     * dessen GESAMTER Tageswert (nicht nur der Anteil ab 22:00 Uhr) dann mit
+     * einflieszt. Beispiel aus dem echten Dump: data=[{28.09. 00-24 Uhr UTC,
+     * 2000 Wh}, {29.09. 00 Uhr UTC bis jetzt, 0 Wh}], total_consumption=2000
+     * -- der GANZE 28.09. floss ein, obwohl von ihm nur die letzten 2 Stunden
+     * zu "heute" (Ortszeit) gehoeren.
+     * Fix: resolution auf HOUR (statt DAY) -- alle bisher unterstuetzten
+     * Laender (VAILLANT_COUNTRIES, siehe vaillantLocalTimezone()) haben einen
+     * GANZZAHLIGEN Stunden-Versatz zu UTC (CET/CEST +1/+2, GMT/BST +0/+1),
+     * Ortszeit-Mitternacht faellt deshalb IMMER exakt auf eine UTC-Stunden-
+     * Grenze -- anders als bei DAY-Aufloesung gibt es also keinen Bucket, der
+     * das Fenster nur TEILWEISE beruehrt. total_consumption wird trotzdem
+     * NICHT mehr vertraut (haette bei DAY genau das Problem verursacht) --
+     * stattdessen werden die einzelnen data[]-Eintraege selbst aufsummiert,
+     * zusaetzlich defensiv auf start_date >= $from gefiltert (Sicherheitsnetz,
+     * falls ein kuenftiges Land/eine Sonderregel doch mal einen Bucket VOR
+     * dem Fenster mitliefert -- exakt das Muster, das bei DAY beobachtet
+     * wurde).
+     *
      * EnergieHeizenHeute/EnergieWarmwasserHeute/EnergieGesamtHeute sind
      * dieselben Idents wie bei Panasonic (dailyEnergyHeatingID/-DHWID/
      * -TotalID in GetFunctions(), bereits herstellerneutral) -- keine
@@ -2181,25 +2228,36 @@ class WPHub extends IPSModule
                 if ($opMode === '' || $valType === '') {
                     continue;
                 }
-                $bucket = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'DAY', $from, $to);
+                $bucket = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'HOUR', $from, $to);
                 if ($bucket === null) {
                     continue;
                 }
                 // Fund 30.09.2026 (m_rothenpieler): "Heizen heute" wich von der
-                // myVAILLANT-App ab (0,03 statt 0,9 kWh) -- Rohdaten gehen jetzt
-                // auch aus dem ECHTEN Takt per SendDebug raus (bisher nur beim
-                // manuellen TestEmfEndpoint()), damit sich sowas kuenftig ohne
-                // Extra-Klick nachvollziehen laesst.
+                // myVAILLANT-App ab -- Rohdaten gehen jetzt auch aus dem ECHTEN
+                // Takt per SendDebug raus (bisher nur beim manuellen
+                // TestEmfEndpoint()), damit sich sowas kuenftig ohne Extra-Klick
+                // nachvollziehen laesst.
                 $this->SendDebug(
                     'Vaillant/emf-energie-buckets-Rohdaten',
                     $role . '/' . $opMode . '/' . $valType . ': ' . json_encode($bucket, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                     0
                 );
-                if (!is_numeric($bucket['total_consumption'] ?? null)) {
-                    continue;
+                // total_consumption wird bewusst NICHT verwendet (siehe
+                // Klassenkommentar oben, Fund 30.09.2026: bei DAY-Aufloesung war
+                // das die Summe UNGECLIPPTER kompletter Tages-Buckets) --
+                // stattdessen die einzelnen data[]-Stundenwerte selbst
+                // aufsummieren, auf $from geclippt.
+                $entries = is_array($bucket['data'] ?? null) ? $bucket['data'] : [];
+                $channelSum = 0.0;
+                foreach ($entries as $entry) {
+                    $entryStart = $this->parseVaillantIsoInstant($entry['start_date'] ?? null);
+                    if ($entryStart === null || $entryStart < $from || !is_numeric($entry['value'] ?? null)) {
+                        continue;
+                    }
+                    $channelSum += (float)$entry['value'];
                 }
                 $key = $opMode . '/' . $valType;
-                $sums[$key] = ($sums[$key] ?? 0.0) + (float)$bucket['total_consumption'];
+                $sums[$key] = ($sums[$key] ?? 0.0) + $channelSum;
             }
         }
 
