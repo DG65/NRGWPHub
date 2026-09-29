@@ -1901,6 +1901,81 @@ $emfResultFail = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['caption']
 check('TestEmfEndpoint() bei Fehlschlag: Fehlermeldung statt stiller Leere', $emfResultFail !== null && strpos($emfResultFail, '❌') === 0, $emfResultFail ?? 'null');
 unset($GLOBALS['ips']['vaillantClientFactory']);
 
+// VaillantCapabilities() (Markus' Wunsch, Forum-Post 30.09.2026: reine
+// Parameter-/Faehigkeitsuebersicht VOR jeder Schreibfunktion, ausdruecklich
+// OHNE jeden POST/PUT/PATCH-Aufruf). Verkabelungs-Pruefung wie bei
+// TestEmfEndpoint(): kein Login/keine Anlage -> Fehlermeldung, kein API-
+// Aufruf; Erfolg -> SendDebug + Erfolgsmeldung, Inhalte anhand von Markus'
+// echter tli-Fixture ($vaiSystem, oben) und cbehams echter vrc700-Fixture
+// ($vaiSystemVrc700, oben) gegengeprueft.
+$GLOBALS['ips']['debug'] = [];
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$setAttr->invoke($mod, 'VAI_Token', '');
+$mod->VaillantCapabilities();
+$capResultNoLogin = $GLOBALS['ips']['formFieldUpdates']['VAI_CapabilitiesResult']['caption'] ?? null;
+check('VaillantCapabilities() ohne Anmeldung: Fehlermeldung statt Absturz', $capResultNoLogin !== null && strpos($capResultNoLogin, '❌') === 0, $capResultNoLogin ?? 'null');
+check('VaillantCapabilities() ohne Anmeldung: kein Debug-Eintrag', !array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/steuerungsfaehigkeiten'));
+
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
+$writeAttrInt->invoke($mod, 'VAI_SystemsCacheAt', 0);
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$fakeVaiCapNoHomes = new FakeVaillant('germany');
+$fakeVaiCapNoHomes->homesResult = [];
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiCapNoHomes) {
+    return $fakeVaiCapNoHomes;
+};
+$mod->VaillantCapabilities();
+$capResultNoHomes = $GLOBALS['ips']['formFieldUpdates']['VAI_CapabilitiesResult']['caption'] ?? null;
+check('VaillantCapabilities() ohne bekannte Anlage: Fehlermeldung', $capResultNoHomes !== null && strpos($capResultNoHomes, '❌') === 0, $capResultNoHomes ?? 'null');
+
+$writeAttrInt->invoke($mod, 'VAI_SystemsCacheAt', 0);
+$GLOBALS['ips']['debug'] = [];
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$fakeVaiCapOk = new FakeVaillant('germany');
+$fakeVaiCapOk->homesResult = [
+    ['systemId' => 'sys-cap-tli', 'homeName' => 'Testhaus tli'],
+    ['systemId' => 'sys-cap-vrc700', 'homeName' => 'Testhaus vrc700'],
+];
+$fakeVaiCapOk->controlIdentifiers = ['sys-cap-tli' => 'tli', 'sys-cap-vrc700' => 'vrc700'];
+$fakeVaiCapOk->systemsById = ['sys-cap-tli' => $vaiSystem];
+$fakeVaiCapOk->systemsVrc700ById = ['sys-cap-vrc700' => $vaiSystemVrc700];
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiCapOk) {
+    return $fakeVaiCapOk;
+};
+$mod->VaillantCapabilities();
+$capResultOk = $GLOBALS['ips']['formFieldUpdates']['VAI_CapabilitiesResult']['caption'] ?? null;
+check('VaillantCapabilities() erfolgreich: Erfolgsmeldung, nichts geschrieben', $capResultOk !== null && strpos($capResultOk, '✅') === 0 && strpos($capResultOk, 'NICHTS geschrieben') !== false, $capResultOk ?? 'null');
+// $vaiSystem (tli): 1 Zone + 1 Heizkreis + 1 Warmwasser = 3 Elemente.
+// $vaiSystemVrc700: 2 Zonen + 2 Heizkreise + 1 Warmwasser = 5 Elemente.
+check('VaillantCapabilities() erfolgreich: Elementzahl beider Anlagen zusammen (3+5=8) in der Meldung', strpos($capResultOk, '8 Element') !== false, $capResultOk);
+check('VaillantCapabilities() erfolgreich: 2 Anlagen in der Meldung', strpos($capResultOk, 'aus 2 Anlage') !== false, $capResultOk);
+
+$capDebugEntries = array_values(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/steuerungsfaehigkeiten'));
+check('VaillantCapabilities() erfolgreich: ein Debug-Eintrag je Anlage (2x)', count($capDebugEntries) === 2, count($capDebugEntries));
+$capTextTli = ($capDebugEntries[0]['text'] ?? '') . "\n" . ($capDebugEntries[1]['text'] ?? '');
+check('VaillantCapabilities(): Warmwasser-Sollwert-Wert (50, aus tapping_setpoint) im Text', strpos($capTextTli, 'Warmwasser-Sollwert: aktueller Wert 50') !== false, $capTextTli);
+check('VaillantCapabilities(): echtes index-Feld (255) fuer Warmwasser im Text, NICHT die Array-Position', strpos($capTextTli, 'echtes index-Feld: 255') !== false, $capTextTli);
+check('VaillantCapabilities(): Heizkurve als "NICHT vorhanden" markiert (Fixtures haben kein heating_curve-Feld)', strpos($capTextTli, 'Heizkurve: in dieser Antwort NICHT vorhanden') !== false, $capTextTli);
+check('VaillantCapabilities(): tli-Schreib-Endpunkt-Referenz fuer die Heizkurve im Text', strpos($capTextTli, 'PATCH circuit/{i}/heating-curve {heatingCurve}') !== false, $capTextTli);
+check('VaillantCapabilities(): DHW-Sollwert-Bereich als API-Feld deklariert, aber als fehlend markiert (keine min_setpoint/max_setpoint in den Fixtures)', strpos($capTextTli, 'von der API selbst geliefert, aber min_setpoint/max_setpoint in dieser Antwort nicht vorhanden') !== false, $capTextTli);
+unset($GLOBALS['ips']['vaillantClientFactory']);
+
+// logVaillantCapabilities(): state/configuration-Merge-Reihenfolge direkt
+// getestet -- bei einem ueberlappenden Feldnamen (hier bewusst konstruiert,
+// in den echten Fixtures oben gibt es keine Ueberlappung) muss der
+// state-Wert (Ist-/Live-Wert) gewinnen, nicht der configuration-Wert, siehe
+// Kommentar an logVaillantCapabilities().
+$logVaillantCapabilities = new ReflectionMethod(WPHub::class, 'logVaillantCapabilities');
+$logVaillantCapabilities->setAccessible(true);
+$GLOBALS['ips']['debug'] = [];
+$overlapSystem = [
+    'configuration' => ['dhw' => [['index' => 255, 'tapping_setpoint' => 999]]],
+    'state' => ['dhw' => [['index' => 255, 'tapping_setpoint' => 50]]],
+];
+$logVaillantCapabilities->invoke($mod, 'sys-overlap', 'tli', $overlapSystem);
+$overlapDebug = array_values(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/steuerungsfaehigkeiten'));
+check('logVaillantCapabilities(): bei ueberlappendem Feld gewinnt state (50) vor configuration (999)', isset($overlapDebug[0]) && strpos($overlapDebug[0]['text'], 'Warmwasser-Sollwert: aktueller Wert 50') !== false, $overlapDebug[0]['text'] ?? 'null');
+
 $readAttrInt = new ReflectionMethod(WPHub::class, 'ReadAttributeInteger');
 $readAttrInt->setAccessible(true);
 

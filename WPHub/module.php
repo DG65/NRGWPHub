@@ -1842,6 +1842,215 @@ class WPHub extends IPSModule
     }
 
     /**
+     * Statische Referenztabelle: welche Vaillant-Steuerfunktionen es laut
+     * Quellcode gibt, welcher PATCH/POST/DELETE-Endpunkt dafuer je Regler-Typ
+     * zustaendig waere und woher der Wertebereich stammt. Rein informativ --
+     * wird NIRGENDS fuer einen echten Schreibaufruf verwendet (den gibt es in
+     * WPHub Stand 30.09.2026 nicht). Quellen (30.09.2026 gegengelesen, siehe
+     * Markus' Wunsch nach einer vollstaendigen Uebersicht):
+     * - github.com/signalkraft/myPyllant (api.py/models.py/enums.py) -- die
+     *   von Home Assistant genutzte, aktiv gepflegte Referenzbibliothek.
+     * - github.com/TA2k/ioBroker.vaillant (main.js) -- unabhaengige zweite
+     *   Implementierung, an ECHTER vrc700-Hardware nachgebessert (Issue #112)
+     *   -- bestaetigt insbesondere die Index-Falle unten unabhaengig von
+     *   myPyllant.
+     * 'range' ohne weiteren Zusatz = aus der Referenz-Implementierung
+     * (Home-Assistant-UI-Grenzwert), NICHT von der Vaillant-API selbst
+     * geliefert und an KEINER Anlage in diesem Forum bisher bestaetigt.
+     * Die einzige Ausnahme ist DHW min_setpoint/max_setpoint -- das liefert
+     * laut myPyllant-Modell (DomesticHotWater-Klasse) die API selbst mit,
+     * wird unten separat als 'apiRange' behandelt.
+     */
+    private function vaillantCapabilityReference(): array
+    {
+        return [
+            'zone' => [
+                ['caption' => 'Betriebsart Heizen', 'field' => 'operation_mode_heating', 'tli' => 'PATCH zones/{i}/heating-operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH zone/{i}/heating/operation-mode {operationMode: DAY|AUTO|SET_BACK|OFF}', 'range' => 'Enum, siehe Endpunkt'],
+                ['caption' => 'Manueller Sollwert (Raumtemperatur)', 'field' => 'desired_room_temperature_setpoint_heating', 'tli' => 'PATCH zones/{i}/manual-mode-setpoint {setpoint, type:HEATING}', 'vrc700' => 'PATCH zone/{i}/heating/comfort-room-temperature {comfortRoomTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
+                ['caption' => 'Absenktemperatur', 'field' => 'set_back_temperature', 'tli' => 'PATCH zones/{i}/set-back-temperature {setBackTemperature}', 'vrc700' => 'PATCH zone/{i}/heating/set-back-temperature {setBackTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
+                ['caption' => 'Quick Veto (befristete Raumtemperatur-Übersteuerung)', 'field' => 'desired_room_temperature_setpoint', 'tli' => 'POST/PATCH zones/{i}/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'vrc700' => 'POST/PATCH zone/{i}/heating/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'range' => 'Dauer laut Referenz-Client bis 12 h, Standard 3 h'],
+            ],
+            'circuit' => [
+                ['caption' => 'Heizkurve', 'field' => 'heating_curve', 'tli' => 'PATCH circuit/{i}/heating-curve {heatingCurve}', 'vrc700' => 'PATCH circuit/{i}/heating-curve {setPoint}', 'range' => '0,1–5,0, Schritt 0,05'],
+                ['caption' => 'Mindest-Vorlauftemperatur', 'field' => 'min_flow_temperature_setpoint', 'tli' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'vrc700' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'range' => '0–100 °C, Schritt 0,1'],
+                ['caption' => 'Heizgrenztemperatur', 'field' => 'heat_demand_limited_by_outside_temperature', 'tli' => 'POST circuit/{i}/heat-demand-limited-by-outside-temperature {heatDemandLimitedByOutsideTemperature}', 'vrc700' => 'POST .../system-control/v1/systems/{sys}/circuits/{i}/heat-demand-limited-by-outside-temperature {setpoint}', 'range' => '0–100 °C, Schritt 0,1'],
+            ],
+            'dhw' => [
+                ['caption' => 'Warmwasser-Sollwert', 'field' => 'tapping_setpoint', 'tli' => 'PATCH domestic-hot-water/{index}/temperature {setpoint}', 'vrc700' => 'PATCH domestic-hot-water/{index}/tapping-setpoint {setpoint}', 'range' => 'apiRange'],
+                ['caption' => 'Betriebsart Warmwasser', 'field' => 'operation_mode_dhw', 'tli' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: DAY|AUTO|OFF}', 'range' => 'Enum, siehe Endpunkt'],
+                ['caption' => 'Warmwasser-Boost (einmalige Sonderladung)', 'field' => 'current_special_function', 'tli' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'vrc700' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'range' => 'kein Parameter (nur an/aus)'],
+            ],
+        ];
+    }
+
+    /**
+     * Reiner Lese-Ueberblick ueber die Steuerungsfaehigkeiten EINER Anlage
+     * (Markus' Wunsch, Forum-Post 30.09.2026 -- erster Schritt eines
+     * vorsichtigen mehrstufigen Ablaufs zu einer spaeteren Vaillant-Steuerung,
+     * "erst erkennen, dann schreiben"). Macht KEINEN einzigen POST/PUT/PATCH/
+     * DELETE-Aufruf -- nur $system (bereits ueber getSystem()/getSystemVrc700()
+     * gelesen) wird ausgewertet und die statische Referenztabelle daneben
+     * gelegt. Gibt die Anzahl protokollierter Elemente (Zonen+Heizkreise+
+     * Warmwasser) zurueck.
+     *
+     * WICHTIGER SICHERHEITSHINWEIS fuer eine spaetere Schreibfunktion (NICHT
+     * hier umgesetzt, nur dokumentiert): sowohl myPyllant (System.merge_object()
+     * fasst state/configuration/properties je Eintrag ueber dessen EIGENES
+     * "index"-Feld zusammen, NICHT ueber die Array-Position) als auch TA2k/
+     * ioBroker.vaillant (eigener, an echter vrc700-Hardware nachgebesserter
+     * Fix, Issue #112) bestaetigen UNABHAENGIG voneinander: Die Array-Position
+     * einer Zone/eines Heizkreises in state.zones[]/state.circuits[] ist NICHT
+     * zuverlaessig derselbe numerische Index, den ein Schreib-Endpunkt in der
+     * URL erwartet -- und der Zusammenhang unterscheidet sich zwischen tli und
+     * vrc700. Bei Warmwasser ist der reale Index haeufig der Sonderwert 255
+     * (an Markus' echten Rohdaten UND am ioBroker-Adapter unabhaengig
+     * bestaetigt), nicht 0. Deshalb wird unten je Element IMMER zusaetzlich
+     * das eigene 'index'-Feld ausgegeben -- ein kuenftiger Schreibzugriff MUSS
+     * dieses Feld verwenden, niemals die Array-Position.
+     */
+    private function logVaillantCapabilities(string $systemId, string $controlIdentifier, array $system): int
+    {
+        $reference = $this->vaillantCapabilityReference();
+        $lines = [];
+        $count = 0;
+
+        $entityGroups = [
+            'zone'    => ['state.zones' => ['state', 'zones'], 'configuration.zones' => ['configuration', 'zones']],
+            'circuit' => ['state.circuits' => ['state', 'circuits'], 'configuration.circuits' => ['configuration', 'circuits']],
+            'dhw'     => ['state.dhw' => ['state', 'dhw'], 'configuration.dhw' => ['configuration', 'dhw']],
+        ];
+
+        foreach ($entityGroups as $scope => $sections) {
+            // Anzahl Elemente aus der laengeren der beiden Sektionen (state/
+            // configuration muessen laut myPyllant nicht dieselbe Laenge haben).
+            $maxLen = 0;
+            foreach ($sections as $path) {
+                $node = $this->arrayAtPath($system, $path);
+                $maxLen = max($maxLen, is_array($node) ? count($node) : 0);
+            }
+            for ($i = 0; $i < $maxLen; $i++) {
+                $merged = [];
+                foreach ($sections as $sectionName => $path) {
+                    $entry = $this->listEntryAt($system, $i, ...$path);
+                    if ($entry === []) {
+                        continue;
+                    }
+                    foreach ($entry as $key => $value) {
+                        // Bewusst NICHT ueberschreiben, wenn schon vorhanden --
+                        // 'state' steht in $sections VOR 'configuration', damit
+                        // Ist-/Live-Werte Vorrang vor reinen Konfigurationswerten
+                        // haben, falls derselbe Rohname in beiden vorkommt.
+                        if (!array_key_exists($key, $merged)) {
+                            $merged[$key] = $value;
+                        }
+                    }
+                }
+                if ($merged === []) {
+                    continue;
+                }
+                $count++;
+                $indexField = array_key_exists('index', $merged) ? $merged['index'] : '(kein index-Feld gefunden)';
+                $lines[] = '--- ' . strtoupper($scope) . ' #' . $i . ' (Array-Position, NICHT fuer Schreibzugriffe verwenden) -- echtes index-Feld: ' . json_encode($indexField) . ' ---';
+                foreach ($reference[$scope] as $row) {
+                    $present = array_key_exists($row['field'], $merged);
+                    $value = $present ? json_encode($merged[$row['field']]) : null;
+                    $rangeText = $row['range'] === 'apiRange'
+                        ? ((array_key_exists('min_setpoint', $merged) || array_key_exists('max_setpoint', $merged))
+                            ? ('von der API selbst geliefert: ' . ($merged['min_setpoint'] ?? '?') . '–' . ($merged['max_setpoint'] ?? '?'))
+                            : 'von der API selbst geliefert, aber min_setpoint/max_setpoint in dieser Antwort nicht vorhanden')
+                        : $row['range'] . ' (aus Referenz-Client, nicht durch diese API-Antwort bestätigt)';
+                    $lines[] = '  ' . $row['caption'] . ': ' . ($present ? ('aktueller Wert ' . $value) : 'in dieser Antwort NICHT vorhanden')
+                        . ' | Wertebereich: ' . $rangeText
+                        . ' | tli: ' . $row['tli'] . ' | vrc700: ' . $row['vrc700'];
+                }
+            }
+        }
+
+        if ($count > 0) {
+            $this->SendDebug(
+                'Vaillant/steuerungsfaehigkeiten',
+                'Anlage ' . $systemId . ' (' . $controlIdentifier . "):\n" . implode("\n", $lines),
+                0
+            );
+        }
+        return $count;
+    }
+
+    /**
+     * Hilfsfunktion fuer logVaillantCapabilities(): navigiert zu einem
+     * verschachtelten Pfad und liefert das Array dort, oder [] wenn der Pfad
+     * fehlt/kein Array ist. Wie listEntryAt(), nur ohne den letzten
+     * Index-Zugriff (liefert die ganze Liste, nicht ein Element daraus).
+     */
+    private function arrayAtPath(array $system, array $path): array
+    {
+        $node = $system;
+        foreach ($path as $key) {
+            if (!is_array($node) || !isset($node[$key])) {
+                return [];
+            }
+            $node = $node[$key];
+        }
+        return is_array($node) ? $node : [];
+    }
+
+    /**
+     * Manueller Knopf "🔎 Steuerungsfähigkeiten anzeigen" -- siehe
+     * logVaillantCapabilities() fuer die Sicherheitshinweise. Nutzt
+     * ausschliesslich dieselben lesenden Methoden, die der normale Zyklus
+     * ohnehin aufruft (getSystem()/getSystemVrc700(), ueber vaillantSystemsCache()
+     * zwischengespeichert) -- kein zusaetzlicher API-Aufruf, der das Kontingent
+     * ueber den normalen Takt hinaus belasten wuerde.
+     */
+    public function VaillantCapabilities(): void
+    {
+        $say = function (string $m) {
+            $this->UpdateFormField('VAI_CapabilitiesResult', 'caption', $m);
+            $this->UpdateFormField('VAI_CapabilitiesResult', 'visible', true);
+        };
+
+        $bundle = $this->vaillantEnsureToken();
+        if ($bundle === null) {
+            $say('❌ Nicht angemeldet (oder Anmeldung gerade wegen Kontingent gesperrt) -- zuerst oben anmelden.');
+            return;
+        }
+        $client = $this->vaillantClient();
+        $homes = $this->vaillantSystemsCache($bundle, $client);
+        if ($homes === null || count($homes) === 0) {
+            $say('❌ Keine Anlage bekannt -- zuerst oben anmelden und Anlagen suchen.');
+            return;
+        }
+
+        $entityCount = 0;
+        $systemCount = 0;
+        foreach ($homes as $home) {
+            $systemId = (string)($home['systemId'] ?? '');
+            $controlIdentifier = (string)($home['controlIdentifier'] ?? '');
+            if ($systemId === '') {
+                continue;
+            }
+            if ($controlIdentifier === 'tli') {
+                $system = $client->getSystem($bundle, $systemId);
+            } elseif ($controlIdentifier === 'vrc700') {
+                $system = $client->getSystemVrc700($bundle, $systemId);
+            } else {
+                continue;
+            }
+            if ($system === null) {
+                continue;
+            }
+            $systemCount++;
+            $entityCount += $this->logVaillantCapabilities($systemId, $controlIdentifier, $system);
+        }
+
+        if ($entityCount === 0) {
+            $say('❌ Keine auswertbaren Zonen/Heizkreise/Warmwasser gefunden -- Details in der Instanz-Debugausgabe.');
+            return;
+        }
+        $say('✅ ' . $entityCount . ' Element(e) aus ' . $systemCount . ' Anlage(n) protokolliert -- siehe Instanz-Debugausgabe, Eintrag „Vaillant/steuerungsfaehigkeiten". Es wurde NICHTS geschrieben, nur gelesen.');
+    }
+
+    /**
      * Vaillant-Update -- mit Sperrfrist nach einem API-Kontingent-Fehler
      * (Fund 25.09.2026, m_rothenpieler: "Out of call volume quota", HTTP 403
      * nach mehreren 60s-Zyklen). OHNE diese Sperrfrist wuerde jeder weitere

@@ -979,6 +979,80 @@ Reflection gegengeprueft; neuer Debug-Topic im echten Takt mit Kanalzahl/Textfor
 abgesichert). Drei neue Mutationen gefangen (altes Testknopf-3-Tage-Fenster,
 altes UTC-Mitternacht-Fenster im echten Takt, vertippter Debug-Topic).
 
+## Erster Schritt Richtung Vaillant-Steuerung: reine Faehigkeitsuebersicht (0.15.0, Forum-Post, 30.09.2026)
+
+Markus (m_rothenpieler) hat sich auf die fruehere "Frage Markus"-Anfrage
+(siehe Forum-Draft `forum-antwort-mrothenpieler-steuerung-anfrage.md`)
+gemeldet -- nicht nur mit "ja, ich teste", sondern mit einem durchdachten,
+konservativen Ablauf fuer eine kuenftige Schreibfunktion: erst Faehigkeiten/
+Parameter erkennen, dann sichern (Initial-Snapshot), dann Leitplanken
+(Schreibfunktionen standardmaessig aus, Komfortfunktionen nur mit
+Bestaetigung, Sollwerte/Heizkurve erst nach PIN, alter->neuer Wert anzeigen,
+Wertebereich/Enum pruefen, nur bei echter Aenderung schreiben, nach jedem
+Write zuruecklesen, protokollieren, bei Fehlern/unbekanntem Zustand sperren,
+anfangs nur manuell ausgeloest, Kontingent-Cooldown). Dietmar hat dem ersten
+(rein lesenden) Schritt zugestimmt, ausdruecklich noch keiner Schreibfunktion.
+
+**Auf Dietmars Nachfrage ("guck doch mal bei anderen SmartHomes/im
+Haustechnik-Portal, damit wir gleich alle Funktionen haben") zusaetzlich zu
+myPyllant eine ZWEITE, unabhaengige Quelle gegengelesen:**
+github.com/TA2k/ioBroker.vaillant (`main.js`, `onStateChange()`) -- eine vom
+myPyllant-Projekt komplett unabhaengige Implementierung, deren Endpunkt-
+Zuordnung laut eigenen Code-Kommentaren an ECHTER vrc700-Hardware
+nachgebessert wurde (Issue #112). Beide Quellen stimmen im Kern ueberein
+(dieselben Endpunkte/Koerperfelder fuer Zone-Betriebsart, Sollwerte, Quick
+Veto, Heizkurve, Warmwasser-Sollwert/-Betriebsart/-Boost, Lueftung, Urlaub),
+bestaetigen aber UNABHAENGIG voneinander einen wichtigen Stolperstein:
+
+**Index-Falle (dokumentiert, fuer eine spaetere Schreibfunktion wichtig):**
+myPyllants `System.merge_object()` fasst `state`/`configuration`/
+`properties` je Zone/Heizkreis/Warmwasser-Eintrag ueber deren EIGENES
+`index`-Feld zusammen, NICHT ueber die Array-Position. Der ioBroker-Adapter
+bestaetigt das unabhaengig mit einem eigenen, hardwaregetesteten Fix: die
+Array-Position entspricht NICHT zuverlaessig dem numerischen Index, den ein
+Schreib-Endpunkt in der URL erwartet, und der Zusammenhang unterscheidet
+sich zwischen tli und vrc700 (bei vrc700 teils 0-basiert mit Sonderfall
+fuer den ersten Eintrag, bei tli bislang 1:1). Bei Warmwasser ist der reale
+Index haeufig der Sonderwert 255 (an Markus' echten Rohdaten, siehe
+0.11.4-Abschnitt oben, UND am ioBroker-Adapter unabhaengig bestaetigt), NIE
+0. **Jede kuenftige Schreibfunktion MUSS das echte `index`-Feld aus den
+Rohdaten verwenden, niemals die Array-Position** -- WPHubs bisheriger
+Lesecode (`listEntryAt()`) nutzt bewusst die Array-Position (empirisch
+stabil fuer reines Lesen, siehe 0.11.7-Abschnitt), das gilt NICHT
+automatisch fuer Schreibzugriffe.
+
+**Umsetzung (0.15.0):** neuer Knopf "🔎 Steuerungsfähigkeiten anzeigen" im
+Vaillant-Formular, `VaillantCapabilities()`. Macht **keinen einzigen**
+POST/PUT/PATCH/DELETE-Aufruf -- nutzt ausschliesslich `getSystem()`/
+`getSystemVrc700()` (dieselben Lesemethoden wie der normale Takt, ueber den
+bestehenden `vaillantSystemsCache()`). Fuer jede gefundene Zone/jeden
+Heizkreis/Warmwasser-Eintrag (Array-Position UND echtes `index`-Feld beide
+ausgegeben, klar als solche benannt) zeigt `logVaillantCapabilities()`:
+welche der aus miPyllant/ioBroker bekannten Rohfelder in DIESER Antwort
+tatsaechlich vorhanden sind (mit aktuellem Wert), welcher Schreib-Endpunkt
+(tli/vrc700 getrennt) dafuer existieren wuerde, und der Wertebereich -- klar
+gekennzeichnet, ob der von der API selbst geliefert wird (bislang nur fuer
+Warmwasser `min_setpoint`/`max_setpoint` bestaetigt, siehe DomesticHotWater-
+Modell in myPyllant) oder nur aus der Referenz-Implementierung stammt und an
+KEINER Anlage in diesem Forum bislang bestaetigt ist. `state` und
+`configuration` werden fuers Anzeigen defensiv zusammengefuehrt (state
+gewinnt bei ueberlappenden Feldnamen), da unklar ist, in welcher Sektion ein
+bestimmtes Feld tatsaechlich steht.
+
+**Noch NICHT umgesetzt, bewusst:** kein einziger Schreibaufruf, keine
+Leitplanken-Logik (PIN, Bestaetigung, Read-Back, Cooldown) -- das war
+ausdruecklich nur Schritt 1 von Markus' eigenem Ablauf. Naechster Schritt
+liegt bei Markus: den Knopf an seiner echten Anlage druecken und das
+Ergebnis teilen, dann gemeinsam mit Dietmar entscheiden, ob/wie es zu einer
+echten Schreibfunktion weitergeht.
+
+Pruefstand 425 -> 438 (Verkabelung wie bei `TestEmfEndpoint()`: kein Login/
+keine Anlage -> Fehlermeldung ohne API-Aufruf; Erfolg an Markus' echter
+tli-Fixture UND cbehams echter vrc700-Fixture gleichzeitig getestet, inkl.
+Pruefung, dass das echte `index`-Feld [255] und nicht die Array-Position im
+Text steht, und eines direkten Tests fuer die state/configuration-Merge-
+Reihenfolge). Fuenf neue Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

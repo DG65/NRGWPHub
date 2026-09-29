@@ -277,6 +277,18 @@
                     "name": "VAI_EmfResult",
                     "caption": "",
                     "visible": false
+                },
+                {
+                    "type": "Button",
+                    "name": "VAI_CapabilitiesButton",
+                    "caption": "🔎  Steuerungsfähigkeiten anzeigen (nur lesen, kein Schreibzugriff)",
+                    "onClick": "WPHUB_VaillantCapabilities($id);"
+                },
+                {
+                    "type": "Label",
+                    "name": "VAI_CapabilitiesResult",
+                    "caption": "",
+                    "visible": false
                 }
             ]
         },
