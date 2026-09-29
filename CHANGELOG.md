@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.13.1 (Build 86) — 29.09.2026
+
+- **EMF-Energiedaten-Test erweitert: echte Geräte- und Kanalstruktur bestätigt, Buckets-Testabruf ergänzt.** Markus (m_rothenpieler) hat den „Energiedaten testweise abrufen"-Knopf gedrückt und die echte Antwort geschickt — damit ist die Vermutung aus 0.13.0 widerlegt: Es gibt kein generisches `devices[]`-Array, sondern benannte Geräte-Rollen (`primary_heat_generator`, `electric_backup_heater`, `secondary_heat_generators[]` bei einer Kaskade). Für jeden dort gefundenen Energiekanal (bei ihm 13: Stromverbrauch/erzeugte Wärmemenge/Umweltenergie je Heizung/Warmwasser und Gerät) ruft der Testknopf jetzt zusätzlich ein kurzes Testfenster des nachgelagerten `buckets`-Endpunkts ab (letzte 3 Tage, Tages-Auflösung) und schreibt auch das in die Debugausgabe — weiterhin ohne eigene Variablen, der Aufbau einer einzelnen Buckets-Antwort ist noch nicht an echten Daten bestätigt.
+- Prüfstand: 397 Prüfungen (vorher 386), sechs neue Mutationen der Zielstellen geprüft.
+
 ## 0.13.0 (Build 85) — 29.09.2026
 
 - **Neu: manueller Test-Abruf der Vaillant-Energiedaten.** Markus (m_rothenpieler, Forum-Post #48/#49) wünscht sich Stromverbrauch/erzeugte Wärmemenge für Heizung und Warmwasser. Laut myVAILLANT-Referenzprojekt (myPyllant) käme das über einen bisher ungenutzten API-Bereich (`/emf/v2/.../currentSystem`) — ein neuer Knopf „🔋 Energiedaten testweise abrufen" im Vaillant-Formular ruft diesen Endpunkt einmalig ab und schreibt die Rohantwort in die Instanz-Debugausgabe. Bewusst **nicht** im normalen Aktualisierungstakt (Markus' ausdrücklicher Wunsch, das Kontingent nicht zusätzlich zu belasten) und bewusst **ohne** eigene neue Variablen — der nachgelagerte Endpunkt für die eigentlichen Verbrauchswerte braucht Angaben, die erst aus einer echten Antwort dieses Abrufs hervorgehen, kein Rateweg vor echten Daten.

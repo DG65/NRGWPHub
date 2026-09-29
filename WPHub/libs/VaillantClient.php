@@ -230,23 +230,39 @@ class WPHUB_VaillantClient
      * Rohes "currentSystem"-JSON aus der EMF-Energie-API (Endpunkt/Query
      * 1:1 aus myPyllant.api.get_systems()/get_data_by_device() gegengelesen,
      * 28.09.2026 -- KEIN Rateweg): GET {base}/emf/v2/{systemId}/currentSystem,
-     * keine Query-Parameter. Liefert laut Quelltext eine Geraeteuebersicht
-     * (devices[]) mit den je Geraet verfuegbaren Energiekanaelen
-     * (data[].operation_mode/value_type) -- genau die Angaben, die der
-     * NACHGELAGERTE .../devices/{deviceUuid}/buckets-Endpunkt als Query-
-     * Parameter braucht. buckets() ist bewusst NOCH NICHT gebaut: welche
-     * operation_mode/value_type-Werte eine echte Vaillant-Anlage liefert,
-     * ist unbekannt, ohne eine echte currentSystem-Antwort waere das
-     * geraten. Nur ueber den manuellen "Energiedaten testweise abrufen"-
-     * Knopf aufgerufen (TestEmfEndpoint() in module.php), NIE im normalen
+     * keine Query-Parameter.
+     *
+     * Echte Antwort bestaetigt 29.09.2026 (m_rothenpieler, Forum-Post,
+     * sensoCOMFORT-Kaskade): KEIN generisches `devices[]`-Array wie zuerst
+     * aus dem Quelltext vermutet, sondern benannte Geraete-ROLLEN:
+     * `primary_heat_generator` (ein Objekt), `secondary_heat_generators`
+     * (eine LISTE -- bei einer Kaskade das zweite/weitere Geraet),
+     * `electric_backup_heater` (ein Objekt, bei ihm "Hydraulic station"),
+     * dazu `gateway`/`solar_station`/`ventilation` (bei ihm alle drei null)
+     * und `system_type` (bei ihm "HEATPUMP_CASCADE"). Jedes Geraet traegt
+     * `device_uuid` + eine `data[]`-Liste mit den verfuegbaren Kanaelen:
+     * `{operation_mode, value_type, calculated, from, to}` -- `from`/`to`
+     * sind der verfuegbare Datenzeitraum dieses Kanals (myPyllants eigener
+     * Default fuer `buckets()`, wenn kein Zeitraum angegeben wird, siehe
+     * getDeviceDataBuckets()). Reale operation_mode-Werte: "HEATING",
+     * "DOMESTIC_HOT_WATER". Reale value_type-Werte: "CONSUMED_ELECTRICAL_
+     * ENERGY", "HEAT_GENERATED" (bei der Waermepumpe selbst `calculated:
+     * true` -- ein abgeleiteter, kein roh gemessener Wert), "EARNED_
+     * ENVIRONMENT_ENERGY". Keine feste Enum-Liste im Code hinterlegt,
+     * genau wie myPyllant selbst -- die Kanal-Angaben werden unveraendert
+     * durchgereicht (siehe TestEmfEndpoint()).
+     *
+     * Nur ueber den manuellen "Energiedaten testweise abrufen"-Knopf
+     * aufgerufen (TestEmfEndpoint() in module.php), NIE im normalen
      * Update()-Zyklus -- Forum-Post #48/#49, m_rothenpieler: ausdruecklich
      * NICHT in den 300/600s-Takt haengen, das API-Kontingent ist knapp.
-     * Regler-Typ-Abhaengigkeit (tli/vrc700) fuer DIESEN Endpunkt ungeprueft:
-     * myPyllants eigener Code ruft get_api_base() dabei ohne expliziten
-     * control_identifier auf (faellt intern auf "tli" zurueck) -- ob das
-     * bei einer reinen vrc700-Anlage (z. B. cbeham) ueberhaupt funktioniert,
-     * ist offen. Deshalb bewusst ueber API_BASE_TLI, mit derselben
-     * Unsicherheit wie hier dokumentiert statt stillschweigend angenommen.
+     * Regler-Typ-Abhaengigkeit (tli/vrc700) fuer DIESEN Endpunkt weiterhin
+     * ungeprueft (nur an einer tli-Anlage bestaetigt) -- myPyllants eigener
+     * Code ruft get_api_base() dabei ohne expliziten control_identifier auf
+     * (faellt intern auf "tli" zurueck), ob das bei einer reinen vrc700-
+     * Anlage (z. B. cbeham) ueberhaupt funktioniert, ist offen. Deshalb
+     * bewusst ueber API_BASE_TLI, mit derselben Unsicherheit wie hier
+     * dokumentiert statt stillschweigend angenommen.
      */
     public function getCurrentSystemEmf(array $bundle, string $systemId): ?array
     {
@@ -259,6 +275,51 @@ class WPHUB_VaillantClient
         $parsed = self::parseTliBody((string)$r['body']);
         if ($parsed === null) {
             $this->failApi('EMF-Energiedaten (emf/v2/' . $systemId . '/currentSystem) -- ungueltiges JSON', $r);
+        }
+        return $parsed;
+    }
+
+    /**
+     * Rohe "buckets"-Antwort (die eigentlichen Verbrauchs-/Ertragswerte,
+     * zeitgruppiert) fuer EINEN Energiekanal eines Geraets -- Endpunkt/Query
+     * 1:1 aus myPyllant.api.get_data_by_device() gegengelesen, 29.09.2026:
+     * GET {base}/emf/v2/{systemId}/devices/{deviceUuid}/buckets?resolution=
+     * HOUR|DAY|MONTH&operationMode=...&energyType=...&startDate=...&endDate=...
+     * (ISO8601 mit Millisekunden, UTC). operationMode/energyType kommen
+     * unveraendert aus einem data[]-Eintrag von getCurrentSystemEmf() (siehe
+     * dort) -- keine eigene Enum-Liste, genau wie im Referenzprojekt.
+     * Response-STRUKTUR (welche Felder ein einzelner Bucket hat) noch NICHT
+     * an echten Daten bestaetigt -- TestEmfEndpoint() dumpt die Rohantwort
+     * deshalb weiterhin nur per SendDebug, baut noch keine Variablen daraus.
+     */
+    public function getDeviceDataBuckets(
+        array $bundle,
+        string $systemId,
+        string $deviceUuid,
+        string $operationMode,
+        string $energyType,
+        string $resolution,
+        \DateTimeImmutable $from,
+        \DateTimeImmutable $to
+    ): ?array {
+        $this->lastError = '';
+        $query = http_build_query([
+            'resolution'    => $resolution,
+            'operationMode' => $operationMode,
+            'energyType'    => $energyType,
+            'startDate'     => $from->format('Y-m-d\TH:i:s.v\Z'),
+            'endDate'       => $to->format('Y-m-d\TH:i:s.v\Z'),
+        ]);
+        $label = 'EMF-Buckets (' . $deviceUuid . '/' . $operationMode . '/' . $energyType . ')';
+        $r = $this->apiRequest($bundle, 'GET', self::API_BASE_TLI . '/emf/v2/' . rawurlencode($systemId)
+            . '/devices/' . rawurlencode($deviceUuid) . '/buckets?' . $query);
+        if ($r === null || $r['status'] !== 200) {
+            $this->failApi($label, $r);
+            return null;
+        }
+        $parsed = self::parseTliBody((string)$r['body']);
+        if ($parsed === null) {
+            $this->failApi($label . ' -- ungueltiges JSON', $r);
         }
         return $parsed;
     }

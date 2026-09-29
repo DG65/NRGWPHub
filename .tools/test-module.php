@@ -498,6 +498,13 @@ class FakeVaillant extends WPHUB_VaillantClient
         $this->emfCalls[] = $systemId;
         return $this->emfById[$systemId] ?? null;
     }
+    public ?array $bucketsResult = null; // fester Rueckgabewert fuer JEDEN getDeviceDataBuckets()-Aufruf (null oder Array)
+    public array $bucketsCalls = [];    // [['deviceUuid'=>..,'operationMode'=>..,'energyType'=>..], ...]
+    public function getDeviceDataBuckets(array $bundle, string $systemId, string $deviceUuid, string $operationMode, string $energyType, string $resolution, \DateTimeImmutable $from, \DateTimeImmutable $to): ?array
+    {
+        $this->bucketsCalls[] = ['deviceUuid' => $deviceUuid, 'operationMode' => $operationMode, 'energyType' => $energyType, 'resolution' => $resolution];
+        return $this->bucketsResult;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1783,11 +1790,68 @@ $emfResultNoDevices = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['capt
 check('TestEmfEndpoint() ohne bekannte Anlage: Fehlermeldung', $emfResultNoDevices !== null && strpos($emfResultNoDevices, '❌') === 0, $emfResultNoDevices ?? 'null');
 check('TestEmfEndpoint() ohne bekannte Anlage: ruft getCurrentSystemEmf() gar nicht erst auf', $fakeVaiEmfNoDevices->emfCalls === []);
 
+// emfDeviceRoles(): direkt getestet mit einer 1:1-Fixture aus m_rothenpielers
+// echter Kaskaden-Antwort (Forum-Post, 29.09.2026) -- primary_heat_generator/
+// electric_backup_heater als einzelne Objekte, secondary_heat_generators als
+// Liste, gateway/solar_station/ventilation als null (muessen rausfallen).
+$emfDeviceRoles = new ReflectionMethod(WPHub::class, 'emfDeviceRoles');
+$emfDeviceRoles->setAccessible(true);
+$realEmfFixture = [
+    'system_type' => 'HEATPUMP_CASCADE',
+    'gateway' => null,
+    'solar_station' => null,
+    'ventilation' => null,
+    'has_emf_capable_devices' => true,
+    'electric_backup_heater' => [
+        'device_uuid' => '69c224b0-a96a-53b5-86f5-27e83bc58cad',
+        'device_type' => 'ELECTRIC_AUXILIARY_HEATER',
+        'product_name' => 'Hydraulic station',
+        'data' => [
+            ['operation_mode' => 'DOMESTIC_HOT_WATER', 'value_type' => 'CONSUMED_ELECTRICAL_ENERGY', 'calculated' => false],
+            ['operation_mode' => 'HEATING', 'value_type' => 'CONSUMED_ELECTRICAL_ENERGY', 'calculated' => false],
+            ['operation_mode' => 'DOMESTIC_HOT_WATER', 'value_type' => 'HEAT_GENERATED', 'calculated' => false],
+            ['operation_mode' => 'HEATING', 'value_type' => 'HEAT_GENERATED', 'calculated' => false],
+        ],
+    ],
+    'primary_heat_generator' => [
+        'device_uuid' => '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f',
+        'device_type' => 'HEATPUMP',
+        'product_name' => 'aroTHERM',
+        'data' => [
+            ['operation_mode' => 'DOMESTIC_HOT_WATER', 'value_type' => 'CONSUMED_ELECTRICAL_ENERGY', 'calculated' => false],
+            ['operation_mode' => 'HEATING', 'value_type' => 'CONSUMED_ELECTRICAL_ENERGY', 'calculated' => false],
+            ['operation_mode' => 'DOMESTIC_HOT_WATER', 'value_type' => 'EARNED_ENVIRONMENT_ENERGY', 'calculated' => false],
+            ['operation_mode' => 'HEATING', 'value_type' => 'EARNED_ENVIRONMENT_ENERGY', 'calculated' => false],
+            ['operation_mode' => 'HEATING', 'value_type' => 'HEAT_GENERATED', 'calculated' => true],
+            ['operation_mode' => 'DOMESTIC_HOT_WATER', 'value_type' => 'HEAT_GENERATED', 'calculated' => true],
+        ],
+    ],
+    'secondary_heat_generators' => [
+        [
+            'device_uuid' => '133bf9e8-9090-52d3-8366-bd5609e348b2',
+            'device_type' => 'HEATPUMP',
+            'product_name' => 'aroTHERM',
+            'data' => [
+                ['operation_mode' => 'HEATING', 'value_type' => 'CONSUMED_ELECTRICAL_ENERGY', 'calculated' => false],
+                ['operation_mode' => 'HEATING', 'value_type' => 'EARNED_ENVIRONMENT_ENERGY', 'calculated' => false],
+                ['operation_mode' => 'HEATING', 'value_type' => 'HEAT_GENERATED', 'calculated' => true],
+            ],
+        ],
+    ],
+];
+$roles = $emfDeviceRoles->invoke($mod, $realEmfFixture);
+check('emfDeviceRoles(): findet primary_heat_generator', ($roles['primary_heat_generator']['device_uuid'] ?? null) === '24ebf2ce-aaa2-5ce4-8ad5-540451164f8f');
+check('emfDeviceRoles(): findet electric_backup_heater', ($roles['electric_backup_heater']['device_uuid'] ?? null) === '69c224b0-a96a-53b5-86f5-27e83bc58cad');
+check('emfDeviceRoles(): findet secondary_heat_generators[0] mit Index-Schluessel', ($roles['secondary_heat_generators[0]']['device_uuid'] ?? null) === '133bf9e8-9090-52d3-8366-bd5609e348b2');
+check('emfDeviceRoles(): null-Rollen (gateway/solar_station/ventilation) fallen raus', !isset($roles['gateway']) && !isset($roles['solar_station']) && !isset($roles['ventilation']));
+check('emfDeviceRoles(): genau drei echte Geraete gefunden, nicht mehr/weniger', count($roles) === 3, json_encode(array_keys($roles)));
+
 $setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['guid' => 'sys-emf-1', 'prefix' => 'HPEMF_', 'name' => 'Test-Wärmepumpe']]));
 $GLOBALS['ips']['formFieldUpdates'] = [];
 $GLOBALS['ips']['debug'] = [];
 $fakeVaiEmfOk = new FakeVaillant('germany');
-$fakeVaiEmfOk->emfById = ['sys-emf-1' => ['devices' => [['device_uuid' => 'dev-1', 'data' => []]]]];
+$fakeVaiEmfOk->emfById = ['sys-emf-1' => $realEmfFixture];
+$fakeVaiEmfOk->bucketsResult = ['buckets' => [['value' => 12.3]]]; // Aufbau noch nicht real bestaetigt, nur fuer die Verkabelungspruefung
 $GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiEmfOk) {
     return $fakeVaiEmfOk;
 };
@@ -1801,7 +1865,18 @@ foreach ($GLOBALS['ips']['debug'] as $d) {
         $emfDebugEntry = $d;
     }
 }
-check('TestEmfEndpoint() erfolgreich: Rohdaten gehen per SendDebug raus', $emfDebugEntry !== null && strpos($emfDebugEntry['text'], 'dev-1') !== false, json_encode($emfDebugEntry));
+check('TestEmfEndpoint() erfolgreich: currentSystem-Rohdaten gehen per SendDebug raus', $emfDebugEntry !== null && strpos($emfDebugEntry['text'], 'aroTHERM') !== false, json_encode($emfDebugEntry));
+
+// Buckets-Stufe: fuer JEDEN Kanal aller drei Geraete aufgerufen (4+6+3 = 13
+// Kanaele in der echten Fixture), mit dem jeweils richtigen operationMode/
+// energyType, und die Rohantwort geht ebenfalls per SendDebug raus.
+check('TestEmfEndpoint(): ruft getDeviceDataBuckets() fuer alle 13 Kanaele der drei Geraete auf', count($fakeVaiEmfOk->bucketsCalls) === 13, count($fakeVaiEmfOk->bucketsCalls));
+check('TestEmfEndpoint(): Buckets-Aufruf nutzt DAY-Aufloesung', $fakeVaiEmfOk->bucketsCalls[0]['resolution'] === 'DAY');
+check('TestEmfEndpoint(): Buckets-Aufruf uebernimmt operationMode/energyType unveraendert aus dem Kanal', $fakeVaiEmfOk->bucketsCalls[0]['operationMode'] === 'DOMESTIC_HOT_WATER' && $fakeVaiEmfOk->bucketsCalls[0]['energyType'] === 'CONSUMED_ELECTRICAL_ENERGY');
+$bucketsDebugEntries = array_values(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/emf-buckets-Rohdaten'));
+check('TestEmfEndpoint(): Buckets-Rohdaten gehen per SendDebug raus, einer je Kanal (13x)', count($bucketsDebugEntries) === 13, count($bucketsDebugEntries));
+check('TestEmfEndpoint(): Buckets-Debug-Eintrag nennt Geraeterolle/Kanal im Text', strpos($bucketsDebugEntries[0]['text'] ?? '', 'primary_heat_generator/') === 0, $bucketsDebugEntries[0]['text'] ?? 'null');
+check('TestEmfEndpoint(): Erfolgsmeldung nennt die Anzahl erfolgreicher Buckets-Abrufe', $emfResultOk !== null && strpos($emfResultOk, '13 Energiekanal') !== false, $emfResultOk ?? 'null');
 
 $GLOBALS['ips']['formFieldUpdates'] = [];
 $fakeVaiEmfFail = new FakeVaillant('germany');

@@ -801,6 +801,60 @@ SendDebug + Erfolgsmeldung mit Zaehler, Fehlschlag -> Fehlermeldung statt stille
 `getCurrentSystemEmf()` selbst nur ueber `FakeVaillant` getestet, wie alle anderen
 HTTP-basierten Client-Methoden dieser Klasse). Drei neue Mutationen gefangen.
 
+## EMF-Struktur bestaetigt + Buckets-Testabruf (0.13.1, Forum-Post, 29.09.2026)
+
+Markus hat den in 0.13.0 gebauten Testknopf gedrueckt und die ECHTE `currentSystem`-
+Antwort seiner sensoCOMFORT-Kaskade gepostet -- damit war die aus dem myPyllant-
+Quelltext abgeleitete Vermutung ("liefert vermutlich ein `devices[]`-Array") WIDERLEGT,
+nicht bestaetigt. Die echte Struktur:
+
+```
+{
+  "system_type": "HEATPUMP_CASCADE",
+  "gateway": null, "solar_station": null, "ventilation": null,
+  "has_emf_capable_devices": true,
+  "electric_backup_heater": { "device_uuid": "...", "product_name": "Hydraulic station",
+    "data": [ {"operation_mode": "...", "value_type": "...", "calculated": bool, "from": "...", "to": "..."}, ... ] },
+  "primary_heat_generator": { "device_uuid": "...", "product_name": "aroTHERM", "data": [...] },
+  "secondary_heat_generators": [ { "device_uuid": "...", "product_name": "aroTHERM", "data": [...] } ]
+}
+```
+
+Benannte Geraete-ROLLEN (Objekt oder Liste), kein generisches Array -- neue Methode
+`emfDeviceRoles()` liest genau diese fuenf bekannten Schluessel aus (die drei
+Einzel-Objekte + die Liste), laesst `null`-Rollen (bei ihm gateway/solar_station/
+ventilation) automatisch raus.
+
+**Reale Kanal-Werte, jetzt bestaetigt statt vermutet:**
+- `operation_mode`: `HEATING`, `DOMESTIC_HOT_WATER`.
+- `value_type`: `CONSUMED_ELECTRICAL_ENERGY`, `HEAT_GENERATED`, `EARNED_ENVIRONMENT_ENERGY`
+  -- genau die drei Kategorien, die Markus urspruenglich wollte (Stromverbrauch,
+  erzeugte Waermemenge, Umweltenergie).
+- `calculated`: bei der Waermepumpe selbst ist `HEAT_GENERATED` `calculated: true`
+  (ein abgeleiteter Wert, keine rohe Messung) -- bei `electric_backup_heater` dagegen
+  `calculated: false` fuer alle vier Kanaele. Fuer eine spaetere Variablen-Praesentation
+  relevant (ggf. kennzeichnen, dass ein Wert berechnet statt gemessen ist), aber noch
+  keine Entscheidung dazu.
+- Bei ihm insgesamt 13 Kanaele: 4 am Zusatzheizer, 6 an der Haupt-Waermepumpe (inkl.
+  Umweltenergie fuer beide Betriebsarten), 3 an der zweiten Kaskaden-Waermepumpe (nur
+  Heizen, keine Warmwasserbeteiligung -- plausibel, dass nur die Haupt-Waermepumpe
+  Warmwasser bereitet).
+
+**TestEmfEndpoint() zweistufig erweitert:** nach `currentSystem` wird fuer JEDEN in
+`emfDeviceRoles()` gefundenen Kanal zusaetzlich ein `getDeviceDataBuckets()`-Testabruf
+gemacht (Aufloesung `DAY`, festes 3-Tage-Fenster statt der vollen verfuegbaren Historie
+aus `data[].from` -- haelt die Testantwort klein). Bewusst mehrere API-Aufrufe in einem
+Klick (bei Markus 13) -- die Kontingent-Sorge betraf ausdruecklich den automatischen
+Takt, nicht einen seltenen, bewussten Debug-Klick. Response-AUFBAU eines einzelnen
+Buckets-Eintrags weiterhin unbestaetigt, deshalb weiterhin nur SendDebug, keine eigenen
+Variablen -- naechster Schritt braucht Markus' Rueckmeldung zu DIESER Debugausgabe.
+
+Pruefstand 386 -> 397 (`emfDeviceRoles()` direkt getestet mit einer 1:1-Fixture aus
+Markus' echter Antwort inkl. Randfall "null-Rollen fallen raus"; `TestEmfEndpoint()`
+um die vollstaendige Buckets-Schleife erweitert getestet: alle 13 Kanaele aufgerufen,
+richtige operationMode/energyType/Aufloesung je Aufruf, SendDebug je Kanal). Sechs neue
+Mutationen gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

@@ -1664,18 +1664,56 @@ class WPHub extends IPSModule
     }
 
     /**
+     * Bekannte Geraete-Rollen einer EMF-currentSystem-Antwort als flache
+     * Liste ['rolle-oder-rolle[index]' => Geraet-Array], nur tatsaechlich
+     * vorhandene (nicht-null) Geraete -- Struktur an m_rothenpielers echter
+     * Kaskaden-Antwort bestaetigt (29.09.2026, siehe getCurrentSystemEmf()-
+     * Kommentar): primary_heat_generator/electric_backup_heater sind
+     * einzelne Objekte, secondary_heat_generators eine Liste,
+     * gateway/solar_station/ventilation koennen null sein.
+     */
+    private function emfDeviceRoles(array $emf): array
+    {
+        $out = [];
+        foreach (['primary_heat_generator', 'electric_backup_heater', 'gateway', 'solar_station', 'ventilation'] as $role) {
+            if (is_array($emf[$role] ?? null)) {
+                $out[$role] = $emf[$role];
+            }
+        }
+        $secondary = $emf['secondary_heat_generators'] ?? [];
+        if (is_array($secondary)) {
+            foreach ($secondary as $i => $device) {
+                if (is_array($device)) {
+                    $out['secondary_heat_generators[' . $i . ']'] = $device;
+                }
+            }
+        }
+        return $out;
+    }
+
+    /**
      * Manueller Test-Abruf der EMF-Energiedaten (Forum-Post #48/#49,
      * m_rothenpieler: Stromverbrauch/erzeugte Waermemenge fehlen noch
      * komplett -- laut myPyllant-Quelltext ueber /emf/v2/{systemId}/
      * currentSystem verfuegbar, siehe VaillantClient::getCurrentSystemEmf()).
      * AUSSCHLIESSLICH auf Klick, NIE Teil des normalen Update()-Zyklus --
      * Markus hat ausdruecklich gebeten, das Kontingent nicht mit einer
-     * zweiten Abfrage im 300/600s-Takt zu belasten. Baut noch NICHTS aus der
-     * Antwort, dumpt sie nur per SendDebug: der nachgelagerte .../buckets-
-     * Endpunkt fuer die eigentlichen Verbrauchs-/Ertragswerte braucht
-     * Kanal-Angaben (operationMode/energyType), die aus einer echten
-     * currentSystem-Antwort stammen muessen -- noch niemand hat eine
-     * gesehen, ein Rateweg waere hier fehl am Platz.
+     * zweiten Abfrage im 300/600s-Takt zu belasten.
+     *
+     * Zweistufig, beide Stufen nur SendDebug, baut noch KEINE eigenen
+     * Variablen: (1) currentSystem liefert die Geraete + ihre verfuegbaren
+     * Energiekanaele (siehe emfDeviceRoles()), (2) fuer JEDEN gefundenen
+     * Kanal zusaetzlich ein kurzes Buckets-Testfenster (DAY-Aufloesung,
+     * letzte 3 Tage) abrufen -- der Response-AUFBAU eines einzelnen Buckets
+     * (welche Felder, welche Werte) ist noch an KEINER echten Anlage
+     * bestaetigt, ein Rateweg waere hier fehl am Platz. Bewusst ein kurzes
+     * Zeitfenster (nicht die volle verfuegbare Historie aus data[].from) --
+     * das haelt die Testantwort klein, reicht aber, um den Aufbau zu sehen.
+     * Mehrere API-Aufrufe in diesem einen manuellen Klick sind hier
+     * vertretbar (typischerweise ein bis zwei Dutzend bei einer Kaskade mit
+     * Zusatzgeraet) -- die Kontingent-Sorge betraf ausdruecklich den
+     * AUTOMATISCHEN 300/600s-Takt, nicht einen seltenen, bewussten
+     * Debug-Klick.
      */
     public function TestEmfEndpoint(): void
     {
@@ -1696,22 +1734,50 @@ class WPHub extends IPSModule
         }
         $client = $this->vaillantClient();
         $ok = 0;
+        $bucketsOk = 0;
+        $to = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $from = $to->modify('-3 days');
         foreach ($devices as $d) {
             $systemId = (string)($d['guid'] ?? '');
             if ($systemId === '') {
                 continue;
             }
             $emf = $client->getCurrentSystemEmf($bundle, $systemId);
-            if ($emf !== null) {
-                $this->SendDebug('Vaillant/emf-currentSystem-Rohdaten', json_encode($emf, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
-                $ok++;
+            if ($emf === null) {
+                continue;
+            }
+            $this->SendDebug('Vaillant/emf-currentSystem-Rohdaten', json_encode($emf, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
+            $ok++;
+
+            foreach ($this->emfDeviceRoles($emf) as $role => $device) {
+                $deviceUuid = (string)($device['device_uuid'] ?? '');
+                $channels = is_array($device['data'] ?? null) ? $device['data'] : [];
+                if ($deviceUuid === '') {
+                    continue;
+                }
+                foreach ($channels as $channel) {
+                    $opMode = (string)($channel['operation_mode'] ?? '');
+                    $valType = (string)($channel['value_type'] ?? '');
+                    if ($opMode === '' || $valType === '') {
+                        continue;
+                    }
+                    $buckets = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'DAY', $from, $to);
+                    if ($buckets !== null) {
+                        $this->SendDebug(
+                            'Vaillant/emf-buckets-Rohdaten',
+                            $role . '/' . $opMode . '/' . $valType . ': ' . json_encode($buckets, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                            0
+                        );
+                        $bucketsOk++;
+                    }
+                }
             }
         }
         if ($ok === 0) {
             $say('❌ Kein Abruf erfolgreich (' . $client->getLastError() . ') -- Details in der Instanz-Debugausgabe.');
             return;
         }
-        $say('✅ ' . $ok . ' Abruf(e) erfolgreich -- Rohdaten stehen in der Instanz-Debugausgabe (Eintrag „Vaillant/emf-currentSystem-Rohdaten").');
+        $say('✅ ' . $ok . ' Anlage(n) + ' . $bucketsOk . ' Energiekanal-Testfenster erfolgreich -- Rohdaten stehen in der Instanz-Debugausgabe (Einträge „Vaillant/emf-currentSystem-Rohdaten" und „Vaillant/emf-buckets-Rohdaten").');
     }
 
     /**
