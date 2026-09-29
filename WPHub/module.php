@@ -1886,20 +1886,20 @@ class WPHub extends IPSModule
     {
         return [
             'zone' => [
-                ['caption' => 'Betriebsart Heizen', 'field' => 'operation_mode_heating', 'tli' => 'PATCH zones/{i}/heating-operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH zone/{i}/heating/operation-mode {operationMode: DAY|AUTO|SET_BACK|OFF}', 'range' => 'Enum, siehe Endpunkt'],
-                ['caption' => 'Manueller Sollwert (Raumtemperatur)', 'field' => 'desired_room_temperature_setpoint_heating', 'tli' => 'PATCH zones/{i}/manual-mode-setpoint {setpoint, type:HEATING}', 'vrc700' => 'PATCH zone/{i}/heating/comfort-room-temperature {comfortRoomTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
-                ['caption' => 'Absenktemperatur', 'field' => 'set_back_temperature', 'tli' => 'PATCH zones/{i}/set-back-temperature {setBackTemperature}', 'vrc700' => 'PATCH zone/{i}/heating/set-back-temperature {setBackTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
-                ['caption' => 'Quick Veto (befristete Raumtemperatur-Übersteuerung)', 'field' => 'desired_room_temperature_setpoint', 'tli' => 'POST/PATCH zones/{i}/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'vrc700' => 'POST/PATCH zone/{i}/heating/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'range' => 'Dauer laut Referenz-Client bis 12 h, Standard 3 h'],
+                ['caption' => 'Betriebsart Heizen', 'fields' => ['heating.operation_mode_heating', 'operation_mode_heating'], 'tli' => 'PATCH zones/{i}/heating-operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH zone/{i}/heating/operation-mode {operationMode: DAY|AUTO|SET_BACK|OFF}', 'range' => 'Enum, siehe Endpunkt'],
+                ['caption' => 'Manueller Sollwert (Raumtemperatur)', 'fields' => ['heating.manual_mode_setpoint_heating', 'heating.day_temperature_heating'], 'tli' => 'PATCH zones/{i}/manual-mode-setpoint {setpoint, type:HEATING}', 'vrc700' => 'PATCH zone/{i}/heating/comfort-room-temperature {comfortRoomTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
+                ['caption' => 'Absenktemperatur', 'fields' => ['heating.set_back_temperature', 'set_back_temperature'], 'tli' => 'PATCH zones/{i}/set-back-temperature {setBackTemperature}', 'vrc700' => 'PATCH zone/{i}/heating/set-back-temperature {setBackTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
+                ['caption' => 'Quick Veto (befristete Raumtemperatur-Übersteuerung)', 'fields' => ['current_special_function'], 'tli' => 'POST/PATCH zones/{i}/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'vrc700' => 'POST/PATCH zone/{i}/heating/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'range' => 'Dauer laut Referenz-Client bis 12 h, Standard 3 h; angezeigter Wert = aktive Sonderfunktion der Zone (QUICK_VETO = laeuft, NONE = keine)'],
             ],
             'circuit' => [
-                ['caption' => 'Heizkurve', 'field' => 'heating_curve', 'tli' => 'PATCH circuit/{i}/heating-curve {heatingCurve}', 'vrc700' => 'PATCH circuit/{i}/heating-curve {setPoint}', 'range' => '0,1–5,0, Schritt 0,05'],
-                ['caption' => 'Mindest-Vorlauftemperatur', 'field' => 'min_flow_temperature_setpoint', 'tli' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'vrc700' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'range' => '0–100 °C, Schritt 0,1'],
-                ['caption' => 'Heizgrenztemperatur', 'field' => 'heat_demand_limited_by_outside_temperature', 'tli' => 'POST circuit/{i}/heat-demand-limited-by-outside-temperature {heatDemandLimitedByOutsideTemperature}', 'vrc700' => 'POST .../system-control/v1/systems/{sys}/circuits/{i}/heat-demand-limited-by-outside-temperature {setpoint}', 'range' => '0–100 °C, Schritt 0,1'],
+                ['caption' => 'Heizkurve', 'fields' => ['heating_curve'], 'tli' => 'PATCH circuit/{i}/heating-curve {heatingCurve}', 'vrc700' => 'PATCH circuit/{i}/heating-curve {setPoint}', 'range' => '0,1–5,0, Schritt 0,05'],
+                ['caption' => 'Mindest-Vorlauftemperatur', 'fields' => ['min_flow_temperature_setpoint'], 'tli' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'vrc700' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'range' => '0–100 °C, Schritt 0,1'],
+                ['caption' => 'Heizgrenztemperatur', 'fields' => ['heat_demand_limited_by_outside_temperature'], 'tli' => 'POST circuit/{i}/heat-demand-limited-by-outside-temperature {heatDemandLimitedByOutsideTemperature}', 'vrc700' => 'POST .../system-control/v1/systems/{sys}/circuits/{i}/heat-demand-limited-by-outside-temperature {setpoint}', 'range' => '0–100 °C, Schritt 0,1'],
             ],
             'dhw' => [
-                ['caption' => 'Warmwasser-Sollwert', 'field' => 'tapping_setpoint', 'tli' => 'PATCH domestic-hot-water/{index}/temperature {setpoint}', 'vrc700' => 'PATCH domestic-hot-water/{index}/tapping-setpoint {setpoint}', 'range' => 'apiRange'],
-                ['caption' => 'Betriebsart Warmwasser', 'field' => 'operation_mode_dhw', 'tli' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: DAY|AUTO|OFF}', 'range' => 'Enum, siehe Endpunkt'],
-                ['caption' => 'Warmwasser-Boost (einmalige Sonderladung)', 'field' => 'current_special_function', 'tli' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'vrc700' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'range' => 'kein Parameter (nur an/aus)'],
+                ['caption' => 'Warmwasser-Sollwert', 'fields' => ['tapping_setpoint'], 'tli' => 'PATCH domestic-hot-water/{index}/temperature {setpoint}', 'vrc700' => 'PATCH domestic-hot-water/{index}/tapping-setpoint {setpoint}', 'range' => 'apiRange'],
+                ['caption' => 'Betriebsart Warmwasser', 'fields' => ['operation_mode_dhw'], 'tli' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: DAY|AUTO|OFF}', 'range' => 'Enum, siehe Endpunkt'],
+                ['caption' => 'Warmwasser-Boost (einmalige Sonderladung)', 'fields' => ['current_special_function'], 'tli' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'vrc700' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'range' => 'kein Parameter (nur an/aus)'],
             ],
         ];
     }
@@ -1936,9 +1936,9 @@ class WPHub extends IPSModule
         $count = 0;
 
         $entityGroups = [
-            'zone'    => ['state.zones' => ['state', 'zones'], 'configuration.zones' => ['configuration', 'zones']],
-            'circuit' => ['state.circuits' => ['state', 'circuits'], 'configuration.circuits' => ['configuration', 'circuits']],
-            'dhw'     => ['state.dhw' => ['state', 'dhw'], 'configuration.dhw' => ['configuration', 'dhw']],
+            'zone'    => ['state.zones' => ['state', 'zones'], 'configuration.zones' => ['configuration', 'zones'], 'properties.zones' => ['properties', 'zones']],
+            'circuit' => ['state.circuits' => ['state', 'circuits'], 'configuration.circuits' => ['configuration', 'circuits'], 'properties.circuits' => ['properties', 'circuits']],
+            'dhw'     => ['state.dhw' => ['state', 'dhw'], 'configuration.dhw' => ['configuration', 'dhw'], 'properties.dhw' => ['properties', 'dhw']],
         ];
 
         foreach ($entityGroups as $scope => $sections) {
@@ -1971,10 +1971,21 @@ class WPHub extends IPSModule
                 }
                 $count++;
                 $indexField = array_key_exists('index', $merged) ? $merged['index'] : '(kein index-Feld gefunden)';
-                $lines[] = '--- ' . strtoupper($scope) . ' #' . $i . ' (Array-Position, NICHT fuer Schreibzugriffe verwenden) -- echtes index-Feld: ' . json_encode($indexField) . ' ---';
+                $activeText = array_key_exists('is_active', $merged)
+                    ? ($merged['is_active'] ? 'ja' : 'NEIN (in der Anlage nicht aktiv -- fehlende Werte sind hier normal)')
+                    : 'keine Angabe';
+                $lines[] = '--- ' . strtoupper($scope) . ' #' . $i . ' (Array-Position, NICHT fuer Schreibzugriffe verwenden) -- echtes index-Feld: ' . json_encode($indexField) . ' -- aktiv: ' . $activeText . ' ---';
                 foreach ($reference[$scope] as $row) {
-                    $present = array_key_exists($row['field'], $merged);
-                    $value = $present ? json_encode($merged[$row['field']]) : null;
+                    $present = false;
+                    $value = null;
+                    foreach ($row['fields'] as $fieldPath) {
+                        $found = $this->valueAtDotPath($merged, $fieldPath);
+                        if ($found !== null) {
+                            $present = true;
+                            $value = json_encode($found[0]) . ' (Rohfeld ' . $fieldPath . ')';
+                            break;
+                        }
+                    }
                     $rangeText = $row['range'] === 'apiRange'
                         ? ((array_key_exists('min_setpoint', $merged) || array_key_exists('max_setpoint', $merged))
                             ? ('von der API selbst geliefert: ' . ($merged['min_setpoint'] ?? '?') . '–' . ($merged['max_setpoint'] ?? '?'))
@@ -1995,6 +2006,28 @@ class WPHub extends IPSModule
             );
         }
         return $count;
+    }
+
+    /**
+     * Hilfsfunktion fuer logVaillantCapabilities(): liest einen Wert ueber
+     * einen Punkt-Pfad (z. B. "heating.operation_mode_heating"). Liefert
+     * [Wert] bei Treffer (auch wenn der Wert selbst null ist), sonst null.
+     * Noetig, weil die Zonen-Heizparameter bei tli NICHT flach, sondern
+     * verschachtelt in configuration.zones[i].heating stehen (an Markus'
+     * echter Rohantwort vom 25.09.2026 bestaetigt, deckt sich mit
+     * myPyllants ZoneHeating-Klasse) -- bis 0.15.1 wurden sie deshalb
+     * faelschlich als "NICHT vorhanden" gemeldet.
+     */
+    private function valueAtDotPath(array $data, string $path): ?array
+    {
+        $node = $data;
+        foreach (explode('.', $path) as $key) {
+            if (!is_array($node) || !array_key_exists($key, $node)) {
+                return null;
+            }
+            $node = $node[$key];
+        }
+        return [$node];
     }
 
     /**

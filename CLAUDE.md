@@ -1119,6 +1119,25 @@ werden] -- erwartete Summe bleibt 2000, exakt das Muster aus dem echten
 Fund). Vier neue Mutationen gefangen (Aufloesung an beiden Stellen,
 `total_consumption` wieder vertraut, Clip-Filter entfernt).
 
+## Fix: Steuerungsfähigkeiten-Übersicht las verschachtelte/properties-Felder nicht (0.15.2, Forum-Post, 29.09.2026)
+
+Markus' erster Knopfdruck (`dump (8).txt`): aktive Zone #0 ohne Betriebsart/Absenktemperatur,
+DHW-Wertebereich „nicht vorhanden“. Am echten tli-Rohdump vom 25.09.
+(`vaillant_tli_2026-09-25_210547_raw.json`) gegengeprüft: **unser Fehler, nicht seine Anlage.**
+Zonen-Heizparameter liegen verschachtelt in `configuration.zones[i].heating.{operation_mode_heating,
+manual_mode_setpoint_heating, set_back_temperature}` (myPyllant `ZoneHeating`), Wertebereich
+Warmwasser (`min_setpoint`/`max_setpoint` 35/70) und `is_active` in `properties.*`. Fix:
+`valueAtDotPath()`, Referenzzeilen mit `fields`-Kandidatenliste, `properties` im Merge,
+`aktiv:`-Angabe je Element. „Manueller Sollwert“ zeigte vorher `desired_room_temperature_setpoint_heating`
+(gerade WIRKSAMER Sollwert, bei Markus am 29.09. = 0) -- falsch zugeordnet. Quick-Veto-Zeile
+zeigt jetzt `current_special_function` der Zone.
+
+Fachlich festgehalten (myPyllant-Circuit gegengelesen): `min_flow_temperature_setpoint` (Ziel des
+PATCH-Endpunkts) ist ein ANDERES Feld als `heating_flow_temperature_minimum_setpoint`/`_maximum_setpoint`
+(bei Markus 30/50 vorhanden) -- bewusst NICHT gleichgesetzt. Zonen/Kreise #1/#2 sind bei ihm
+`is_active=false` → leere Werte dort sind normal. Markus' Leitlinie für Schreibzugriffe: nur Parameter,
+die seine Anlage lesend liefert.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

@@ -1976,6 +1976,46 @@ $logVaillantCapabilities->invoke($mod, 'sys-overlap', 'tli', $overlapSystem);
 $overlapDebug = array_values(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/steuerungsfaehigkeiten'));
 check('logVaillantCapabilities(): bei ueberlappendem Feld gewinnt state (50) vor configuration (999)', isset($overlapDebug[0]) && strpos($overlapDebug[0]['text'], 'Warmwasser-Sollwert: aktueller Wert 50') !== false, $overlapDebug[0]['text'] ?? 'null');
 
+// Fix 0.15.2 (Markus' Dump vom 29.09.2026 + seine echte tli-Rohantwort
+// vom 25.09.2026): Zonen-Heizparameter stehen VERSCHACHTELT in
+// configuration.zones[i].heating, Wertebereich Warmwasser + is_active in
+// properties.* -- bis 0.15.1 beides faelschlich als "NICHT vorhanden"
+// gemeldet. Fixture 1:1 (gekuerzt) aus vaillant_tli_2026-09-25_210547_raw.json.
+$GLOBALS['ips']['debug'] = [];
+$nestedSystem = [
+    'state' => [
+        'zones' => [
+            ['index' => 0, 'current_special_function' => 'NONE', 'desired_room_temperature_setpoint_heating' => 20],
+            ['index' => 1],
+        ],
+        'dhw' => [['index' => 255, 'current_special_function' => 'REGULAR']],
+    ],
+    'configuration' => [
+        'zones' => [
+            ['index' => 0, 'heating' => ['manual_mode_setpoint_heating' => 20, 'operation_mode_heating' => 'MANUAL', 'set_back_temperature' => 18]],
+            ['index' => 1, 'heating' => []],
+        ],
+        'dhw' => [['index' => 255, 'tapping_setpoint' => 50, 'operation_mode_dhw' => 'TIME_CONTROLLED']],
+    ],
+    'properties' => [
+        'zones' => [
+            ['index' => 0, 'is_active' => true],
+            ['index' => 1, 'is_active' => false],
+        ],
+        'dhw' => [['index' => 255, 'max_setpoint' => 70, 'min_setpoint' => 35]],
+    ],
+];
+$logVaillantCapabilities->invoke($mod, 'sys-nested', 'tli', $nestedSystem);
+$nestedDebug = array_values(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/steuerungsfaehigkeiten'));
+$nestedText = $nestedDebug[0]['text'] ?? '';
+check('Capabilities (0.15.2): Betriebsart Heizen aus configuration.zones[0].heating gefunden', strpos($nestedText, 'Betriebsart Heizen: aktueller Wert "MANUAL" (Rohfeld heating.operation_mode_heating)') !== false, $nestedText);
+check('Capabilities (0.15.2): manueller Sollwert aus heating.manual_mode_setpoint_heating (nicht aus dem wirksamen Sollwert)', strpos($nestedText, 'Manueller Sollwert (Raumtemperatur): aktueller Wert 20 (Rohfeld heating.manual_mode_setpoint_heating)') !== false, $nestedText);
+check('Capabilities (0.15.2): Absenktemperatur 18 aus heating.set_back_temperature', strpos($nestedText, 'Absenktemperatur: aktueller Wert 18 (Rohfeld heating.set_back_temperature)') !== false, $nestedText);
+check('Capabilities (0.15.2): Quick Veto zeigt die Sonderfunktion der Zone (NONE)', strpos($nestedText, 'aktueller Wert "NONE" (Rohfeld current_special_function)') !== false, $nestedText);
+check('Capabilities (0.15.2): DHW-Wertebereich 35–70 aus properties.dhw gelesen', strpos($nestedText, 'von der API selbst geliefert: 35–70') !== false, $nestedText);
+check('Capabilities (0.15.2): aktive Zone als aktiv markiert', strpos($nestedText, 'echtes index-Feld: 0 -- aktiv: ja ---') !== false, $nestedText);
+check('Capabilities (0.15.2): inaktive Zone (properties.is_active=false) als NICHT aktiv markiert', strpos($nestedText, 'echtes index-Feld: 1 -- aktiv: NEIN') !== false, $nestedText);
+
 $readAttrInt = new ReflectionMethod(WPHub::class, 'ReadAttributeInteger');
 $readAttrInt->setAccessible(true);
 
