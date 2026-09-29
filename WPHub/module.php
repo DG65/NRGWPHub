@@ -1578,6 +1578,23 @@ class WPHub extends IPSModule
         });
     }
 
+    /**
+     * Lokale Zeitzone des gewaehlten myVAILLANT-Kontos (VAI_Country) --
+     * Fund 29.09.2026 (m_rothenpieler, Forum-Post): die EMF-Tagesenergie
+     * lief bisher auf UTC-Mitternacht statt Ortszeit, der Tageswechsel haette
+     * damit bei ihm um 01:00/02:00 Uhr statt Mitternacht stattgefunden. Alle
+     * VAILLANT_COUNTRIES ausser dem Vereinigten Koenigreich liegen in derselben
+     * CET/CEST-Zone mit identischen EU-weiten Umstellungsterminen -- "Europe/
+     * Berlin" ist dafuer eine unmittelbar zutreffende IANA-Zeitzone, nicht nur
+     * ein Naeherungswert. Das Vereinigte Koenigreich (GMT/BST, andere
+     * Zeitzone) bekommt "Europe/London". Siehe maintainDeviceEnergyVaillant().
+     */
+    private function vaillantLocalTimezone(): \DateTimeZone
+    {
+        $country = trim($this->ReadPropertyString('VAI_Country'));
+        return new \DateTimeZone($country === 'unitedkingdom' ? 'Europe/London' : 'Europe/Berlin');
+    }
+
     /** Token-Buendel aus dem Vaillant-Attribut, null wenn (noch) keines da ist. */
     private function vaillantTokenBundle(): ?array
     {
@@ -1881,7 +1898,7 @@ class WPHub extends IPSModule
     }
 
     /**
-     * Fasst die heutigen Energiewerte (UTC-Mitternacht bis jetzt, DAY-
+     * Fasst die heutigen Energiewerte (Ortszeit-Mitternacht bis jetzt, DAY-
      * Aufloesung) ueber ALLE Geraete einer Anlage zusammen (primary_heat_
      * generator + secondary_heat_generators[] + electric_backup_heater) --
      * auf Markus' eigenen Wunsch (Forum-Post 29.09.2026: "eine Aufteilung auf
@@ -1894,6 +1911,14 @@ class WPHub extends IPSModule
      * ELECTRICAL_ENERGY + EARNED_ENVIRONMENT_ENERGY = HEAT_GENERATED (auf
      * jedem Geraet, jeder Betriebsart).
      *
+     * Fund 29.09.2026 (Markus, Forum-Post, direkt nach dem 0.14.0-Release):
+     * das Zeitfenster lief zuerst auf UTC-Mitternacht -- bei ihm haette der
+     * Tageswechsel damit um 01:00/02:00 Uhr Ortszeit statt Mitternacht
+     * stattgefunden (CET/CEST-Versatz). Jetzt echte Ortszeit-Mitternacht
+     * (vaillantLocalTimezone(), aus VAI_Country abgeleitet), fuer die Anfrage
+     * selbst nach UTC zurueckgewandelt (getDeviceDataBuckets() formatiert
+     * IMMER mit literalem "Z"-Suffix, erwartet also UTC-Instanzen).
+     *
      * EnergieHeizenHeute/EnergieWarmwasserHeute/EnergieGesamtHeute sind
      * dieselben Idents wie bei Panasonic (dailyEnergyHeatingID/-DHWID/
      * -TotalID in GetFunctions(), bereits herstellerneutral) -- keine
@@ -1904,7 +1929,9 @@ class WPHub extends IPSModule
     private function maintainDeviceEnergyVaillant(string $prefix, string $name, WPHUB_VaillantClient $client, array $bundle, string $systemId, array $emf): void
     {
         $to = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-        $from = $to->setTime(0, 0, 0);
+        $from = (new \DateTimeImmutable('now', $this->vaillantLocalTimezone()))
+            ->setTime(0, 0, 0)
+            ->setTimezone(new \DateTimeZone('UTC'));
 
         $sums = [];
         foreach ($this->emfDeviceRoles($emf) as $device) {

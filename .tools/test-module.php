@@ -503,7 +503,7 @@ class FakeVaillant extends WPHUB_VaillantClient
     public array $bucketsCalls = [];       // [['deviceUuid'=>..,'operationMode'=>..,'energyType'=>..], ...]
     public function getDeviceDataBuckets(array $bundle, string $systemId, string $deviceUuid, string $operationMode, string $energyType, string $resolution, \DateTimeImmutable $from, \DateTimeImmutable $to): ?array
     {
-        $this->bucketsCalls[] = ['deviceUuid' => $deviceUuid, 'operationMode' => $operationMode, 'energyType' => $energyType, 'resolution' => $resolution];
+        $this->bucketsCalls[] = ['deviceUuid' => $deviceUuid, 'operationMode' => $operationMode, 'energyType' => $energyType, 'resolution' => $resolution, 'from' => $from, 'to' => $to];
         $key = $deviceUuid . '/' . $operationMode . '/' . $energyType;
         return array_key_exists($key, $this->bucketsByChannel) ? $this->bucketsByChannel[$key] : $this->bucketsResult;
     }
@@ -1934,6 +1934,37 @@ check('Energie: UmweltenergieWarmwasserHeute = 8.0 kWh (nur primary_heat_generat
 check('Energie: alle Variablen nutzen NRG.kWh', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['profile'] ?? '') === 'NRG.kWh');
 check('Energie: EnergieHeizenHeute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['id']] ?? false) === true);
 check('Energie: ruft getDeviceDataBuckets() fuer alle 13 Kanaele der drei Geraete auf (kein Kanal ausgelassen/doppelt)', count($fakeVaiEnergy->bucketsCalls) === 13, count($fakeVaiEnergy->bucketsCalls));
+
+// Fund 29.09.2026 (Markus, Forum-Post): das Zeitfenster muss auf ORTSZEIT-
+// Mitternacht starten, nicht UTC-Mitternacht -- sonst faellt der Tageswechsel
+// je nach Sommer-/Winterzeit auf 01:00/02:00 Uhr Ortszeit statt Mitternacht.
+// Pruefung: das tatsaechlich angefragte 'from' entspricht Ortszeit-Mitternacht
+// (nach UTC gewandelt), nicht UTC-Mitternacht.
+$berlinNow = new DateTimeImmutable('now', new DateTimeZone('Europe/Berlin'));
+$expectedLocalMidnightUtc = $berlinNow->setTime(0, 0, 0)->setTimezone(new DateTimeZone('UTC'));
+$utcMidnight = (new DateTimeImmutable('now', new DateTimeZone('UTC')))->setTime(0, 0, 0);
+$actualFrom = $fakeVaiEnergy->bucketsCalls[0]['from'];
+check('Energie: Zeitfenster beginnt an Ortszeit-Mitternacht (nach UTC gewandelt), nicht an UTC-Mitternacht', $actualFrom->format('Y-m-d\TH:i:s') === $expectedLocalMidnightUtc->format('Y-m-d\TH:i:s'), $actualFrom->format('c') . ' vs. erwartet ' . $expectedLocalMidnightUtc->format('c'));
+if ($berlinNow->getOffset() !== 0) {
+    // Nur aussagekraeftig, wenn Berlin ueberhaupt einen UTC-Versatz hat (immer
+    // der Fall, CET=+1h/CEST=+2h) -- Gegenprobe, dass der alte UTC-Mitternacht-
+    // Fehler nicht wieder einschleicht.
+    check('Energie: Zeitfenster ist NICHT mehr UTC-Mitternacht (Regressionsschutz fuer den CET/CEST-Fund)', $actualFrom->format('Y-m-d\TH:i:s') !== $utcMidnight->format('Y-m-d\TH:i:s'));
+}
+
+// vaillantLocalTimezone(): direkt getestet -- Vereinigtes Koenigreich bekommt
+// eine eigene Zeitzone (GMT/BST, abweichend von CET/CEST), alle anderen
+// VAILLANT_COUNTRIES teilen sich Europe/Berlin (identische EU-weite
+// Umstellungstermine).
+$vaillantLocalTimezone = new ReflectionMethod(WPHub::class, 'vaillantLocalTimezone');
+$vaillantLocalTimezone->setAccessible(true);
+$GLOBALS['ips']['properties']['VAI_Country'] = 'germany';
+check('vaillantLocalTimezone(): Deutschland -> Europe/Berlin', $vaillantLocalTimezone->invoke($mod)->getName() === 'Europe/Berlin');
+$GLOBALS['ips']['properties']['VAI_Country'] = 'austria';
+check('vaillantLocalTimezone(): Oesterreich -> Europe/Berlin (dieselbe CET/CEST-Zone)', $vaillantLocalTimezone->invoke($mod)->getName() === 'Europe/Berlin');
+$GLOBALS['ips']['properties']['VAI_Country'] = 'unitedkingdom';
+check('vaillantLocalTimezone(): Vereinigtes Koenigreich -> Europe/London (eigene Zone)', $vaillantLocalTimezone->invoke($mod)->getName() === 'Europe/London');
+$GLOBALS['ips']['properties']['VAI_Country'] = 'germany';
 
 // GetFunctions(): dailyEnergyHeatingID/-DHWID/-TotalID sind dieselben Idents
 // wie bei Panasonic, bereits herstellerneutral -- keine eigene Verkabelung

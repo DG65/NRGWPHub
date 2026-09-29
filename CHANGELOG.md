@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.14.1 (Build 88) — 29.09.2026
+
+- **Fix: Vaillant-Tagesenergie wechselte an der falschen Uhrzeit auf 0.** Markus (m_rothenpieler) hat direkt nach dem 0.14.0-Release aufgefallen, dass das „heute"-Zeitfenster auf UTC-Mitternacht lief statt auf Ortszeit — der Tageswechsel wäre bei ihm um 01:00 Uhr (Winterzeit) bzw. 02:00 Uhr (Sommerzeit) statt um Mitternacht passiert. Das Zeitfenster startet jetzt an echter Ortszeit-Mitternacht (aus dem gewählten Land des myVAILLANT-Kontos abgeleitet, DST-bewusst), nur für die eigentliche API-Anfrage nach UTC umgerechnet.
+- Prüfstand: 424 Prüfungen (vorher 419), zwei neue Mutationen der Zielstellen geprüft.
+
 ## 0.14.0 (Build 87) — 29.09.2026
 
 - **Neu: Vaillant-Energiedaten (Stromverbrauch, erzeugte Wärmemenge, Umweltenergie).** Markus (m_rothenpieler) hat mit dem 0.13.1-Testknopf die vollständige Buckets-Antwort geschickt — Aufbau bestätigt (`total_consumption` + tagesweise `data[]`, Werte in Wh, physikalisch konsistent: Stromverbrauch + Umweltenergie = erzeugte Wärmemenge). Darauf aufbauend jetzt automatisch befüllt: `EnergieHeizenHeute`/`EnergieWarmwasserHeute`/`EnergieGesamtHeute` (dieselben Vertragsfelder wie bei Panasonic, `dailyEnergyHeatingID` usw.) sowie neu `WaermeHeizenHeute`/`WaermeWarmwasserHeute`/`UmweltenergieHeizenHeute`/`UmweltenergieWarmwasserHeute` als Zusatzwerte. Summiert über alle Geräte einer Kaskade (Haupt-/Zweit-Wärmepumpe, Zusatzheizer), auf Markus' eigenen Wunsch keine geräteweise Aufteilung. Läuft in einem eigenen, deutlich selteneren Takt (aktuell stündlich) — ausdrücklich **nicht** im normalen 300/600s-Aktualisierungszyklus, ein Fehlschlag dort beeinflusst die Temperatur-/Statuswerte nicht.

@@ -912,6 +912,29 @@ Waermeerzeuger"; GetFunctions()-Verkabelung gegengeprueft; Takt-Gating (frisch/a
 und Kontingent-Fehlerpfad der neuen updateVaillantEnergy() einzeln getestet). Sieben neue
 Mutationen gefangen.
 
+## Fix: Tageswechsel lief auf UTC- statt Ortszeit-Mitternacht (0.14.1, Forum-Post, 29.09.2026)
+
+Markus hat direkt nach dem 0.14.0-Release (noch bevor er ueberhaupt echte Werte
+gegengeprueft hat) beim Lesen der Bucket-Rohdaten selbst bemerkt: das "heute"-Zeitfenster
+begann bei "UTC-Mitternacht bis jetzt" -- fuer ihn (Deutschland, CET/CEST) haette der
+Tageswechsel damit um 01:00 Uhr (Winterzeit) bzw. 02:00 Uhr (Sommerzeit) Ortszeit
+stattgefunden, nicht um Mitternacht. Aufmerksame Frage, kein von mir selbst gefundener Bug --
+genau die Art Detail, die nur an echten Daten aus der richtigen Zeitzone auffaellt.
+
+**Fix:** neue Methode `vaillantLocalTimezone()` leitet aus `VAI_Country` (demselben Feld,
+das auch fuer den Realm bei der Anmeldung verwendet wird) eine passende IANA-Zeitzone ab --
+"Europe/Berlin" fuer alle `VAILLANT_COUNTRIES` ausser dem Vereinigten Koenigreich (das
+gesamte CET/CEST-Gebiet hat identische EU-weite Umstellungstermine, "Europe/Berlin" ist
+dafuer keine Naeherung, sondern zutreffend), "Europe/London" fuer das Vereinigte Koenigreich
+(GMT/BST, andere Zeitzone). `maintainDeviceEnergyVaillant()` berechnet jetzt Ortszeit-
+Mitternacht und wandelt SIE nach UTC (nicht umgekehrt) -- `getDeviceDataBuckets()` selbst
+bleibt unveraendert (erwartet weiterhin UTC-Instanzen, formatiert mit literalem "Z"-Suffix).
+
+Pruefstand 419 -> 424 (Regressionsschutz: Zeitfenster ist nachweislich NICHT mehr
+UTC-Mitternacht; `vaillantLocalTimezone()` direkt getestet fuer Deutschland/Oesterreich
+[Europe/Berlin] und das Vereinigte Koenigreich [Europe/London]). Zwei neue Mutationen
+gefangen.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben
