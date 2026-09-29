@@ -1595,6 +1595,33 @@ class WPHub extends IPSModule
         return new \DateTimeZone($country === 'unitedkingdom' ? 'Europe/London' : 'Europe/Berlin');
     }
 
+    /**
+     * "Heute" als UTC-Instanzen (Ortszeit-Mitternacht bis jetzt) -- eine
+     * einzige Stelle fuer beide Verwender (maintainDeviceEnergyVaillant() im
+     * echten Takt UND TestEmfEndpoint() als manueller Testabruf), damit
+     * beide IMMER dieselbe Anfrage stellen. Fund 30.09.2026 (m_rothenpieler,
+     * Forum-Post): WPHub zeigte fuer "Heizen heute" 0,03 kWh, die
+     * myVAILLANT-App 0,9 kWh -- Warmwasser passte exakt. Markus' eigene
+     * Vermutung: bei resolution=DAY sind die API-Buckets UTC-tagesweise
+     * ausgerichtet, ein an Ortszeit-Mitternacht beginnendes Fenster ueberlappt
+     * im Sommer (CEST, UTC+2) zwei UTC-Tage (die ersten zwei Stunden des
+     * deutschen "heute" liegen noch im GESTRIGEN UTC-Bucket) -- NOCH NICHT
+     * bestaetigt, ob total_consumption diesen Fall korrekt behandelt. Vorher
+     * lief TestEmfEndpoint() mit einem eigenen "letzte 3 Tage"-Fenster, das
+     * dieses Randproblem gar nicht zeigen konnte (mehrere volle UTC-Tage,
+     * kein angeschnittener). Jetzt dasselbe Fenster wie der echte Takt --
+     * ein Klick liefert damit exakt die Rohdaten, die die falsche
+     * Heizen-heute-Zahl erzeugt haben.
+     */
+    private function vaillantTodayWindowUtc(): array
+    {
+        $to = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+        $from = (new \DateTimeImmutable('now', $this->vaillantLocalTimezone()))
+            ->setTime(0, 0, 0)
+            ->setTimezone(new \DateTimeZone('UTC'));
+        return [$from, $to];
+    }
+
     /** Token-Buendel aus dem Vaillant-Attribut, null wenn (noch) keines da ist. */
     private function vaillantTokenBundle(): ?array
     {
@@ -1732,20 +1759,23 @@ class WPHub extends IPSModule
      * Markus hat ausdruecklich gebeten, das Kontingent nicht mit einer
      * zweiten Abfrage im 300/600s-Takt zu belasten.
      *
-     * Zweistufig, beide Stufen nur SendDebug, baut noch KEINE eigenen
-     * Variablen: (1) currentSystem liefert die Geraete + ihre verfuegbaren
-     * Energiekanaele (siehe emfDeviceRoles()), (2) fuer JEDEN gefundenen
-     * Kanal zusaetzlich ein kurzes Buckets-Testfenster (DAY-Aufloesung,
-     * letzte 3 Tage) abrufen -- der Response-AUFBAU eines einzelnen Buckets
-     * (welche Felder, welche Werte) ist noch an KEINER echten Anlage
-     * bestaetigt, ein Rateweg waere hier fehl am Platz. Bewusst ein kurzes
-     * Zeitfenster (nicht die volle verfuegbare Historie aus data[].from) --
-     * das haelt die Testantwort klein, reicht aber, um den Aufbau zu sehen.
-     * Mehrere API-Aufrufe in diesem einen manuellen Klick sind hier
+     * Zweistufig, beide Stufen per SendDebug: (1) currentSystem liefert die
+     * Geraete + ihre verfuegbaren Energiekanaele (siehe emfDeviceRoles()),
+     * (2) fuer JEDEN gefundenen Kanal zusaetzlich das Buckets-Fenster
+     * abrufen. Mehrere API-Aufrufe in diesem einen manuellen Klick sind hier
      * vertretbar (typischerweise ein bis zwei Dutzend bei einer Kaskade mit
      * Zusatzgeraet) -- die Kontingent-Sorge betraf ausdruecklich den
      * AUTOMATISCHEN 300/600s-Takt, nicht einen seltenen, bewussten
      * Debug-Klick.
+     *
+     * Fenster seit 30.09.2026 identisch zu maintainDeviceEnergyVaillant()
+     * (vaillantTodayWindowUtc(), Ortszeit-Mitternacht bis jetzt) -- vorher
+     * lief dieser Knopf mit einem eigenen "letzte 3 Tage"-Fenster, das
+     * IMMER volle UTC-Tage abfragte und deshalb den UTC/Ortszeit-
+     * Randfall (Fund m_rothenpieler, Forum-Post: "Heizen heute" 0,03 statt
+     * 0,9 kWh laut myVAILLANT-App) gar nicht zeigen konnte. Jetzt liefert
+     * ein Klick exakt die Rohdaten, die der naechste echte Energie-Takt
+     * auch verwenden wuerde.
      */
     public function TestEmfEndpoint(): void
     {
@@ -1767,8 +1797,7 @@ class WPHub extends IPSModule
         $client = $this->vaillantClient();
         $ok = 0;
         $bucketsOk = 0;
-        $to = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-        $from = $to->modify('-3 days');
+        [$from, $to] = $this->vaillantTodayWindowUtc();
         foreach ($devices as $d) {
             $systemId = (string)($d['guid'] ?? '');
             if ($systemId === '') {
@@ -1928,13 +1957,10 @@ class WPHub extends IPSModule
      */
     private function maintainDeviceEnergyVaillant(string $prefix, string $name, WPHUB_VaillantClient $client, array $bundle, string $systemId, array $emf): void
     {
-        $to = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
-        $from = (new \DateTimeImmutable('now', $this->vaillantLocalTimezone()))
-            ->setTime(0, 0, 0)
-            ->setTimezone(new \DateTimeZone('UTC'));
+        [$from, $to] = $this->vaillantTodayWindowUtc();
 
         $sums = [];
-        foreach ($this->emfDeviceRoles($emf) as $device) {
+        foreach ($this->emfDeviceRoles($emf) as $role => $device) {
             $deviceUuid = (string)($device['device_uuid'] ?? '');
             $channels = is_array($device['data'] ?? null) ? $device['data'] : [];
             if ($deviceUuid === '') {
@@ -1947,7 +1973,20 @@ class WPHub extends IPSModule
                     continue;
                 }
                 $bucket = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'DAY', $from, $to);
-                if ($bucket === null || !is_numeric($bucket['total_consumption'] ?? null)) {
+                if ($bucket === null) {
+                    continue;
+                }
+                // Fund 30.09.2026 (m_rothenpieler): "Heizen heute" wich von der
+                // myVAILLANT-App ab (0,03 statt 0,9 kWh) -- Rohdaten gehen jetzt
+                // auch aus dem ECHTEN Takt per SendDebug raus (bisher nur beim
+                // manuellen TestEmfEndpoint()), damit sich sowas kuenftig ohne
+                // Extra-Klick nachvollziehen laesst.
+                $this->SendDebug(
+                    'Vaillant/emf-energie-buckets-Rohdaten',
+                    $role . '/' . $opMode . '/' . $valType . ': ' . json_encode($bucket, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                    0
+                );
+                if (!is_numeric($bucket['total_consumption'] ?? null)) {
                     continue;
                 }
                 $key = $opMode . '/' . $valType;

@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.14.2 (Build 89) — 30.09.2026
+
+- **Vaillant-Energie: Test-Knopf reproduziert jetzt exakt das Fenster des echten Takts, Rohdaten des echten Takts jetzt sichtbar.** Markus (m_rothenpieler) meldete nach 0.14.1: „Heizen heute" weicht weiterhin von der myVAILLANT-App ab (0,03 statt 0,9 kWh), Warmwasser stimmt exakt. Seine eigene Vermutung: das Fenster startet zwar jetzt an Ortszeit-Mitternacht, `resolution=DAY`-Buckets könnten aber weiterhin nur den aktuellen UTC-Tagesbucket auswerten und den Sommerzeit-Rest von „heute" im gestrigen UTC-Bucket verpassen — **noch nicht bestätigt**. Vorbereitend dafür: der manuelle „🔋 Energiedaten testweise abrufen"-Knopf nutzte bisher ein eigenes „letzte 3 Tage"-Fenster (immer volle UTC-Tage) statt des echten Takt-Fensters und konnte diesen Randfall so gar nicht zeigen — beide Stellen laufen jetzt über dieselbe neue `vaillantTodayWindowUtc()`. Außerdem gehen die rohen Buckets-Antworten jetzt auch aus dem ECHTEN stündlichen Energie-Takt selbst per SendDebug raus (neuer Topic `Vaillant/emf-energie-buckets-Rohdaten`), nicht mehr nur beim manuellen Testknopf — damit lässt sich der nächste automatische Zyklus direkt auswerten, ohne auf einen erneuten Klick angewiesen zu sein. Noch keine Aggregationslogik geändert, reine Diagnose-Grundlage — der eigentliche Fix folgt erst nach Bestätigung der Ursache an echten Rohdaten.
+- Prüfstand: 425 Prüfungen (vorher 424), drei neue Mutationen der Zielstellen geprüft.
+
 ## 0.14.1 (Build 88) — 29.09.2026
 
 - **Fix: Vaillant-Tagesenergie wechselte an der falschen Uhrzeit auf 0.** Markus (m_rothenpieler) hat direkt nach dem 0.14.0-Release aufgefallen, dass das „heute"-Zeitfenster auf UTC-Mitternacht lief statt auf Ortszeit — der Tageswechsel wäre bei ihm um 01:00 Uhr (Winterzeit) bzw. 02:00 Uhr (Sommerzeit) statt um Mitternacht passiert. Das Zeitfenster startet jetzt an echter Ortszeit-Mitternacht (aus dem gewählten Land des myVAILLANT-Kontos abgeleitet, DST-bewusst), nur für die eigentliche API-Anfrage nach UTC umgerechnet.

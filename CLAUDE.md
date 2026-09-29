@@ -935,6 +935,50 @@ UTC-Mitternacht; `vaillantLocalTimezone()` direkt getestet fuer Deutschland/Oest
 [Europe/Berlin] und das Vereinigte Koenigreich [Europe/London]). Zwei neue Mutationen
 gefangen.
 
+## Vaillant: "Heizen heute" weiterhin falsch nach 0.14.1 — Diagnose vorbereitet, Ursache offen (0.14.2, Forum-Post, 30.09.2026)
+
+Markus (m_rothenpieler) hat nach dem 0.14.1-Update (lokale statt UTC-Mitternacht)
+eine echte Gegenprobe gemacht (myVAILLANT-App vs. WPHub, ca. 11:30 Uhr): Heizung
+0,9 kWh (App) vs. 0,03 kWh (WPHub), Warmwasser 1,0 vs. 1,00 kWh (passt exakt).
+Seine eigene, unbestaetigte Vermutung: der Abfragebeginn liegt zwar jetzt korrekt
+an Ortszeit-Mitternacht, aber `resolution=DAY`-Buckets werden von der API
+moeglicherweise weiterhin nur je aktuellem UTC-Tagesbucket ausgewertet -- im
+deutschen Sommer faellt "heute ab Mitternacht" bis 02:00 Uhr Ortszeit noch in den
+GESTRIGEN UTC-Bucket (22:00-24:00 UTC), dessen Beitrag zu `total_consumption`
+dann fehlen koennte.
+
+**Bewusst NICHT sofort "repariert"** -- ob das ueberhaupt die Ursache ist, ist
+unbestaetigt, und eine Aggregationsaenderung ins Blaue waere genau der Rateweg,
+den dieser Vaillant-Zweig seit dem allerersten camelCase-Fund konsequent
+vermeidet. Stattdessen zwei Vorbereitungsschritte, damit die naechste Rueckmeldung
+die Ursache tatsaechlich zeigt:
+
+1. **`vaillantTodayWindowUtc()`** (neue private Methode, Ortszeit-Mitternacht ->
+   UTC, wie schon 0.14.1) wird jetzt an BEIDEN Stellen verwendet, die ein
+   "heute"-Fenster brauchen: `maintainDeviceEnergyVaillant()` (der echte Takt,
+   unveraendertes Verhalten, nur extrahiert) UND `TestEmfEndpoint()` (der manuelle
+   Testknopf, der vorher ein eigenes, unabhaengiges "letzte 3 Tage"-Fenster nutzte
+   -- IMMER volle UTC-Tage, konnte den UTC/Ortszeit-Randfall also strukturell gar
+   nicht reproduzieren). Ein Klick auf den Testknopf zeigt jetzt exakt dasselbe
+   Fenster wie der naechste automatische Zyklus.
+2. **Neuer SendDebug-Topic `Vaillant/emf-energie-buckets-Rohdaten`** in
+   `maintainDeviceEnergyVaillant()` selbst -- vorher gab nur der manuelle Testknopf
+   (`Vaillant/emf-buckets-Rohdaten`) Rohdaten aus, der echte stuendliche Takt lief
+   bisher unsichtbar. Damit laesst sich der naechste automatische Zyklus direkt
+   auswerten, ohne auf einen erneuten Klick angewiesen zu sein.
+
+**Naechster Schritt liegt bei Markus:** entweder den (jetzt fensterkorrekten)
+Testknopf erneut druecken, oder den naechsten automatischen Zyklus abwarten, und
+die rohe `HEATING/CONSUMED_ELECTRICAL_ENERGY`-Bucket-Antwort (Topic
+`Vaillant/emf-energie-buckets-Rohdaten` oder `Vaillant/emf-buckets-Rohdaten`)
+teilen -- erst danach eine echte Aggregations-/API-Verhaltensursache klaeren,
+statt zu raten.
+
+Pruefstand 424 -> 425 (Fensterabgleich Testknopf <-> echter Takt direkt per
+Reflection gegengeprueft; neuer Debug-Topic im echten Takt mit Kanalzahl/Textform
+abgesichert). Drei neue Mutationen gefangen (altes Testknopf-3-Tage-Fenster,
+altes UTC-Mitternacht-Fenster im echten Takt, vertippter Debug-Topic).
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

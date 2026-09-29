@@ -1880,6 +1880,16 @@ check('TestEmfEndpoint(): Buckets-Rohdaten gehen per SendDebug raus, einer je Ka
 check('TestEmfEndpoint(): Buckets-Debug-Eintrag nennt Geraeterolle/Kanal im Text', strpos($bucketsDebugEntries[0]['text'] ?? '', 'primary_heat_generator/') === 0, $bucketsDebugEntries[0]['text'] ?? 'null');
 check('TestEmfEndpoint(): Erfolgsmeldung nennt die Anzahl erfolgreicher Buckets-Abrufe', $emfResultOk !== null && strpos($emfResultOk, '13 Energiekanal') !== false, $emfResultOk ?? 'null');
 
+// Fund 30.09.2026 (m_rothenpieler): TestEmfEndpoint() nutzte vorher ein
+// eigenes "letzte 3 Tage"-Fenster (immer volle UTC-Tage) -- das konnte den
+// UTC/Ortszeit-Randfall, der die falsche "Heizen heute"-Zahl verursacht hat,
+// gar nicht zeigen. Jetzt exakt dasselbe Fenster wie der echte Energie-Takt
+// (vaillantTodayWindowUtc()): Ortszeit-Mitternacht, NICHT "vor 3 Tagen".
+$vaillantTodayWindowUtc = new ReflectionMethod(WPHub::class, 'vaillantTodayWindowUtc');
+$vaillantTodayWindowUtc->setAccessible(true);
+[$expectedTestFrom] = $vaillantTodayWindowUtc->invoke($mod);
+check('TestEmfEndpoint(): Buckets-Fenster beginnt an Ortszeit-Mitternacht wie der echte Energie-Takt (kein eigenes 3-Tage-Fenster mehr)', $fakeVaiEmfOk->bucketsCalls[0]['from']->format('Y-m-d\TH:i:s') === $expectedTestFrom->format('Y-m-d\TH:i:s'), $fakeVaiEmfOk->bucketsCalls[0]['from']->format('c') . ' vs. erwartet ' . $expectedTestFrom->format('c'));
+
 $GLOBALS['ips']['formFieldUpdates'] = [];
 $fakeVaiEmfFail = new FakeVaillant('germany');
 $fakeVaiEmfFail->emfById = ['sys-emf-1' => null];
@@ -1934,6 +1944,16 @@ check('Energie: UmweltenergieWarmwasserHeute = 8.0 kWh (nur primary_heat_generat
 check('Energie: alle Variablen nutzen NRG.kWh', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['profile'] ?? '') === 'NRG.kWh');
 check('Energie: EnergieHeizenHeute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['id']] ?? false) === true);
 check('Energie: ruft getDeviceDataBuckets() fuer alle 13 Kanaele der drei Geraete auf (kein Kanal ausgelassen/doppelt)', count($fakeVaiEnergy->bucketsCalls) === 13, count($fakeVaiEnergy->bucketsCalls));
+
+// Fund 30.09.2026 (m_rothenpieler, 0,03 statt 0,9 kWh "Heizen heute"): die
+// Rohdaten des ECHTEN automatischen Energie-Takts waren bisher gar nicht
+// einsehbar, nur der manuelle TestEmfEndpoint()-Knopf hat sie per SendDebug
+// rausgegeben (Topic 'Vaillant/emf-buckets-Rohdaten'). Neuer, eigener Topic
+// 'Vaillant/emf-energie-buckets-Rohdaten' fuer den echten Takt, damit sich
+// so ein Fund kuenftig ohne Extra-Klick nachvollziehen laesst.
+$echterTaktDebugEntries = array_values(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/emf-energie-buckets-Rohdaten'));
+check('Energie: Buckets-Rohdaten des ECHTEN Takts gehen per SendDebug raus, einer je Kanal (13x)', count($echterTaktDebugEntries) === 13, count($echterTaktDebugEntries));
+check('Energie: Debug-Eintrag des echten Takts nennt Geraeterolle/Kanal im Text', strpos($echterTaktDebugEntries[0]['text'] ?? '', 'primary_heat_generator/') === 0, $echterTaktDebugEntries[0]['text'] ?? 'null');
 
 // Fund 29.09.2026 (Markus, Forum-Post): das Zeitfenster muss auf ORTSZEIT-
 // Mitternacht starten, nicht UTC-Mitternacht -- sonst faellt der Tageswechsel
