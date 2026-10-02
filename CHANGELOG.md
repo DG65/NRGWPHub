@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.15.3 (Build 93) — 02.10.2026
+
+- **Fix: Energie-Abruf schont das Kontingent und blockiert die normalen Werte nicht mehr.** Markus (m_rothenpieler) meldete, dass die Energiedaten seit dem Vortag nicht mehr aktualisiert wurden, während die normalen Vaillant-Werte weiterliefen. Sein Dump zeigt: Anmeldung, TLI und `currentSystem` kamen mit HTTP 200, der erste Bucket-Abruf aber mit 403 „Quota will be replenished in 2.17:16:57" (2 Tage 17 Stunden) — und danach wurden trotzdem alle weiteren 12 Buckets abgefragt. Drei Änderungen: (1) Beim ersten Kontingent-Fehler wird der gesamte Energie-Durchlauf sofort abgebrochen, ohne Teilsummen zu schreiben. (2) Die Sperrfrist gilt nur noch für die Energie (eigenes Attribut `VAI_EnergyRetryNotBefore`); das Kontingent ist offenbar getrennt, TLI lief zeitgleich mit HTTP 200 weiter — die gemeinsame Sperrfrist hätte den Haupt-Takt tagelang blockiert. (3) Die Sperrzeit wurde bisher falsch gelesen: bei mehr als 24 Stunden schreibt Vaillant einen Tage-Präfix („2.17:16:57"), den die Auswertung nicht kannte und durch 5 Minuten ersetzte. Außerdem fragt WPHub die Energie jetzt alle 4 statt jede Stunde ab (13 Abrufe je Durchlauf bei einer Kaskade; Markus hielt 4–6 Stunden für ausreichend).
+- Prüfstand: 458 Prüfungen, sechs neue Mutationen der Zielstellen geprüft.
+
 ## 0.15.2 (Build 92) — 29.09.2026
 
 - **Fix: „🔎 Steuerungsfähigkeiten anzeigen" meldete vorhandene Zonen-Parameter fälschlich als „NICHT vorhanden".** Markus' erster Knopfdruck (Dump 29.09.2026) zeigte bei seiner aktiven Zone weder Betriebsart noch Absenktemperatur. Der Gegencheck an seiner echten tli-Rohantwort vom 25.09.2026 ergab: Die Werte sind da, stehen aber **verschachtelt** unter `configuration.zones[i].heating` (`operation_mode_heating` = MANUAL, `manual_mode_setpoint_heating` = 20, `set_back_temperature` = 18), passend zu myPyllants `ZoneHeating`-Klasse. Die Übersicht hat bisher nur flache Felder gesucht. Außerdem wurde `properties.*` gar nicht gelesen. Dort liefert die API selbst den Warmwasser-Wertebereich (bei Markus 35–70 °C) und `is_active` je Zone.

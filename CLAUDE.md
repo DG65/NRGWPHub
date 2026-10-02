@@ -1138,6 +1138,29 @@ PATCH-Endpunkts) ist ein ANDERES Feld als `heating_flow_temperature_minimum_setp
 `is_active=false` → leere Werte dort sind normal. Markus' Leitlinie für Schreibzugriffe: nur Parameter,
 die seine Anlage lesend liefert.
 
+## Energie-Kontingent: getrennte Sperrfrist, Abbruch beim ersten 403 (0.15.3, Forum-PN, 02.10.2026)
+
+Markus: Energiedaten seit dem Vortag nicht mehr aktualisiert, normale Werte laufen.
+`dump (10).txt`: Token/TLI/`currentSystem` = 200, erster Bucket-Abruf = 403
+"Out of call volume quota. Quota will be replenished in 2.17:16:57", alle weiteren
+12 Buckets ebenfalls 403 (wurden trotzdem abgefragt).
+
+**Befunde:** (1) Das EMF-Kontingent ist von TLI getrennt (TLI zeitgleich 200) -- die
+bisherige Annahme "gleiches Konto, gleiches Kontingent" (gemeinsames
+`VAI_RetryNotBefore`) war falsch; eine Energie-Sperre von 2 Tagen 17 h haette den
+Haupt-Takt blockiert. (2) Vaillant schreibt die Sperrzeit als .NET-TimeSpan, bei
+>24 h mit Tage-Praefix `D.HH:MM:SS`; `parseQuotaRetrySeconds()` kannte das nicht
+(Fallback 5 min). (3) 13 Abrufe/h bei einer Kaskade haben das Energie-Kontingent in
+rund zwei Tagen aufgebraucht.
+
+**Umsetzung:** eigenes Attribut `VAI_EnergyRetryNotBefore`; `maintainDeviceEnergyVaillant()`
+liefert bei Kontingent-Fehler die Sperrsekunden zurueck (Abbruch, keine Teilsummen),
+`updateVaillantEnergy()` setzt die Energie-Sperrfrist, bricht auch weitere Anlagen ab
+und loggt einmal. Parser versteht `D.HH:MM:SS`. Energie-Takt 1 h -> 4 h. Offen/nicht
+geaendert: das genaue Kontingentfenster ist unbekannt; `HEAT_GENERATED` liesse sich
+physikalisch aus Strom + Umweltenergie ableiten (spart 5 von 13 Abrufen), wurde aber
+nicht gebaut.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

@@ -94,11 +94,12 @@ class WPHub extends IPSModule
     // energie) neu abgerufen werden -- bewusst VIEL seltener als der Haupt-
     // Update()-Zyklus (Markus/m_rothenpieler, Forum-Post 29.09.2026: Energie
     // ausdruecklich nicht im 300/600s-Takt). 1 Stunde als erster, konservativer
-    // Standardwert -- passt zur DAY-Bucket-Granularitaet der API (haeufigeres
-    // Abfragen braechte keine neue Information) und zu Markus' eigener
-    // Beobachtung, dass sich das Kontingent offenbar stuendlich erneuert.
-    // Siehe updateVaillantEnergy().
-    private const VAI_ENERGY_REFRESH_INTERVAL_SECONDS = 3600;
+    // Standardwert. Anfangs 1 Stunde -- bei Markus' Kaskade (13 Bucket-Abrufe
+    // je Durchlauf) war das Energie-Kontingent damit nach rund zwei Tagen
+    // aufgebraucht (Sperrfrist 2 Tage 17 h, Forum-Post 02.10.2026), er hielt
+    // selbst 4-6 Stunden fuer ausreichend. Jetzt 4 Stunden. Siehe
+    // updateVaillantEnergy().
+    private const VAI_ENERGY_REFRESH_INTERVAL_SECONDS = 14400;
 
     public function Create()
     {
@@ -163,6 +164,12 @@ class WPHub extends IPSModule
         // Sperrfrist nach einem "Out of call volume quota"-Fehler (403) --
         // siehe updateVaillant()/VaillantClient::parseQuotaRetrySeconds().
         $this->RegisterAttributeInteger('VAI_RetryNotBefore', 0);
+        // Eigene Sperrfrist NUR fuer die Energie-Abrufe (EMF): am 02.10.2026
+        // lieferten die Buckets HTTP 403 mit 2 Tagen 17 h Sperrzeit, waehrend
+        // der normale TLI-Abruf zeitgleich weiter HTTP 200 bekam -- das
+        // Kontingent ist hier offenbar getrennt. Die gemeinsame Sperrfrist
+        // oben wuerde den Haupt-Takt tagelang blockieren.
+        $this->RegisterAttributeInteger('VAI_EnergyRetryNotBefore', 0);
         // Cache fuer Anlagenliste + Regler-Typ (getHomes()/getControlIdentifier())
         // -- spart zwei von drei API-Calls je Zyklus (Fund 26.09.2026,
         // m_rothenpieler, Forum-Post #38: Kontingent ist knapp, diese beiden
@@ -2154,16 +2161,22 @@ class WPHub extends IPSModule
      * dessen Status/Rueckgabewert -- ein Fehlschlag hier (auch Kontingent)
      * lässt die bereits aktualisierten Temperaturen/Status unberuehrt, nur
      * die Energie-Variablen bleiben beim letzten bekannten Stand. Ein
-     * Kontingent-Fehler setzt trotzdem dieselbe VAI_RetryNotBefore-Sperrfrist
-     * wie der Haupt-Refresh (gleiches Konto, gleiches Kontingent) -- verhindert,
-     * dass der naechste Haupt-Zyklus sofort in dieselbe Sperre laeuft.
+     * Kontingent-Fehler setzt eine EIGENE Sperrfrist (VAI_EnergyRetryNotBefore),
+     * nicht die des Haupt-Refresh: am 02.10.2026 bekamen die EMF-Buckets HTTP 403
+     * (Sperre 2 Tage 17 h), waehrend TLI zeitgleich HTTP 200 lieferte -- die
+     * Kontingente sind getrennt, eine gemeinsame Sperre wuerde die normalen
+     * Werte tagelang blockieren.
      */
     private function updateVaillantEnergy(array $bundle, WPHUB_VaillantClient $client): void
     {
+        if ($this->ReadAttributeInteger('VAI_EnergyRetryNotBefore') > time()) {
+            return; // Energie-Sperrfrist laeuft noch, Werte bleiben beim letzten Stand
+        }
         $refreshedAt = $this->ReadAttributeInteger('VAI_EnergyRefreshedAt');
         if ($refreshedAt > 0 && (time() - $refreshedAt) < self::VAI_ENERGY_REFRESH_INTERVAL_SECONDS) {
             return;
         }
+        $client->quotaRetryAfterSeconds = null; // klebt am Client-Objekt, hier nur Energie-Fehler zaehlen
         $devices = $this->readDeviceList();
         $anySuccess = false;
         foreach ($devices as $d) {
@@ -2174,14 +2187,24 @@ class WPHub extends IPSModule
                 continue;
             }
             $emf = $client->getCurrentSystemEmf($bundle, $systemId);
+            $quotaSeconds = null;
             if ($emf === null) {
-                if ($client->quotaRetryAfterSeconds !== null) {
-                    $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
-                    $this->LogMessage('Vaillant-API-Kontingent beim Energie-Abruf aufgebraucht -- naechster Versuch in ' . $client->quotaRetryAfterSeconds . ' s (' . $client->getLastError() . ').', KL_WARNING);
-                }
+                $quotaSeconds = $client->quotaRetryAfterSeconds;
+            } else {
+                $quotaSeconds = $this->maintainDeviceEnergyVaillant($prefix, $name, $client, $bundle, $systemId, $emf);
+            }
+            if ($quotaSeconds !== null) {
+                // Beim ersten Kontingent-Fehler den ganzen Energie-Durchlauf
+                // abbrechen (Fund 02.10.2026, Markus: nach dem ersten 403 wurden
+                // trotzdem alle 13 Buckets weiter abgefragt) -- nur die Energie
+                // pausiert, der Haupt-Takt laeuft weiter.
+                $this->WriteAttributeInteger('VAI_EnergyRetryNotBefore', time() + $quotaSeconds);
+                $this->LogMessage('Vaillant-API-Kontingent beim Energie-Abruf aufgebraucht -- Energiewerte pausieren fuer ' . $quotaSeconds . ' s, die normalen Werte laufen weiter (' . $client->getLastError() . ').', KL_WARNING);
+                return;
+            }
+            if ($emf === null) {
                 continue;
             }
-            $this->maintainDeviceEnergyVaillant($prefix, $name, $client, $bundle, $systemId, $emf);
             $anySuccess = true;
         }
         if ($anySuccess) {
@@ -2244,7 +2267,7 @@ class WPHub extends IPSModule
      * NEU und (noch) nicht Teil des Verbund-Vertrags (kein SUITE.md-Feld
      * dafuer) -- reine Zusatzwerte wie Systemdruck/Raumtemperatur.
      */
-    private function maintainDeviceEnergyVaillant(string $prefix, string $name, WPHUB_VaillantClient $client, array $bundle, string $systemId, array $emf): void
+    private function maintainDeviceEnergyVaillant(string $prefix, string $name, WPHUB_VaillantClient $client, array $bundle, string $systemId, array $emf): ?int
     {
         [$from, $to] = $this->vaillantTodayWindowUtc();
 
@@ -2263,6 +2286,12 @@ class WPHub extends IPSModule
                 }
                 $bucket = $client->getDeviceDataBuckets($bundle, $systemId, $deviceUuid, $opMode, $valType, 'HOUR', $from, $to);
                 if ($bucket === null) {
+                    if ($client->quotaRetryAfterSeconds !== null) {
+                        // Kontingent leer: sofort abbrechen, KEINE Teilsummen
+                        // schreiben (wuerden zu niedrige Werte zeigen) -- der
+                        // Aufrufer setzt die Energie-Sperrfrist.
+                        return $client->quotaRetryAfterSeconds;
+                    }
                     continue;
                 }
                 // Fund 30.09.2026 (m_rothenpieler): "Heizen heute" wich von der
@@ -2312,6 +2341,7 @@ class WPHub extends IPSModule
         $this->maintainDailyEnergyVariable($prefix, $name, 'WaermeWarmwasserHeute', 'Erzeugte Wärmemenge Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/HEAT_GENERATED'] ?? null, $pos++);
         $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieHeizenHeute', 'Umweltenergie Heizen (heute)', $sums['HEATING/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
         $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieWarmwasserHeute', 'Umweltenergie Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
+        return null;
     }
 
     /**

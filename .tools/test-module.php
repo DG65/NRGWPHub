@@ -493,10 +493,15 @@ class FakeVaillant extends WPHUB_VaillantClient
     }
     public array $emfById = [];   // systemId => rohes EMF-Array | null
     public array $emfCalls = [];
+    public ?int $quotaOnFailure = null; // wie failApi() bei HTTP 403: setzt quotaRetryAfterSeconds, wenn ein Abruf null liefert
     public function getCurrentSystemEmf(array $bundle, string $systemId): ?array
     {
         $this->emfCalls[] = $systemId;
-        return $this->emfById[$systemId] ?? null;
+        $r = $this->emfById[$systemId] ?? null;
+        if ($r === null && $this->quotaOnFailure !== null) {
+            $this->quotaRetryAfterSeconds = $this->quotaOnFailure;
+        }
+        return $r;
     }
     public ?array $bucketsResult = null;   // Fallback-Rueckgabewert, wenn kein passender Eintrag in bucketsByChannel existiert
     public array $bucketsByChannel = [];   // "deviceUuid/operationMode/energyType" => Array|null, hat Vorrang vor bucketsResult
@@ -505,7 +510,11 @@ class FakeVaillant extends WPHUB_VaillantClient
     {
         $this->bucketsCalls[] = ['deviceUuid' => $deviceUuid, 'operationMode' => $operationMode, 'energyType' => $energyType, 'resolution' => $resolution, 'from' => $from, 'to' => $to];
         $key = $deviceUuid . '/' . $operationMode . '/' . $energyType;
-        return array_key_exists($key, $this->bucketsByChannel) ? $this->bucketsByChannel[$key] : $this->bucketsResult;
+        $r = array_key_exists($key, $this->bucketsByChannel) ? $this->bucketsByChannel[$key] : $this->bucketsResult;
+        if ($r === null && $this->quotaOnFailure !== null) {
+            $this->quotaRetryAfterSeconds = $this->quotaOnFailure;
+        }
+        return $r;
     }
 }
 
@@ -2183,13 +2192,63 @@ $writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', 0);
 $writeAttrInt->invoke($mod, 'VAI_RetryNotBefore', 0);
 $fakeVaiEnergyQuota = new FakeVaillant('germany');
 $fakeVaiEnergyQuota->emfById = ['sys-energy-2' => null];
-$fakeVaiEnergyQuota->quotaRetryAfterSeconds = 77;
+$fakeVaiEnergyQuota->quotaOnFailure = 77;
+$writeAttrInt->invoke($mod, 'VAI_EnergyRetryNotBefore', 0);
 $updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiEnergyQuota);
-check('updateVaillantEnergy(): Kontingent-Fehler setzt VAI_RetryNotBefore', $readAttrInt->invoke($mod, 'VAI_RetryNotBefore') >= time() + 77);
+check('updateVaillantEnergy(): Kontingent-Fehler setzt die EIGENE Energie-Sperrfrist', $readAttrInt->invoke($mod, 'VAI_EnergyRetryNotBefore') >= time() + 77);
+check('updateVaillantEnergy(): Kontingent-Fehler laesst die Haupt-Sperrfrist unberuehrt (Fund 02.10.2026: TLI lief bei Energie-403 weiter)', $readAttrInt->invoke($mod, 'VAI_RetryNotBefore') === 0);
 check('updateVaillantEnergy(): Kontingent-Fehler setzt VAI_EnergyRefreshedAt NICHT (naechster Zyklus versucht es wieder)', $readAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt') === 0);
+
+// Fund 02.10.2026 (m_rothenpieler, dump (10)): currentSystem kam mit 200, der
+// ERSTE Bucket-Abruf mit 403 "Quota will be replenished in 2.17:16:57" -- danach
+// wurden trotzdem alle weiteren 12 Buckets abgefragt. Jetzt: nach dem ersten
+// Kontingent-Fehler sofort abbrechen, keine Teilsummen schreiben, Energie-
+// Sperrfrist setzen (die Haupt-Sperrfrist bleibt unberuehrt).
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', 0);
+$writeAttrInt->invoke($mod, 'VAI_EnergyRetryNotBefore', 0);
+$writeAttrInt->invoke($mod, 'VAI_RetryNotBefore', 0);
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['guid' => 'sys-energy-3', 'prefix' => 'HPVAIEN3_', 'name' => 'Kontingent-Test']]));
+$fakeVaiBucketQuota = new FakeVaillant('germany');
+$fakeVaiBucketQuota->emfById = ['sys-energy-3' => $realEmfFixture];
+$fakeVaiBucketQuota->bucketsResult = null;
+$fakeVaiBucketQuota->quotaOnFailure = 235027;
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiBucketQuota);
+check('Energie-Kontingent: nach dem ersten 403 wird NICHT weiter abgefragt (1 statt 13 Bucket-Abrufe)', count($fakeVaiBucketQuota->bucketsCalls) === 1, count($fakeVaiBucketQuota->bucketsCalls));
+check('Energie-Kontingent: Energie-Sperrfrist aus der API-Angabe gesetzt (2 Tage 17 h)', $readAttrInt->invoke($mod, 'VAI_EnergyRetryNotBefore') >= time() + 235000);
+check('Energie-Kontingent: Haupt-Sperrfrist bleibt 0 (TLI darf weiterlaufen)', $readAttrInt->invoke($mod, 'VAI_RetryNotBefore') === 0);
+check('Energie-Kontingent: keine Teilsummen geschrieben (Variable bleibt unangelegt)', !isset($GLOBALS['ips']['variables']['HPVAIEN3_EnergieHeizenHeute']));
+check('Energie-Kontingent: VAI_EnergyRefreshedAt bleibt 0', $readAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt') === 0);
+$emfCallsBeforeLocked = count($fakeVaiBucketQuota->emfCalls);
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiBucketQuota);
+check('Energie-Kontingent: waehrend der Energie-Sperrfrist kein einziger API-Aufruf', count($fakeVaiBucketQuota->emfCalls) === $emfCallsBeforeLocked && count($fakeVaiBucketQuota->bucketsCalls) === 1);
+
+// Zwei Anlagen: nach dem Kontingent-Fehler der ersten wird die zweite gar nicht
+// mehr angefragt (gleiches Konto, gleiche Sperre).
+$writeAttrInt->invoke($mod, 'VAI_EnergyRetryNotBefore', 0);
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', 0);
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['guid' => 'sys-q-a', 'prefix' => 'HPVAIQA_', 'name' => 'A'], ['guid' => 'sys-q-b', 'prefix' => 'HPVAIQB_', 'name' => 'B']]));
+$fakeVaiTwoSys = new FakeVaillant('germany');
+$fakeVaiTwoSys->emfById = ['sys-q-a' => null, 'sys-q-b' => $realEmfFixture];
+$fakeVaiTwoSys->quotaOnFailure = 600;
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiTwoSys);
+check('Energie-Kontingent: zweite Anlage wird nach dem Fehler der ersten nicht mehr angefragt', $fakeVaiTwoSys->emfCalls === ['sys-q-a'], json_encode($fakeVaiTwoSys->emfCalls));
+$setAttr->invoke($mod, 'VAI_DeviceList', json_encode([['guid' => 'sys-energy-3', 'prefix' => 'HPVAIEN3_', 'name' => 'Kontingent-Test']]));
+
+// Takt 4 Stunden: nach 3 h noch frisch, nach 5 h faellig.
+$writeAttrInt->invoke($mod, 'VAI_EnergyRetryNotBefore', 0);
+$fakeVaiTakt4h = new FakeVaillant('germany');
+$fakeVaiTakt4h->emfById = ['sys-energy-3' => $realEmfFixture];
+$fakeVaiTakt4h->bucketsResult = ['total_consumption' => 1, 'data' => []];
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', time() - 3 * 3600);
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiTakt4h);
+check('Energie-Takt: nach 3 h noch kein neuer Abruf', $fakeVaiTakt4h->emfCalls === []);
+$writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', time() - 5 * 3600);
+$updateVaillantEnergy->invoke($mod, $energyBundle, $fakeVaiTakt4h);
+check('Energie-Takt: nach 5 h neuer Abruf', $fakeVaiTakt4h->emfCalls === ['sys-energy-3']);
 
 // Aufraeumen fuer nachfolgende Bloecke.
 $writeAttrInt->invoke($mod, 'VAI_RetryNotBefore', 0);
+$writeAttrInt->invoke($mod, 'VAI_EnergyRetryNotBefore', 0);
 $writeAttrInt->invoke($mod, 'VAI_EnergyRefreshedAt', 0);
 $setAttr->invoke($mod, 'VAI_Token', '');
 $setAttr->invoke($mod, 'VAI_DeviceList', '[]');
@@ -2239,6 +2298,7 @@ check('parseVrc700Body(): ungueltiges JSON liefert NULL', WPHUB_VaillantClient::
 // "Out of call volume quota. Quota will be replenished in 00:02:51."
 check('parseQuotaRetrySeconds(): Vaillants genauer Wortlaut wird erkannt (2:51 + 10s Puffer)', WPHUB_VaillantClient::parseQuotaRetrySeconds('Out of call volume quota. Quota will be replenished in 00:02:51.') === (2 * 60 + 51 + 10));
 check('parseQuotaRetrySeconds(): zweistellige Stunden werden korrekt erfasst', WPHUB_VaillantClient::parseQuotaRetrySeconds('replenished in 01:02:03') === (3600 + 120 + 3 + 10));
+check('parseQuotaRetrySeconds(): Tage-Praefix "2.17:16:57" (Fund 02.10.2026, EMF-Buckets) wird erfasst', WPHUB_VaillantClient::parseQuotaRetrySeconds('Out of call volume quota. Quota will be replenished in 2.17:16:57.') === (2 * 86400 + 17 * 3600 + 16 * 60 + 57 + 10));
 check('parseQuotaRetrySeconds(): ohne erkennbares Zeitmuster ein sicherer Standardwert (5 min)', WPHUB_VaillantClient::parseQuotaRetrySeconds('irgendein anderer 403-Text') === 300);
 
 // failApi() (privat): setzt quotaRetryAfterSeconds NUR bei HTTP 403, direkt

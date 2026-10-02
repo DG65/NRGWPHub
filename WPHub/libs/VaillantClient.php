@@ -620,8 +620,11 @@ class WPHUB_VaillantClient
      */
     public static function parseQuotaRetrySeconds(string $body): int
     {
-        if (preg_match('/replenished in (\d{1,2}):(\d{2}):(\d{2})/i', $body, $m)) {
-            $seconds = ((int)$m[1]) * 3600 + ((int)$m[2]) * 60 + (int)$m[3];
+        // Wortlaut ist ein .NET-TimeSpan: "HH:MM:SS", bei mehr als 24 h mit
+        // Tage-Praefix "D.HH:MM:SS" (Fund 02.10.2026, m_rothenpieler: "2.17:16:57"
+        // bei den EMF-Energie-Buckets, vorher als "kein Zeitmuster" gewertet).
+        if (preg_match('/replenished in (?:(\d+)\.)?(\d{1,2}):(\d{2}):(\d{2})/i', $body, $m)) {
+            $seconds = ((int)$m[1]) * 86400 + ((int)$m[2]) * 3600 + ((int)$m[3]) * 60 + (int)$m[4];
             return $seconds + 10;
         }
         return 300;
