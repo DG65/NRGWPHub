@@ -104,7 +104,7 @@ Tester mit echter Vaillant-Anlage (Forumsthread wirbt dafuer, siehe
    und `beta` automatisch gleich, `main` gab es nicht.
 10. **Store-Review-Checkliste (12 Punkte, siehe SUITE.md):** u. a. keine
     Selbstpersistenz in Formular-Buttons, `vendor` in `module.json` =
-    Gerätehersteller (hier "Panasonic", NICHT "DG65" — bereits so gesetzt),
+    Gerätehersteller (seit 0.15.5 leer, weil WPHub mehrere Hersteller anbindet; NIE "DG65"),
     `library.json` NUR die 8 Store-Felder, `Translate()`-Quellstrings
     englisch, Punkt 12 "Neuinstallations-Simulation" vor jedem
     beta→main-Wechsel.

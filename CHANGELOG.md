@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.15.5 (Build 95) — 27.10.2026
+
+- **Store-Vorbereitung: `vendor` in `module.json` leer.** WPHub bindet mehrere Hersteller an (Panasonic, Vaillant). Das Feld „Panasonic" war seit 0.10.0 missverständlich. Wie bei InverterHub, MeterHub und WPModbusHub bleibt es bei mehreren Herstellern leer (Store-Review-Checkliste 2). Keine Funktionsänderung.
+
 ## 0.15.4 (Build 94) — 27.10.2026
 
 - **Store-Review-Vorbereitung für Stable: Anmeldung verliert keine Rückmeldung mehr.** Bei „Anmelden" (Panasonic und Vaillant) wurde das Passwort per `IPS_ApplyChanges()` verworfen, gefolgt von `UpdateFormField()`-Aufrufen. Symcon lädt das offene Formular bei `ApplyChanges()` neu, alles danach geht verloren (Store-Review-Checkliste 9l, Ablehnungsgrund bei HeishaMon 1.33.0). Das Passwort wird jetzt als letzter Schritt verworfen, danach folgt kein Formularzugriff mehr. Das Verwerfen bleibt sofort wirksam, weil das Passwort sonst in der Property stehen bliebe. Dasselbe Vorgehen wie bei MeterHub.
