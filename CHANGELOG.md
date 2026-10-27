@@ -1,5 +1,11 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.15.4 (Build 94) — 27.10.2026
+
+- **Store-Review-Vorbereitung für Stable: Anmeldung verliert keine Rückmeldung mehr.** Bei „Anmelden" (Panasonic und Vaillant) wurde das Passwort per `IPS_ApplyChanges()` verworfen, gefolgt von `UpdateFormField()`-Aufrufen. Symcon lädt das offene Formular bei `ApplyChanges()` neu, alles danach geht verloren (Store-Review-Checkliste 9l, Ablehnungsgrund bei HeishaMon 1.33.0). Das Passwort wird jetzt als letzter Schritt verworfen, danach folgt kein Formularzugriff mehr. Das Verwerfen bleibt sofort wirksam, weil das Passwort sonst in der Property stehen bliebe. Dasselbe Vorgehen wie bei MeterHub.
+- Branch-Modell: `main` wird aus `beta` angelegt (Stable), `ems-integration` läuft bis zur Umstellung der Installationen mit.
+- Prüfstand: neue Prüfungen für Passwort-Verwurf und Reihenfolge, zwei Mutationen der Zielstelle geprüft.
+
 ## 0.15.3 (Build 93) — 02.10.2026
 
 - **Fix: Energie-Abruf schont das Kontingent und blockiert die normalen Werte nicht mehr.** Markus (m_rothenpieler) meldete, dass die Energiedaten seit dem Vortag nicht mehr aktualisiert wurden, während die normalen Vaillant-Werte weiterliefen. Sein Dump zeigt: Anmeldung, TLI und `currentSystem` kamen mit HTTP 200, der erste Bucket-Abruf aber mit 403 „Quota will be replenished in 2.17:16:57" (2 Tage 17 Stunden) — und danach wurden trotzdem alle weiteren 12 Buckets abgefragt. Drei Änderungen: (1) Beim ersten Kontingent-Fehler wird der gesamte Energie-Durchlauf sofort abgebrochen, ohne Teilsummen zu schreiben. (2) Die Sperrfrist gilt nur noch für die Energie (eigenes Attribut `VAI_EnergyRetryNotBefore`); das Kontingent ist offenbar getrennt, TLI lief zeitgleich mit HTTP 200 weiter — die gemeinsame Sperrfrist hätte den Haupt-Takt tagelang blockiert. (3) Die Sperrzeit wurde bisher falsch gelesen: bei mehr als 24 Stunden schreibt Vaillant einen Tage-Präfix („2.17:16:57"), den die Auswertung nicht kannte und durch 5 Minuten ersetzte. Außerdem fragt WPHub die Energie jetzt alle 4 statt jede Stunde ab (13 Abrufe je Durchlauf bei einer Kaskade; Markus hielt 4–6 Stunden für ausreichend).

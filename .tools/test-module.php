@@ -268,6 +268,7 @@ class IPSModule
     }
     protected function UpdateFormField(string $field, string $key, $value): void
     {
+        $GLOBALS['ips']['formUpdatesAfterApply'] = ($GLOBALS['ips']['formUpdatesAfterApply'] ?? 0) + (($GLOBALS['ips']['applied'] ?? false) ? 1 : 0);
         $GLOBALS['ips']['formFieldUpdates'][$field][$key] = $value;
     }
     protected function MaintainVariable(string $ident, string $name, int $type, string $profile, int $pos, bool $keep): void
@@ -1769,8 +1770,16 @@ $GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiLogin) {
     return $fakeVaiLogin;
 };
 $writeAttrInt->invoke($mod, 'VAI_SystemsCacheAt', time()); // Cache "gerade eben" aufgefrischt
+$GLOBALS['ips']['applied'] = false;
+$GLOBALS['ips']['formUpdatesAfterApply'] = 0;
 $loginVaillant->invoke($mod);
 check('LoginVaillant() ruft getHomes() trotz warmem Cache auf (erzwungene Neusuche)', $fakeVaiLogin->homesCalls === 1);
+// Store-Review-Checkliste 9l: ApplyChanges() laedt das Formular neu, jedes
+// UpdateFormField() danach geht verloren -- das Passwort wird deshalb als
+// LETZTER Schritt verworfen.
+check('LoginVaillant(): Passwort-Property danach leer', ($GLOBALS['ips']['properties']['VAI_Password'] ?? null) === '');
+check('LoginVaillant(): ApplyChanges() wurde ausgeloest', ($GLOBALS['ips']['applied'] ?? false) === true);
+check('LoginVaillant(): nach ApplyChanges() KEIN UpdateFormField() mehr (Checkliste 9l)', ($GLOBALS['ips']['formUpdatesAfterApply'] ?? -1) === 0, (string)($GLOBALS['ips']['formUpdatesAfterApply'] ?? 'null'));
 unset($GLOBALS['ips']['vaillantClientFactory']);
 // Aufraeumen: LoginVaillant() hat VAI_Token/VAI_SystemsCache* gesetzt, das
 // wuerde sonst nachfolgende Tests (z. B. "vaillantTokenBundle() ohne Token")

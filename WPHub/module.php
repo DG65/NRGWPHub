@@ -623,26 +623,29 @@ class WPHub extends IPSModule
             return;
         }
 
-        // Erfolg: Token-Buendel sichern, Passwort verwerfen (Property UND
-        // offenes Formular), dann Status/Timer neu aufsetzen.
+        // Erfolg: Token-Buendel sichern. Das Passwort wird erst ganz am Ende
+        // verworfen (discardLoginPassword()): ApplyChanges() laedt das offene
+        // Formular neu, jedes UpdateFormField() DANACH ginge verloren
+        // (Store-Review-Checkliste 9l).
         $this->WriteAttributeString('CC_Token', json_encode($bundle));
-        IPS_SetProperty($this->InstanceID, 'CC_Password', '');
-        IPS_ApplyChanges($this->InstanceID);
-        $this->UpdateFormField('CC_Password', 'value', '');
 
         $devices = $this->refreshDevices($bundle, $client);
         if ($devices === null) {
             if ($client->agreementRequired()) {
+                // Vor SetStatus(): ApplyChanges() setzt den Status neu.
+                $this->discardLoginPassword('CC_Password');
                 $this->SetStatus(202);
                 $say("✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen.\n📜 Panasonic hat aber Nutzungsbedingungen/Datenschutzerklärung aktualisiert und verlangt eine erneute Zustimmung Deines Kontos. Bitte unten „Aktualisierte Bedingungen akzeptieren“ klicken (oder einmal die offizielle Comfort-Cloud-App öffnen und dort bestätigen).");
                 return;
             }
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Geräteliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
+            $this->discardLoginPassword('CC_Password');
             return;
         }
         $this->refreshDiscoverySummary();
         if (count($devices) === 0) {
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Im Konto wurde aber keine Aquarea-Wärmepumpe gefunden. Klimageräte bindet WPHub bewusst nicht ein.');
+            $this->discardLoginPassword('CC_Password');
             return;
         }
         $lines = ['✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Gefundene Wärmepumpen:'];
@@ -650,6 +653,21 @@ class WPHub extends IPSModule
             $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
         }
         $say(implode("\n", $lines));
+        $this->discardLoginPassword('CC_Password');
+    }
+
+    /**
+     * Passwort-Property nach erfolgreicher Anmeldung leeren. MUSS der letzte
+     * Schritt der Login-Funktion sein: IPS_ApplyChanges() laedt das offene
+     * Formular neu (Store-Review-Checkliste 9l), das leere Passwortfeld baut
+     * GetConfigurationForm() danach ohnehin aus der Property nach. Sofort
+     * wirksam sein muss es aus Sicherheitsgruenden, ein reiner Formular-
+     * Vorschlag (UpdateFormField) wuerde das Passwort in der Property lassen.
+     */
+    private function discardLoginPassword(string $property): void
+    {
+        IPS_SetProperty($this->InstanceID, $property, '');
+        IPS_ApplyChanges($this->InstanceID);
     }
 
     /**
@@ -1721,10 +1739,9 @@ class WPHub extends IPSModule
             return;
         }
 
+        // Passwort erst ganz am Ende verwerfen (discardLoginPassword()),
+        // sonst gingen die UpdateFormField()-Aufrufe in $say() verloren.
         $this->WriteAttributeString('VAI_Token', json_encode($bundle));
-        IPS_SetProperty($this->InstanceID, 'VAI_Password', '');
-        IPS_ApplyChanges($this->InstanceID);
-        $this->UpdateFormField('VAI_Password', 'value', '');
 
         // Manuelle Anmeldung erzwingt eine frische Anlagenliste, auch wenn
         // VAI_SystemsCache noch innerhalb der TTL waere (z. B. neu
@@ -1733,11 +1750,13 @@ class WPHub extends IPSModule
         $devices = $this->refreshDevicesVaillant($bundle, $client);
         if ($devices === null) {
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Anlagenliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
+            $this->discardLoginPassword('VAI_Password');
             return;
         }
         $this->refreshDiscoverySummary();
         if (count($devices) === 0) {
             $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Im Konto wurde aber keine Anlage gefunden.');
+            $this->discardLoginPassword('VAI_Password');
             return;
         }
         $lines = ['✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Gefundene Anlagen:'];
@@ -1745,6 +1764,7 @@ class WPHub extends IPSModule
             $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
         }
         $say(implode("\n", $lines));
+        $this->discardLoginPassword('VAI_Password');
     }
 
     /**

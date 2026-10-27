@@ -95,13 +95,13 @@ Tester mit echter Vaillant-Anlage (Forumsthread wirbt dafuer, siehe
    Referenz: MeterHub/Inexogy-Treiber. Im Scaffold bereits als
    `CC_Email`/`CC_Password` (Properties, Login-Input) und `CC_Token`
    (Attribut, Ergebnis) angelegt — `Login()`/Handshake-Logik fehlt noch.
-9. **Branch-Modell:** `ems-integration` (verbundweit identischer Name) bleibt
-   der aktive Entwicklungsbranch. Seit 16.09.2026 existiert zusätzlich `beta`
-   (erster Store-Release-Branch, Dietmars Auftrag "nach Beta mergen"). **Seit
-   18.09.2026 (Dietmars Entscheidung, verbundweit): beide Branches laufen
-   automatisch gleich** — jeder Push nach `ems-integration` geht im selben Zug
-   auch nach `beta`, kein manuelles Nachziehen mehr nötig. `main` existiert für
-   dieses Repo noch nicht.
+9. **Branch-Modell (Stand 27.10.2026):** Dietmar hat im Symcon-Store alle Betas auf
+   Stable umgestellt, verbundweite Anweisung: `main` wird aus `beta` angelegt und
+   ist ab jetzt der Release-Branch; `ems-integration` entfällt. Bis keine
+   Symcon-Installation mehr darauf zeigt, bleibt der Branch bestehen und bekommt
+   weiter dieselben Pushes wie `beta` und `main` (alle drei gleich). Löschen erst
+   nach Dietmars Rückmeldung. Vorher (16.09./18.09.2026) liefen `ems-integration`
+   und `beta` automatisch gleich, `main` gab es nicht.
 10. **Store-Review-Checkliste (12 Punkte, siehe SUITE.md):** u. a. keine
     Selbstpersistenz in Formular-Buttons, `vendor` in `module.json` =
     Gerätehersteller (hier "Panasonic", NICHT "DG65" — bereits so gesetzt),
