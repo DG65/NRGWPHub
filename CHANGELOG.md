@@ -1,5 +1,11 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.16.0 (Build 96) — 29.10.2026
+
+- **Neu: „🪟 Formular: Aufbau“ (Verbund-Konvention SUITE.md 3a).** Symcon merkt sich das Auf- und Zuklappen von Panels nicht selbst, das lange WPHub-Formular wurde bei jedem Öffnen unübersichtlich. Im neuen, eingeklappten Panel vor dem Forum-Hinweis legt man je Bereich (Allgemein, Steuerhoheit, Hersteller, Panasonic Comfort Cloud, Vaillant myVAILLANT, Externe Sensoren & Zähler) fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist, und an welcher Position (1-99) er steht. Kein Haken bedeutet Standard. Bei Widerspruch gilt ausgeblendet vor zugeklappt vor aufgeklappt. „Ausgeblendet“ setzt nur `visible: false`: die Felder bleiben im Formular, ihre Werte bleiben erhalten und wirken weiter. Der Knopf „Auf Standard zurücksetzen“ speichert nichts selbst, zum Speichern klickt man „Übernehmen“. Das Anmelde-Panel des nicht gewählten Herstellers bleibt wie bisher unsichtbar, auch wenn man „Aufgeklappt“ wählt. Zweck, Neu, Dokumentation, Forum-Hinweis und „Über dieses Modul“ stehen fest.
+- Neue Property `FormLayout` (Liste, Standard leer, additiv), neue öffentliche Funktion `WPHUB_ResetFormLayout()`.
+- Prüfstand: 493 Prüfungen (vorher 461), sieben von acht Mutationen der Zielstellen gefangen (die achte ist ein gleichwertiger Mutant).
+
 ## 0.15.5 (Build 95) — 27.10.2026
 
 - **Store-Vorbereitung: `vendor` in `module.json` leer.** WPHub bindet mehrere Hersteller an (Panasonic, Vaillant). Das Feld „Panasonic" war seit 0.10.0 missverständlich. Wie bei InverterHub, MeterHub und WPModbusHub bleibt es bei mehreren Herstellern leer (Store-Review-Checkliste 2). Keine Funktionsänderung.

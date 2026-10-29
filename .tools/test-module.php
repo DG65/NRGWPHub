@@ -1454,6 +1454,135 @@ $formAfterForumAck = json_decode($mod->GetConfigurationForm(), true);
 check('Forum-Hinweis-Panel erscheint nach Bestaetigen nicht mehr', findFormElement($formAfterForumAck['elements'], 'ForumHintPanel') === null);
 
 // ---------------------------------------------------------------------------
+echo "Block 4i: Formular-Aufbau (SUITE.md 3a)\n";
+// ---------------------------------------------------------------------------
+$layoutNames = fn (array $form) => array_values(array_filter(array_column($form['elements'], 'name'), fn ($n) => $n !== null));
+$GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';
+$GLOBALS['ips']['properties']['FormLayout'] = '[]';
+$setAttr->invoke($mod, 'CC_DeviceList', '[]');
+$setAttr->invoke($mod, 'VAI_DeviceList', '[]');
+$fLayoutStd = json_decode($mod->GetConfigurationForm(), true);
+$stdNames = $layoutNames($fLayoutStd);
+check('Aufbau: Standardreihenfolge der Fachpanels (ohne Geraet kein Steuerhoheit-Panel)', array_slice($stdNames, array_search('GeneralPanel', $stdNames, true), 5) === ['GeneralPanel', 'ManufacturerPanel', 'PanasonicPanel', 'VaillantPanel', 'ExtSensorsPanel'], json_encode($stdNames));
+$posLayout = array_search('LayoutPanel', $stdNames, true);
+check('Aufbau: Panel "Formular: Aufbau" steht direkt nach den Fachpanels', $posLayout === array_search('ExtSensorsPanel', $stdNames, true) + 1, json_encode($stdNames));
+$layoutPanel = findFormElement($fLayoutStd['elements'], 'LayoutPanel');
+check('Aufbau: Panel ist eingeklappt', ($layoutPanel['expanded'] ?? true) === false);
+$forumIdx = array_search('ForumHintPanel', array_column($fLayoutStd['elements'], 'name'), true);
+$layoutIdx = array_search('LayoutPanel', array_column($fLayoutStd['elements'], 'name'), true);
+check('Aufbau: Panel steht VOR dem Forum-Hinweis', $forumIdx === false || $layoutIdx < $forumIdx);
+$lastEl = end($fLayoutStd['elements']);
+check('Aufbau: "Über dieses Modul" bleibt ganz unten', ($lastEl['caption'] ?? '') === '🧡  Über dieses Modul');
+$dokuAt = null;
+$generalAt = null;
+foreach ($fLayoutStd['elements'] as $i => $el) {
+    if (($el['caption'] ?? '') === '📖 Dokumentation & Hilfe') {
+        $dokuAt = $i;
+    }
+    if (($el['name'] ?? null) === 'GeneralPanel') {
+        $generalAt = $i;
+    }
+}
+check('Aufbau: Doku-Panel bleibt oben vor den Fachpanels', $dokuAt !== null && $generalAt !== null && $dokuAt < $generalAt, json_encode([$dokuAt, $generalAt]));
+$layoutList = findFormElement($fLayoutStd['elements'], 'FormLayout');
+check('Aufbau: Liste hat eine Zeile je Fachpanel (5 ohne Geraet)', count($layoutList['values'] ?? []) === 5, (string)count($layoutList['values'] ?? []));
+check('Aufbau: Schluesselspalte unsichtbar mit save:true', ($layoutList['columns'][1]['name'] ?? '') === 'Key' && ($layoutList['columns'][1]['save'] ?? false) === true && ($layoutList['columns'][1]['visible'] ?? true) === false);
+check('Aufbau: Standard-Position je Zeile = laufende Nummer', array_column($layoutList['values'], 'Pos') === [1, 2, 3, 4, 5]);
+
+// Position: Zeile "ext" nach vorn, "general" ans Ende
+$GLOBALS['ips']['properties']['FormLayout'] = json_encode([
+    ['Key' => 'ext', 'Panel' => 'x', 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => 1],
+    ['Key' => 'general', 'Panel' => 'x', 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => 50],
+]);
+$fMoved = json_decode($mod->GetConfigurationForm(), true);
+$movedNames = $layoutNames($fMoved);
+$firstFach = array_values(array_filter($movedNames, fn ($n) => in_array($n, ['GeneralPanel', 'ManufacturerPanel', 'PanasonicPanel', 'VaillantPanel', 'ExtSensorsPanel'], true)));
+check('Aufbau: Position 1 zieht ein Panel nach vorn, Position 50 ans Ende', $firstFach[0] === 'ExtSensorsPanel' && end($firstFach) === 'GeneralPanel', json_encode($firstFach));
+
+// Aufklapp-Zustand
+$GLOBALS['ips']['properties']['FormLayout'] = json_encode([
+    ['Key' => 'general', 'Opened' => false, 'Closed' => true, 'Hidden' => false, 'Pos' => 1],
+    ['Key' => 'ext', 'Opened' => true, 'Closed' => false, 'Hidden' => false, 'Pos' => 5],
+]);
+$fOpen = json_decode($mod->GetConfigurationForm(), true);
+check('Aufbau: "Zugeklappt" klappt ein standardmaessig aufgeklapptes Panel zu', findFormElement($fOpen['elements'], 'GeneralPanel')['expanded'] === false);
+check('Aufbau: "Aufgeklappt" klappt ein standardmaessig zugeklapptes Panel auf', findFormElement($fOpen['elements'], 'ExtSensorsPanel')['expanded'] === true);
+check('Aufbau: ohne Haken bleibt der Standard (Hersteller-Panel weiter aufgeklappt)', findFormElement($fOpen['elements'], 'ManufacturerPanel')['expanded'] === true);
+
+// Ausgeblendet = visible:false, Panel bleibt im Formular
+$GLOBALS['ips']['properties']['FormLayout'] = json_encode([
+    ['Key' => 'ext', 'Opened' => false, 'Closed' => false, 'Hidden' => true, 'Pos' => 5],
+]);
+$fHidden = json_decode($mod->GetConfigurationForm(), true);
+$hiddenExt = findFormElement($fHidden['elements'], 'ExtSensorsPanel');
+check('Aufbau: Ausgeblendet heisst visible:false, Panel bleibt im Formular', $hiddenExt !== null && ($hiddenExt['visible'] ?? true) === false);
+check('Aufbau: Felder eines ausgeblendeten Panels bleiben erhalten (Ext_PowerVariable)', findFormElement($fHidden['elements'], 'Ext_PowerVariable') !== null);
+check('Aufbau: Caption zaehlt ausgeblendete Bereiche', strpos(findFormElement($fHidden['elements'], 'LayoutPanel')['caption'], '(1 ausgeblendet)') !== false);
+$layoutItems = findFormElement($fHidden['elements'], 'LayoutPanel')['items'];
+check('Aufbau: Hinweiszeile nennt den ausgeblendeten Bereich', strpos($layoutItems[0]['caption'] ?? '', 'Externe Sensoren') !== false, $layoutItems[0]['caption'] ?? 'null');
+
+// Widerspruch: ausgeblendet vor zugeklappt vor aufgeklappt
+$GLOBALS['ips']['properties']['FormLayout'] = json_encode([
+    ['Key' => 'general', 'Opened' => true, 'Closed' => true, 'Hidden' => true, 'Pos' => 1],
+    ['Key' => 'ext', 'Opened' => true, 'Closed' => true, 'Hidden' => false, 'Pos' => 5],
+]);
+$fConflict = json_decode($mod->GetConfigurationForm(), true);
+check('Aufbau: Widerspruch -> ausgeblendet gewinnt', (findFormElement($fConflict['elements'], 'GeneralPanel')['visible'] ?? true) === false);
+check('Aufbau: Widerspruch zugeklappt/aufgeklappt -> zugeklappt gewinnt', findFormElement($fConflict['elements'], 'ExtSensorsPanel')['expanded'] === false);
+
+// Rueckfall: unbekannte Schluessel/kaputte Eintraege
+$GLOBALS['ips']['properties']['FormLayout'] = json_encode([['Key' => 'gibt-es-nicht', 'Hidden' => true, 'Pos' => 1], 'kaputt', ['ohneKey' => 1]]);
+$fFallback = json_decode($mod->GetConfigurationForm(), true);
+check('Aufbau: unbekannte Schluessel fallen auf Standardreihenfolge zurueck', $layoutNames($fFallback) === $stdNames, json_encode($layoutNames($fFallback)));
+$GLOBALS['ips']['properties']['FormLayout'] = 'kein json';
+$fBroken = json_decode($mod->GetConfigurationForm(), true);
+check('Aufbau: ungueltiges JSON in der Property -> Standard, kein Absturz', $layoutNames($fBroken) === $stdNames);
+
+// Zusammenspiel mit der Hersteller-Wahl: ausgeblendet darf nie zeigen, was der Hersteller ausblendet
+$GLOBALS['ips']['properties']['FormLayout'] = '[]';
+$GLOBALS['ips']['properties']['Manufacturer'] = 'vaillant';
+$fVai = json_decode($mod->GetConfigurationForm(), true);
+check('Aufbau: Hersteller Vaillant -> Panasonic-Panel bleibt unsichtbar', (findFormElement($fVai['elements'], 'PanasonicPanel')['visible'] ?? true) === false);
+check('Aufbau: Hersteller Vaillant -> Vaillant-Panel sichtbar', (findFormElement($fVai['elements'], 'VaillantPanel')['visible'] ?? true) === true);
+$GLOBALS['ips']['properties']['FormLayout'] = json_encode([['Key' => 'vaillant', 'Hidden' => true, 'Pos' => 4], ['Key' => 'panasonic', 'Opened' => true, 'Pos' => 3]]);
+$fVaiHidden = json_decode($mod->GetConfigurationForm(), true);
+check('Aufbau: Vaillant-Panel ausgeblendet -> unsichtbar', (findFormElement($fVaiHidden['elements'], 'VaillantPanel')['visible'] ?? true) === false);
+check('Aufbau: "Aufgeklappt" macht ein durch den Hersteller ausgeblendetes Panel NICHT sichtbar', (findFormElement($fVaiHidden['elements'], 'PanasonicPanel')['visible'] ?? true) === false);
+$GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';
+
+// Steuerhoheit-Panel nimmt am Aufbau teil, sobald ein Geraet bekannt ist
+$GLOBALS['ips']['properties']['FormLayout'] = '[]';
+$setAttr->invoke($mod, 'CC_DeviceList', json_encode([['guid' => 'g1', 'name' => 'WP', 'prefix' => 'HPAUFB_', 'reachable' => true]]));
+$fManaged = json_decode($mod->GetConfigurationForm(), true);
+check('Aufbau: mit Geraet erscheint "Steuerhoheit" als sechstes Fachpanel in der Liste', count(findFormElement($fManaged['elements'], 'FormLayout')['values']) === 6);
+check('Aufbau: Steuerhoheit steht direkt hinter "Allgemein"', array_search('ManagedByPanel', $layoutNames($fManaged), true) === array_search('GeneralPanel', $layoutNames($fManaged), true) + 1);
+$setAttr->invoke($mod, 'CC_DeviceList', '[]');
+
+// Reset-Knopf: Klartext, setzt Liste per UpdateFormField, keine Selbstpersistenz
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$GLOBALS['ips']['applied'] = false;
+$propsBeforeReset = $GLOBALS['ips']['properties']['FormLayout'];
+$resetText = $mod->ResetFormLayout();
+check('Aufbau: ResetFormLayout() gibt Klartext mit Hinweis auf "Übernehmen" zurueck', strpos($resetText, 'Übernehmen') !== false, $resetText);
+$resetRows = json_decode($GLOBALS['ips']['formFieldUpdates']['FormLayout']['values'] ?? '[]', true);
+check('Aufbau: Reset setzt alle Zeilen auf Standard (keine Haken, Position 1..n)', count($resetRows) === 5 && array_column($resetRows, 'Pos') === [1, 2, 3, 4, 5] && !array_filter($resetRows, fn ($r) => $r['Opened'] || $r['Closed'] || $r['Hidden']));
+check('Aufbau: Reset speichert nichts selbst (Property unveraendert, kein ApplyChanges)', $GLOBALS['ips']['properties']['FormLayout'] === $propsBeforeReset && $GLOBALS['ips']['applied'] === false);
+check('Aufbau: Reset-Knopf im Panel ruft WPHUB_ResetFormLayout auf', (function () use ($fLayoutStd) {
+    foreach (findFormElement($fLayoutStd['elements'], 'LayoutPanel')['items'] as $it) {
+        if (($it['type'] ?? '') === 'Button') {
+            return $it['onClick'] === 'echo WPHUB_ResetFormLayout($id);';
+        }
+    }
+    return false;
+})());
+$GLOBALS['ips']['properties']['FormLayout'] = '[]';
+check('Aufbau: "Neu"-Panel nennt den Formular-Aufbau', (function () use ($mod) {
+    $f = json_decode($mod->GetConfigurationForm(), true);
+    $n = findFormElement($f['elements'], 'NewsPanel');
+    return $n !== null && strpos(json_encode($n, JSON_UNESCAPED_UNICODE), 'Formular-Aufbau selbst wählen') !== false;
+})());
+
+// ---------------------------------------------------------------------------
 echo "Block 6: Hersteller-Auswahl (Manufacturer) + Vaillant myVAILLANT\n";
 // ---------------------------------------------------------------------------
 // Dietmar-Anstoss 14.09.2026 "andere WP-Hersteller mitnehmen": Manufacturer-

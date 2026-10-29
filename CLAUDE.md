@@ -1161,6 +1161,19 @@ geaendert: das genaue Kontingentfenster ist unbekannt; `HEAT_GENERATED` liesse s
 physikalisch aus Strom + Umweltenergie ableiten (spart 5 von 13 Abrufen), wurde aber
 nicht gebaut.
 
+## Formular: Aufbau (0.16.0, SUITE.md 3a, 29.10.2026)
+
+Verbund-Konvention auf Dietmars Auftrag (Referenz Batteriewächter). WPHub zählt sechs
+wählbare Fachpanels (`FACH_PANELS` in module.php: general, managedby, manufacturer,
+panasonic, vaillant, ext). Das Formular bleibt weiter überwiegend statisches `form.json`;
+`applyFormLayout()` ordnet die fertig zusammengesetzten Panels in `GetConfigurationForm()`
+nach der Property `FormLayout` neu, setzt `expanded`/`visible:false` und fügt das Panel
+`LayoutPanel` direkt vor dem Forum-Hinweis ein. Das Steuerhoheit-Panel gibt es nur, sobald
+ein Gerät bekannt ist, die Liste hat dann sechs statt fünf Zeilen. Zusammenspiel mit der
+Herstellerwahl: `visible:false` durch den Hersteller wird nie durch „Aufgeklappt“
+überschrieben. Neues Fachpanel später: Schlüssel in `FACH_PANELS` ergänzen, fehlende
+Schlüssel in gespeicherten Listen fallen automatisch auf Standard zurück.
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben

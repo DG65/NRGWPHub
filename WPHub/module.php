@@ -32,7 +32,18 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.10.0';
+    const NEWS_VERSION = '0.16.0';
+
+    // Wählbare Fachpanels (SUITE.md 3a "Formular: Aufbau"): stabiler Schlüssel => Panel-Name in form.json.
+    // Reihenfolge = Standardreihenfolge. 'managedby' wird nur gebaut, sobald ein Gerät bekannt ist.
+    private const FACH_PANELS = [
+        'general'      => 'GeneralPanel',
+        'managedby'    => 'ManagedByPanel',
+        'manufacturer' => 'ManufacturerPanel',
+        'panasonic'    => 'PanasonicPanel',
+        'vaillant'     => 'VaillantPanel',
+        'ext'          => 'ExtSensorsPanel',
+    ];
 
     // Comfort Cloud meldet 126 als "kein gueltiger Messwert".
     const CC_INVALID_TEMPERATURE = 126;
@@ -112,6 +123,8 @@ class WPHub extends IPSModule
         // schaltet Formular-Panel und Treiber-Logik um, siehe MANUFACTURER_VALUES.
         // Panasonic bleibt Standard -- bestehende Installationen unveraendert.
         $this->RegisterPropertyString('Manufacturer', self::MANUFACTURER_DEFAULT);
+        // Aufbau des Formulars (SUITE.md 3a): je Fachpanel Aufklapp-Zustand und Position.
+        $this->RegisterPropertyString('FormLayout', '[]');
 
         // myVAILLANT-Login (E-Mail + Passwort NUR fuer den einmaligen
         // Handshake, siehe loginVaillant(), danach geleert -- gleiches Muster
@@ -272,7 +285,8 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• Neu: Panel "🏭 Hersteller" -- WPHub kann jetzt auch Vaillant-Wärmepumpen über myVAILLANT anbinden (zweiter Hersteller neben Panasonic Comfort Cloud). Vaillant ist bewusst nur lesend und noch ungeprüft an einem echten Konto -- Rückmeldungen willkommen.'],
+                    ['type' => 'Label', 'caption' => '• 🪟 Neu: Formular-Aufbau selbst wählen -- im eingeklappten Panel „Formular: Aufbau“ legst du je Bereich fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist und an welcher Position er steht. Symcon merkt sich das Auf- und Zuklappen nicht selbst.'],
+                    ['type' => 'Label', 'caption' => '• Panel "🏭 Hersteller" -- WPHub kann auch Vaillant-Wärmepumpen über myVAILLANT anbinden (zweiter Hersteller neben Panasonic Comfort Cloud). Vaillant ist bewusst nur lesend -- Rückmeldungen willkommen.'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
@@ -419,6 +433,10 @@ class WPHub extends IPSModule
             }
         }
 
+        // Reihenfolge/Aufklapp-Zustand der Fachpanels nach der Nutzerwahl
+        // (SUITE.md 3a), samt Panel "Formular: Aufbau" vor dem Forum-Hinweis.
+        $this->applyFormLayout($form);
+
         // Forum-Hinweis -- nach den Fachpanels, vor "Über dieses Modul"
         // (SUITE.md "Einheitliche Formular-Optik").
         $forumHint = $this->ForumHint();
@@ -431,6 +449,146 @@ class WPHub extends IPSModule
         $form['elements'][] = $this->LicenseHint();
 
         return json_encode($form);
+    }
+
+    /**
+     * Reihenfolge und Aufklapp-Zustand der Fachpanels aus der Einstellung „FormLayout“.
+     * Unbekannte oder fehlende Einträge fallen auf Standardreihenfolge und „Standard“ zurück.
+     *
+     * @param string[] $keys Schlüssel der vorhandenen Fachpanels in Standardreihenfolge
+     * @return array key => ['open' => 'std'|'open'|'closed'|'hidden', 'pos' => int, 'idx' => int], in anzuwendender Reihenfolge
+     */
+    private function formLayout(array $keys): array
+    {
+        $saved = json_decode((string)$this->ReadPropertyString('FormLayout'), true);
+        $by = [];
+        foreach (is_array($saved) ? $saved : [] as $row) {
+            if (is_array($row) && isset($row['Key'])) {
+                $by[(string)$row['Key']] = $row;
+            }
+        }
+        $out = [];
+        foreach ($keys as $i => $k) {
+            $r = $by[$k] ?? [];
+            // Vorrang bei Widerspruch: ausgeblendet vor zugeklappt vor aufgeklappt, kein Haken = Standard
+            $open = !empty($r['Hidden']) ? 'hidden' : (!empty($r['Closed']) ? 'closed' : (!empty($r['Opened']) ? 'open' : 'std'));
+            $out[$k] = [
+                'open' => $open,
+                'pos'  => isset($r['Pos']) ? max(1, min(99, (int)$r['Pos'])) : $i + 1,
+                'idx'  => $i,
+            ];
+        }
+        uasort($out, function ($a, $b) { return [$a['pos'], $a['idx']] <=> [$b['pos'], $b['idx']]; });
+        return $out;
+    }
+
+    /**
+     * Ordnet die Fachpanels im zusammengesetzten Formular nach „FormLayout“ neu, setzt den Aufklapp-Zustand,
+     * blendet gewählte Panels aus (visible:false, nie weglassen) und fügt das Panel „Formular: Aufbau“
+     * hinter den Fachpanels ein. Panels, die schon durch den gewählten Hersteller ausgeblendet sind, bleiben es.
+     */
+    private function applyFormLayout(array &$form): void
+    {
+        $free = [];
+        $remove = [];
+        foreach (self::FACH_PANELS as $key => $name) {
+            foreach ($form['elements'] as $i => $el) {
+                if (($el['name'] ?? null) === $name) {
+                    $free[$key] = $el;
+                    $remove[] = $i;
+                    break;
+                }
+            }
+        }
+        if (count($free) === 0) {
+            return;
+        }
+        $at = min($remove);
+        $rest = [];
+        foreach ($form['elements'] as $i => $el) {
+            if (!in_array($i, $remove, true)) {
+                $rest[] = $el;
+            }
+        }
+        $layout = $this->formLayout(array_keys($free));
+        $middle = [];
+        foreach ($layout as $key => $l) {
+            $panel = $free[$key];
+            if ($l['open'] === 'open') {
+                $panel['expanded'] = true;
+            } elseif ($l['open'] === 'closed') {
+                $panel['expanded'] = false;
+            } elseif ($l['open'] === 'hidden') {
+                $panel['visible'] = false;
+            }
+            $middle[] = $panel;
+        }
+        array_splice($rest, $at, 0, array_merge($middle, [$this->LayoutPanel($layout, $free)]));
+        $form['elements'] = $rest;
+    }
+
+    /** Wählbarer Aufbau des Formulars: je Fachpanel Aufklapp-Zustand beim Öffnen und Position. */
+    private function LayoutPanel(array $layout, array $free): array
+    {
+        $rows = [];
+        $hidden = [];
+        foreach ($layout as $key => $l) {
+            $name = trim((string)preg_replace('/\s*\(.*$/u', '', (string)($free[$key]['caption'] ?? $key)));
+            $rows[] = ['Key' => $key, 'Panel' => $name, 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed',
+                'Hidden' => $l['open'] === 'hidden', 'Pos' => $l['pos']];
+            if ($l['open'] === 'hidden') {
+                $hidden[] = trim((string)preg_replace('/^[^\p{L}\p{N}]+/u', '', $name));
+            }
+        }
+        $hiddenLine = $hidden
+            ? [['type' => 'Label', 'caption' => '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' -- zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.']]
+            : [];
+        return [
+            'type' => 'ExpansionPanel', 'name' => 'LayoutPanel', 'expanded' => false,
+            'caption' => '🪟  Formular: Aufbau' . ($hidden ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
+            'items' => array_merge($hiddenLine, [
+                ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen des Formulars aufgeklappt sind und in welcher Reihenfolge sie stehen. Symcon merkt sich das Auf- und Zuklappen nicht selbst, deshalb gilt die Einstellung hier jedes Mal beim Öffnen. Sie wirkt nach „Übernehmen“ beim nächsten Öffnen des Formulars.'],
+                ['type' => 'Label', 'caption' => 'Kein Haken heißt „Standard“: wie das Modul es vorsieht. Die Position ist eine Zahl; bei gleicher Zahl bleibt die Standardreihenfolge. „Ausgeblendet“ nimmt einen Bereich aus der Anzeige, ohne dass er etwas verliert: seine Einstellungen bleiben erhalten und wirken weiter. Zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen oder „Auf Standard zurücksetzen“ klicken. Sind mehrere Haken gesetzt, gilt „Ausgeblendet“ vor „Zugeklappt“ vor „Aufgeklappt“. Von den Anmelde-Bereichen zeigt WPHub ohnehin nur den des gewählten Herstellers. Die Bereiche oben (Zweck, Neu, Dokumentation) und unten (Rückmeldungen, Über dieses Modul) bleiben, wo sie sind, und lassen sich nicht ausblenden.'],
+                [
+                    'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
+                    'loadValuesFromConfiguration' => false,
+                    'values' => $rows,
+                    'columns' => [
+                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
+                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
+                        ['caption' => 'Aufgeklappt', 'name' => 'Opened', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Zugeklappt', 'name' => 'Closed', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => '🙈 Ausgeblendet', 'name' => 'Hidden', 'width' => '130px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => 'Position', 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
+                    ],
+                ],
+                ['type' => 'Button', 'caption' => '↩️ Auf Standard zurücksetzen', 'onClick' => 'echo WPHUB_ResetFormLayout($id);'],
+            ]),
+        ];
+    }
+
+    /** Setzt Aufklapp-Zustand und Reihenfolge der Fachpanels im offenen Formular auf den Standard (gilt nach „Übernehmen“). */
+    public function ResetFormLayout(): string
+    {
+        $base = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
+        $captions = [];
+        foreach (($base['elements'] ?? []) as $el) {
+            if (isset($el['name'])) {
+                $captions[(string)$el['name']] = (string)($el['caption'] ?? '');
+            }
+        }
+        $captions['ManagedByPanel'] = '🔀 Steuerhoheit';
+        $rows = [];
+        $i = 0;
+        foreach (self::FACH_PANELS as $key => $name) {
+            if ($key === 'managedby' && count($this->readDeviceList()) === 0) {
+                continue; // wird erst gebaut, sobald ein Gerät bekannt ist
+            }
+            $label = trim((string)preg_replace('/\s*\(.*$/u', '', $captions[$name] ?? $key));
+            $rows[] = ['Key' => $key, 'Panel' => $label, 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => ++$i];
+        }
+        $this->UpdateFormField('FormLayout', 'values', json_encode($rows, JSON_UNESCAPED_UNICODE));
+        return 'ℹ️ Auf Standard gesetzt. Zum Speichern unten „Übernehmen“ klicken.';
     }
 
     /**
