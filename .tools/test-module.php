@@ -96,6 +96,9 @@ const TEST_METERHUB_MODULE_GUID = '{BAB8E05C-9150-43B9-9F2B-E5215FA54F0A}';
 const TEST_HEISHAMON_MODULE_GUID = '{1919151A-3C0F-4C09-B906-291638EC1469}';
 function IPS_GetInstanceListByModuleID(string $moduleID): array
 {
+    if (!empty($GLOBALS['ips']['noArchive'])) {
+        return [];
+    }
     if ($moduleID === '{43192F0B-135B-4CE7-A0A7-1475603F3060}') {
         return [TEST_ARCHIVE_INSTANCE_ID];
     }
@@ -135,6 +138,24 @@ function AC_SetLoggingStatus(int $archiveID, int $variableID, bool $active): boo
     }
     $GLOBALS['ips']['archived'][$variableID] = $active;
     return true;
+}
+const OBJECTTYPE_VARIABLE = 2;
+function IPS_GetChildrenIDs(int $id): array
+{
+    return array_map(fn ($v) => $v['id'], array_values($GLOBALS['ips']['variables']));
+}
+function IPS_GetObject(int $id): array
+{
+    return ['ObjectType' => OBJECTTYPE_VARIABLE];
+}
+function IPS_GetVariable(int $id): array
+{
+    foreach ($GLOBALS['ips']['variables'] as $v) {
+        if ($v['id'] === $id) {
+            return ['VariableType' => $v['type']];
+        }
+    }
+    return ['VariableType' => -1];
 }
 function IPS_ApplyChanges(int $id): void
 {
@@ -674,7 +695,7 @@ $devices = $refresh->invoke($mod, ['accessToken' => 'x'], $fake);
 $vars = $GLOBALS['ips']['variables'];
 check('Außentemperatur = 25 °C', ($vars[$prefix . 'Aussentemperatur']['value'] ?? null) === 25.0);
 check('Außentemperatur nutzt NRG.Celsius', ($vars[$prefix . 'Aussentemperatur']['profile'] ?? '') === 'NRG.Celsius');
-check('Außentemperatur wird automatisch archiviert (eigene Variable)', ($GLOBALS['ips']['archived'][$vars[$prefix . 'Aussentemperatur']['id']] ?? false) === true);
+check('Außentemperatur wird NICHT automatisch archiviert (Review 30.10.2026) (eigene Variable)', ($GLOBALS['ips']['archived'][$vars[$prefix . 'Aussentemperatur']['id']] ?? false) === false);
 check('Zone 1 Ist = 18 °C (aus zoneStatus/temperatureNow)', ($vars[$prefix . 'Zone1Ist']['value'] ?? null) === 18.0);
 check('Zonenname aus Status uebernommen (HK1 statt "Zone 1")', ($vars[$prefix . 'Zone1Ist']['name'] ?? '') === 'Heizung: HK1 Isttemperatur');
 check('Flüsterbetrieb = 3 (Stufe 3)', ($vars[$prefix . 'Fluesterbetrieb']['value'] ?? null) === 3);
@@ -693,10 +714,10 @@ check('Energie Heizen nutzt NRG.kWh', ($vars[$prefix . 'EnergieHeizenHeute']['pr
 check('Energie Kühlen heute = 0.0 kWh', ($vars[$prefix . 'EnergieKuehlenHeute']['value'] ?? null) === 0.0);
 check('Energie Warmwasser heute = 1.2 kWh', ($vars[$prefix . 'EnergieWarmwasserHeute']['value'] ?? null) === 1.2);
 check('Energie gesamt heute = 4.7 kWh', ($vars[$prefix . 'EnergieGesamtHeute']['value'] ?? null) === 4.7);
-check('Energie Heizen heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieHeizenHeute']['id']] ?? false) === true);
-check('Energie Kühlen heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieKuehlenHeute']['id']] ?? false) === true);
-check('Energie Warmwasser heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieWarmwasserHeute']['id']] ?? false) === true);
-check('Energie gesamt heute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieGesamtHeute']['id']] ?? false) === true);
+check('Energie Heizen heute wird NICHT automatisch archiviert (Review 30.10.2026)', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieHeizenHeute']['id']] ?? false) === false);
+check('Energie Kühlen heute wird NICHT automatisch archiviert (Review 30.10.2026)', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieKuehlenHeute']['id']] ?? false) === false);
+check('Energie Warmwasser heute wird NICHT automatisch archiviert (Review 30.10.2026)', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieWarmwasserHeute']['id']] ?? false) === false);
+check('Energie gesamt heute wird NICHT automatisch archiviert (Review 30.10.2026)', ($GLOBALS['ips']['archived'][$vars[$prefix . 'EnergieGesamtHeute']['id']] ?? false) === false);
 
 // Keine Fehler: leere Liste -> Fehleranzahl 0, Fehlertext leer.
 $fake->statusResult['faultStatus'] = [];
@@ -2235,7 +2256,7 @@ check('Energie: WaermeWarmwasserHeute = 11.0 kWh', ($GLOBALS['ips']['variables']
 check('Energie: UmweltenergieHeizenHeute = 40.0 kWh (electric_backup_heater hat KEINEN EARNED-Kanal, faellt korrekt raus)', ($GLOBALS['ips']['variables']['HPVAIEN_UmweltenergieHeizenHeute']['value'] ?? null) === 40.0);
 check('Energie: UmweltenergieWarmwasserHeute = 8.0 kWh (nur primary_heat_generator)', ($GLOBALS['ips']['variables']['HPVAIEN_UmweltenergieWarmwasserHeute']['value'] ?? null) === 8.0);
 check('Energie: alle Variablen nutzen NRG.kWh', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['profile'] ?? '') === 'NRG.kWh');
-check('Energie: EnergieHeizenHeute wird automatisch archiviert', ($GLOBALS['ips']['archived'][$GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['id']] ?? false) === true);
+check('Energie: EnergieHeizenHeute wird NICHT automatisch archiviert (Review 30.10.2026)', ($GLOBALS['ips']['archived'][$GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['id']] ?? false) === false);
 check('Energie: ruft getDeviceDataBuckets() fuer alle 13 Kanaele der drei Geraete auf (kein Kanal ausgelassen/doppelt)', count($fakeVaiEnergy->bucketsCalls) === 13, count($fakeVaiEnergy->bucketsCalls));
 check('Energie: Buckets-Aufruf nutzt HOUR-Aufloesung (Fund 30.09.2026: DAY war bei UTC-Tag-uebergreifendem Fenster nicht geclippt)', $fakeVaiEnergy->bucketsCalls[0]['resolution'] === 'HOUR', $fakeVaiEnergy->bucketsCalls[0]['resolution']);
 check('Energie: "Gift"-Eintrag VOR dem Fenster (5000 Wh) wird rausgefiltert, irrefuehrende total_consumption (7000) ignoriert', ($GLOBALS['ips']['variables']['HPVAIEN_EnergieHeizenHeute']['value'] ?? null) === 11.0);
@@ -2549,6 +2570,48 @@ $GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';
 $setAttr->invoke($mod, 'VAI_Token', '');
 $setAttr->invoke($mod, 'CC_DeviceList', '[]');
 $setAttr->invoke($mod, 'VAI_DeviceList', '[]');
+
+// ---------------------------------------------------------------------------
+echo "Block 9: Logging nur auf Klick (Symcon-Review 30.10.2026)\n";
+// ---------------------------------------------------------------------------
+// Das Modul darf Variablen nicht von selbst archivieren -- nur ueber den
+// Formular-Knopf, den der Nutzer bewusst klickt.
+$floatIds = [];
+$otherIds = [];
+foreach ($GLOBALS['ips']['variables'] as $v) {
+    if ($v['type'] === VARIABLETYPE_FLOAT) {
+        $floatIds[] = $v['id'];
+    } else {
+        $otherIds[] = $v['id'];
+    }
+}
+check('Logging: Testbasis hat Messwert-Variablen', count($floatIds) > 0, (string)count($floatIds));
+check('Logging: nach allen Update-Zyklen ist NICHTS automatisch archiviert', array_filter($GLOBALS['ips']['archived'] ?? []) === []);
+$enableText = $mod->EnableArchiving();
+check('Logging: Klick schaltet alle Messwerte ein', count(array_filter($floatIds, fn ($id) => ($GLOBALS['ips']['archived'][$id] ?? false) === true)) === count($floatIds));
+check('Logging: Klick fasst Status-/Schaltvariablen nicht an', count(array_filter($otherIds, fn ($id) => ($GLOBALS['ips']['archived'][$id] ?? false) === true)) === 0);
+check('Logging: Rueckmeldung nennt die Zahl der Messwerte', strpos($enableText, '✅') === 0 && strpos($enableText, 'für ' . count($floatIds) . ' Messwert') !== false, $enableText);
+$enableAgain = $mod->EnableArchiving();
+check('Logging: zweiter Klick meldet "schon eingeschaltet" und schaltet nichts doppelt', strpos($enableAgain, 'für 0 Messwert') !== false && strpos($enableAgain, 'waren schon eingeschaltet') !== false, $enableAgain);
+$GLOBALS['ips']['noArchive'] = true;
+check('Logging: ohne Archiv-Instanz klare Fehlermeldung', strpos($mod->EnableArchiving(), '❌') === 0);
+unset($GLOBALS['ips']['noArchive']);
+$savedVars = $GLOBALS['ips']['variables'];
+$GLOBALS['ips']['variables'] = [];
+check('Logging: ohne Messwerte ein Hinweis statt Erfolgsmeldung', strpos($mod->EnableArchiving(), 'ℹ️') === 0);
+$GLOBALS['ips']['variables'] = $savedVars;
+$formJson = json_decode(file_get_contents(__DIR__ . '/../WPHub/form.json'), true);
+$archButton = null;
+foreach ($formJson['elements'] as $el) {
+    if (($el['name'] ?? null) === 'GeneralPanel') {
+        foreach ($el['items'] as $it) {
+            if (($it['type'] ?? '') === 'Button' && strpos($it['onClick'] ?? '', 'WPHUB_EnableArchiving($id)') !== false) {
+                $archButton = $it;
+            }
+        }
+    }
+}
+check('Logging: Formular bietet den Knopf im Bereich Allgemein an', $archButton !== null);
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";

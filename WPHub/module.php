@@ -32,7 +32,7 @@ class WPHub extends IPSModule
 {
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.16.0';
+    const NEWS_VERSION = '0.16.1';
 
     // Wählbare Fachpanels (SUITE.md 3a "Formular: Aufbau"): stabiler Schlüssel => Panel-Name in form.json.
     // Reihenfolge = Standardreihenfolge. 'managedby' wird nur gebaut, sobald ein Gerät bekannt ist.
@@ -285,6 +285,7 @@ class WPHub extends IPSModule
                 'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
                 'expanded' => true,
                 'items'    => [
+                    ['type' => 'Label', 'caption' => '• 📈 Das Logging im Symcon-Archiv wird nicht mehr von selbst eingeschaltet. Im Bereich „Allgemein“ gibt es dafür den Knopf „Logging für die Messwerte einschalten“, damit du es bewusst aktivierst (Symcon-Review). Bereits eingeschaltetes Logging bleibt unangetastet.'],
                     ['type' => 'Label', 'caption' => '• 🪟 Neu: Formular-Aufbau selbst wählen -- im eingeklappten Panel „Formular: Aufbau“ legst du je Bereich fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist und an welcher Position er steht. Symcon merkt sich das Auf- und Zuklappen nicht selbst.'],
                     ['type' => 'Label', 'caption' => '• Panel "🏭 Hersteller" -- WPHub kann auch Vaillant-Wärmepumpen über myVAILLANT anbinden (zweiter Hersteller neben Panasonic Comfort Cloud). Vaillant ist bewusst nur lesend -- Rückmeldungen willkommen.'],
                     ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
@@ -1132,35 +1133,41 @@ class WPHub extends IPSModule
     }
 
     /**
-     * Aktiviert die Archivierung (IPS-Archiv-Handler) fuer eine eigene
-     * Variable, falls noch nicht geschehen -- nur fuer Variablen, die WPHub
-     * selbst anlegt/besitzt. Externe, per SelectVariable verknuepfte
-     * Variablen (Ext_*) gehoeren einem anderen Modul; deren Archivierung
-     * bleibt bewusst dessen Sache, nicht unsere.
-     *
-     * AC_GetLoggingStatus/AC_SetLoggingStatus brauchen die Archiv-Instanz-ID
-     * als ersten Parameter (Vorfall 17.08.2026: frueherer Aufruf mit nur der
-     * Variablen-ID warf einen ArgumentCountError -- ein echter PHP-Error,
-     * den @ NICHT unterdrueckt, wodurch jeder Update()-Zyklus fatal abbrach).
-     * Archivierung ist ein Komfortfeature -- ein try/catch stellt sicher,
-     * dass ein kuenftiger Fehler hier nie wieder den ganzen Zyklus mitreisst.
+     * Schaltet das Logging im Symcon-Archiv fuer die Messwerte (Fliesskomma-
+     * Variablen) dieser Instanz ein -- AUSSCHLIESSLICH auf Klick im Formular.
+     * Symcon-Review 30.10.2026: ein Modul darf Variablen nicht von selbst
+     * archivieren, der Nutzer muss das bewusst einschalten. Schaltet nie etwas
+     * aus, was schon laeuft.
      */
-    private function ensureArchived(string $ident): void
+    public function EnableArchiving(): string
     {
         try {
-            $id = @$this->GetIDForIdent($ident);
-            if ($id === false) {
-                return;
-            }
             $archiveID = $this->archiveInstanceID();
             if ($archiveID === 0) {
-                return;
+                return '❌ Keine Archiv-Instanz gefunden -- das Logging kann nicht eingeschaltet werden.';
             }
-            if (!AC_GetLoggingStatus($archiveID, $id)) {
+            $new = 0;
+            $already = 0;
+            foreach (IPS_GetChildrenIDs($this->InstanceID) as $id) {
+                if (IPS_GetObject($id)['ObjectType'] !== OBJECTTYPE_VARIABLE || IPS_GetVariable($id)['VariableType'] !== VARIABLETYPE_FLOAT) {
+                    continue;
+                }
+                if (AC_GetLoggingStatus($archiveID, $id)) {
+                    $already++;
+                    continue;
+                }
                 AC_SetLoggingStatus($archiveID, $id, true);
+                $new++;
             }
+            if ($new > 0) {
+                IPS_ApplyChanges($archiveID);
+            }
+            if ($new === 0 && $already === 0) {
+                return 'ℹ️ Noch keine Messwerte vorhanden -- erst einen Abruf abwarten und dann erneut klicken.';
+            }
+            return '✅ Logging eingeschaltet für ' . $new . ' Messwert(e)' . ($already > 0 ? ' (' . $already . ' waren schon eingeschaltet)' : '') . '.';
         } catch (\Throwable $e) {
-            $this->SendDebug('Archivierung', 'Fehler bei ' . $ident . ': ' . $e->getMessage(), 0);
+            return '❌ Logging konnte nicht eingeschaltet werden: ' . $e->getMessage();
         }
     }
 
@@ -2535,7 +2542,6 @@ class WPHub extends IPSModule
             return;
         }
         $this->MaintainVariable($prefix . $ident, $name . ': ' . $caption, VARIABLETYPE_FLOAT, 'NRG.kWh', $pos, true);
-        $this->ensureArchived($prefix . $ident);
         $this->SetValue($prefix . $ident, $valueWh / 1000.0);
     }
 
@@ -2732,7 +2738,6 @@ class WPHub extends IPSModule
 
         if (isset($state['outdoor_temperature']) && $this->isValidTemperature($state['outdoor_temperature'])) {
             $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': Außentemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
-            $this->ensureArchived($prefix . 'Aussentemperatur');
             $this->SetValue($prefix . 'Aussentemperatur', (float)$state['outdoor_temperature']);
         }
         if (isset($state['system_flow_temperature']) && $this->isValidTemperature($state['system_flow_temperature'])) {
@@ -3066,7 +3071,6 @@ class WPHub extends IPSModule
             // extern verknuepften Ext_*-Feldern, die WPHub nicht gehoeren --
             // deren Archivierung bleibt Sache des jeweils besitzenden Moduls),
             // gebraucht fuer die Verlaufsansichten (Dashboard-Anfrage 17.08.2026).
-            $this->ensureArchived($prefix . 'Aussentemperatur');
             $this->SetValue($prefix . 'Aussentemperatur', (float)$status['outdoorNow']);
         }
 
@@ -3151,22 +3155,18 @@ class WPHub extends IPSModule
         if (is_array($consumption)) {
             if (isset($consumption['heat'])) {
                 $this->MaintainVariable($prefix . 'EnergieHeizenHeute', $name . ': Energieverbrauch Heizen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
-                $this->ensureArchived($prefix . 'EnergieHeizenHeute');
                 $this->SetValue($prefix . 'EnergieHeizenHeute', (float)$consumption['heat']);
             }
             if (isset($consumption['cool'])) {
                 $this->MaintainVariable($prefix . 'EnergieKuehlenHeute', $name . ': Energieverbrauch Kühlen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
-                $this->ensureArchived($prefix . 'EnergieKuehlenHeute');
                 $this->SetValue($prefix . 'EnergieKuehlenHeute', (float)$consumption['cool']);
             }
             if (isset($consumption['tank'])) {
                 $this->MaintainVariable($prefix . 'EnergieWarmwasserHeute', $name . ': Energieverbrauch Warmwasser (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
-                $this->ensureArchived($prefix . 'EnergieWarmwasserHeute');
                 $this->SetValue($prefix . 'EnergieWarmwasserHeute', (float)$consumption['tank']);
             }
             if (isset($consumption['total'])) {
                 $this->MaintainVariable($prefix . 'EnergieGesamtHeute', $name . ': Energieverbrauch gesamt (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
-                $this->ensureArchived($prefix . 'EnergieGesamtHeute');
                 $this->SetValue($prefix . 'EnergieGesamtHeute', (float)$consumption['total']);
             }
         }

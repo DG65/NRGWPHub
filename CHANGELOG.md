@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.16.1 (Build 97) — 30.10.2026
+
+- **Symcon-Review: Logging nur noch auf ausdrücklichen Klick.** Das Modul hat bisher für seine Messwerte automatisch das Logging im Symcon-Archiv eingeschaltet, ohne den Nutzer zu fragen. Das ist entfernt. Im Bereich „Allgemein“ steht jetzt ein Hinweis und der Knopf „📈 Logging für die Messwerte einschalten“ (WPHUB_EnableArchiving()). Er schaltet das Logging für alle Messwerte (Fließkomma-Variablen) dieser Instanz ein, nie etwas aus, und meldet, für wie viele Werte er es getan hat. Schon eingeschaltetes Logging bleibt bestehen.
+- Prüfstand: neue Prüfungen (nichts wird automatisch archiviert, Klick schaltet nur Messwerte ein, zweiter Klick, kein Archiv, keine Messwerte, Knopf im Formular), drei Mutationen der Zielstellen gefangen.
+
 ## 0.16.0 (Build 96) — 29.10.2026
 
 - **Neu: „🪟 Formular: Aufbau“ (Verbund-Konvention SUITE.md 3a).** Symcon merkt sich das Auf- und Zuklappen von Panels nicht selbst, das lange WPHub-Formular wurde bei jedem Öffnen unübersichtlich. Im neuen, eingeklappten Panel vor dem Forum-Hinweis legt man je Bereich (Allgemein, Steuerhoheit, Hersteller, Panasonic Comfort Cloud, Vaillant myVAILLANT, Externe Sensoren & Zähler) fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist, und an welcher Position (1-99) er steht. Kein Haken bedeutet Standard. Bei Widerspruch gilt ausgeblendet vor zugeklappt vor aufgeklappt. „Ausgeblendet“ setzt nur `visible: false`: die Felder bleiben im Formular, ihre Werte bleiben erhalten und wirken weiter. Der Knopf „Auf Standard zurücksetzen“ speichert nichts selbst, zum Speichern klickt man „Übernehmen“. Das Anmelde-Panel des nicht gewählten Herstellers bleibt wie bisher unsichtbar, auch wenn man „Aufgeklappt“ wählt. Zweck, Neu, Dokumentation, Forum-Hinweis und „Über dieses Modul“ stehen fest.

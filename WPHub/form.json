@@ -44,6 +44,15 @@
                     "minimum": 30,
                     "maximum": 600,
                     "suffix": " s"
+                },
+                {
+                    "type": "Label",
+                    "caption": "📈 Archivierung: Das Modul schaltet das Logging im Symcon-Archiv nie von selbst ein. Mit dem Knopf unten aktivierst du es bewusst für alle Messwerte (Fließkomma-Variablen) dieser Instanz, z. B. für Diagramme und Auswertungen. Bereits eingeschaltetes Logging bleibt unangetastet."
+                },
+                {
+                    "type": "Button",
+                    "caption": "📈 Logging für die Messwerte einschalten",
+                    "onClick": "echo WPHUB_EnableArchiving($id);"
                 }
             ]
         },
