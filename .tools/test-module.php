@@ -40,6 +40,8 @@ $GLOBALS['ips'] = [
     'properties' => [],
     'log'        => [],
     'debug'      => [],
+    // deutsche Tabelle wie Symcon sie aus WPHub/locale.json liest (Standard im Pruefstand)
+    'locale'     => json_decode((string)file_get_contents(__DIR__ . '/../WPHub/locale.json'), true)['translations']['de'],
 ];
 
 function IPS_VariableProfileExists(string $name): bool
@@ -67,6 +69,7 @@ function IPS_SetVariableProfileValues(string $name, float $min, float $max, floa
 function IPS_SetVariableProfileAssociation(string $name, float $value, string $valueText, string $valueIcon, int $valueColor): void
 {
     $GLOBALS['ips']['profiles'][$name]['associations'][] = $value;
+    $GLOBALS['ips']['profiles'][$name]['assocTexts'][(string)$value] = $valueText;
 }
 function IPS_SetProperty(int $id, string $name, $value): void
 {
@@ -178,8 +181,16 @@ class IPSModule
     protected $timers = [];
     public $status = 0;
 
-    public function __construct()
+    public function __construct($InstanceID = 12345)
     {
+    }
+    // Symcons Translate(): liest die locale.json des Moduls; hier die deutsche Tabelle (Standard im Pruefstand)
+    // oder nichts (Englisch, $GLOBALS['ips']['locale'] = []). Zaehlt die Aufrufe: jeder echte Aufruf
+    // kostet in Symcon ein Einlesen der locale.json (SUITE.md Stolperstein 24).
+    protected function Translate(string $text): string
+    {
+        $GLOBALS['ips']['translateCalls'] = ($GLOBALS['ips']['translateCalls'] ?? 0) + 1;
+        return ($GLOBALS['ips']['locale'] ?? [])[$text] ?? $text;
     }
     public function Create()
     {
@@ -544,7 +555,7 @@ class FakeVaillant extends WPHUB_VaillantClient
 echo "Block 1: Lebenszyklus und Status\n";
 // ---------------------------------------------------------------------------
 
-$mod = new WPHub();
+$mod = new WPHub(12345);
 $mod->Create();
 
 // Einheitliche Verbund-Status-Kopfzeile (SUITE.md 20.08.2026): vor der
@@ -1448,7 +1459,7 @@ foreach ($licenseHint['items'] as $item) {
     }
 }
 check('Lizenz-Knopf vorhanden mit link=true (Stolperfalle 01.09.2026)', $licenseButton !== null && ($licenseButton['link'] ?? false) === true);
-check('Lizenz-Knopf-onClick ist ein echo (nicht die URL direkt in link)', strpos($licenseButton['onClick'] ?? '', "echo 'https://github.com/DG65/NRGWPHub/blob/beta/LICENSE'") === 0, $licenseButton['onClick'] ?? 'null');
+check('Lizenz-Knopf-onClick ist ein echo (nicht die URL direkt in link)', strpos($licenseButton['onClick'] ?? '', "echo 'https://github.com/DG65/NRGWPHub/blob/main/LICENSE'") === 0, $licenseButton['onClick'] ?? 'null');
 check('PayPal-Knopf vorhanden mit link=true', $paypalButton !== null && ($paypalButton['link'] ?? false) === true);
 check('PayPal-Knopf-onClick ist ein echo', strpos($paypalButton['onClick'] ?? '', "echo 'https://paypal.me/DietmarGureth'") === 0, $paypalButton['onClick'] ?? 'null');
 
@@ -2612,6 +2623,291 @@ foreach ($formJson['elements'] as $el) {
     }
 }
 check('Logging: Formular bietet den Knopf im Bereich Allgemein an', $archButton !== null);
+
+// ---------------------------------------------------------------------------
+echo "Block 10: Zweisprachigkeit (Deutsch/Englisch) und Translate()-Kosten\n";
+// ---------------------------------------------------------------------------
+
+$localeText = (string)file_get_contents(__DIR__ . '/../WPHub/locale.json');
+$deTable = json_decode($localeText, true)['translations']['de'] ?? [];
+$deQuelle = json_decode((string)file_get_contents(__DIR__ . '/locale-de.json'), true)['translations']['de'] ?? [];
+check('locale.json: gültig, deutsche Tabelle vorhanden', count($deTable) > 200, (string)count($deTable));
+check('WPHub/locale.json = .tools/locale-de.json (php .tools/locale-bauen.php)', $deTable === $deQuelle);
+
+// Alle englischen Quelltexte einsammeln: t()-Aufrufe (per Tokenizer, nur Literale zaehlen) und form.json.
+$srcTexts = [];
+$dynamischeAufrufe = [];
+$deutscherCode = [];
+$deutschWort = '/[äöüÄÖÜß]|\b(und|oder|nicht|wird|werden|kein|keine|bitte|zuerst|für|noch|wurde|ist|sind|Wärme\w*|Fehler|Anlagen?|Konto|Zugangs\w+|Passwort|Gerät\w*|angemeldet|Aktualisierung|Heizkreis\w*|Warmwasser\w*)\b/u';
+$ausnahmen = ['Vaillant/Geräte', 'Geräte']; // Debug-Themen (Kennungen), bewusst unveraendert
+foreach (array_merge([__DIR__ . '/../WPHub/module.php'], glob(__DIR__ . '/../WPHub/libs/*.php')) as $file) {
+    if (basename($file) === 'WPHUB_Text.php') {
+        continue;
+    }
+    $tokens = array_values(array_filter(token_get_all((string)file_get_contents($file)), function ($t) {
+        return !(is_array($t) && in_array($t[0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true));
+    }));
+    foreach ($tokens as $i => $t) {
+        if (!is_array($t)) {
+            continue;
+        }
+        if ($t[0] === T_STRING && $t[1] === 'WPHUB_Text' && ($tokens[$i + 1][1] ?? '') === '::' && ($tokens[$i + 2][1] ?? '') === 't' && ($tokens[$i + 3] ?? '') === '(') {
+            $arg = $tokens[$i + 4] ?? null;
+            if (is_array($arg) && $arg[0] === T_CONSTANT_ENCAPSED_STRING) {
+                $lit = $arg[1];
+                $srcTexts[$lit[0] === "'" ? str_replace(["\\'", '\\\\'], ["'", '\\'], substr($lit, 1, -1)) : stripcslashes(substr($lit, 1, -1))] = basename($file);
+            } else {
+                $dynamischeAufrufe[] = basename($file) . ':' . $t[2];
+            }
+        }
+        // deutscher Text im Code (ausserhalb von t()): Umlaute, oder Saetze mit deutschen Woertern
+        if (in_array($t[0], [T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)) {
+            $s = $t[1];
+            if (in_array(trim($s, "'\""), $ausnahmen, true)) {
+                continue;
+            }
+            if (preg_match('/[äöüÄÖÜß]/u', $s) === 1 || (strpos(trim($s, "'\""), ' ') !== false && preg_match($deutschWort, $s) === 1)) {
+                $deutscherCode[] = basename($file) . ':' . $t[2] . ' ' . mb_substr($s, 0, 50);
+            }
+        }
+    }
+}
+$walkForm = function ($node, string $src) use (&$walkForm, &$srcTexts): void {
+    foreach ((array)$node as $k => $v) {
+        if (in_array($k, ['caption', 'confirm', 'label'], true) && is_string($v) && $v !== '') {
+            $srcTexts[$v] = $src;
+        } elseif (is_array($v)) {
+            $walkForm($v, $src);
+        }
+    }
+};
+$walkForm(json_decode((string)file_get_contents(__DIR__ . '/../WPHub/form.json'), true), 'form.json');
+check('Quelltexte gefunden (t()-Aufrufe und form.json)', count($srcTexts) > 200, (string)count($srcTexts));
+check('Jeder t()-Aufruf hat einen Text als Literal (sonst fehlt er in der Prüfung)', $dynamischeAufrufe === [], implode(', ', array_slice($dynamischeAufrufe, 0, 5)));
+check('Kein deutscher Text im Code ausserhalb von t() (Umlaute, deutsche Sätze)', $deutscherCode === [], implode(' | ', array_slice($deutscherCode, 0, 4)) . ' (' . count($deutscherCode) . ')');
+
+$fehlt = [];
+$platz = [];
+foreach ($srcTexts as $text => $quelle) {
+    if (!isset($deTable[$text])) {
+        $fehlt[] = $quelle . ': ' . $text;
+        continue;
+    }
+    $n1 = preg_match_all('/%(?:\d+\$)?[0-9]*[sdX]/', str_replace('%%', '', (string)$text));
+    $n2 = preg_match_all('/%(?:\d+\$)?[0-9]*[sdX]/', str_replace('%%', '', $deTable[$text]));
+    if ($n1 !== $n2) {
+        $platz[] = $text;
+    }
+}
+check('jeder Quelltext hat eine deutsche Fassung', $fehlt === [], implode(' | ', array_slice($fehlt, 0, 5)) . ' (' . count($fehlt) . ')');
+check('Platzhalter: englischer und deutscher Text haben gleich viele', $platz === [], implode(' | ', array_slice($platz, 0, 5)));
+$ueberzaehlig = array_diff(array_keys($deTable), array_keys($srcTexts));
+check('locale.json hat keine Einträge ohne Quelltext (verwaist)', $ueberzaehlig === [], implode(' | ', array_slice($ueberzaehlig, 0, 5)));
+$umlautQuelle = array_filter(array_keys($srcTexts), function ($t) {
+    return preg_match('/[äöüÄÖÜß]/u', $t) === 1;
+});
+check('englische Quelltexte enthalten keine Umlaute', $umlautQuelle === [], implode(' | ', array_map(function ($t) { return mb_substr($t, 0, 50); }, array_slice($umlautQuelle, 0, 3))));
+$gleich = array_filter(array_keys($srcTexts), function ($t) use ($deTable) {
+    return isset($deTable[$t]) && $deTable[$t] === $t && preg_match('/[a-z]{4,} [a-z]{3,}/', $t) === 1;
+});
+check('deutsche Fassung ist nirgends nur eine Kopie des englischen Satzes', $gleich === [], implode(' | ', array_map(function ($t) { return mb_substr($t, 0, 50); }, array_slice($gleich, 0, 3))));
+
+$germanLeft = function (string $text): bool {
+    return preg_match('/[äöüÄÖÜß]|\b(und|nicht|oder|wird|kein|keine|bitte|zuerst|für|noch|Wärme\w*|Fehler|Anlagen?|Konto|Zugangs\w+|Passwort|Gerät\w*|angemeldet|aktiv|Heizkreis\w*|Warmwasser\w*|Sollwert|Erreichbar)\b/u', $text) === 1;
+};
+$captionsOf = function (array $node) use (&$captionsOf): array {
+    $out = [];
+    foreach ($node as $k => $v) {
+        if (in_array($k, ['caption', 'confirm', 'label'], true) && is_string($v)) {
+            $out[] = $v;
+        } elseif (is_array($v)) {
+            $out = array_merge($out, $captionsOf($v));
+        }
+    }
+    return $out;
+};
+$refreshPan = new ReflectionMethod(WPHub::class, 'refreshDevices');
+$refreshPan->setAccessible(true);
+$ensureProfiles = new ReflectionMethod(WPHub::class, 'ensureSharedProfiles');
+$ensureProfiles->setAccessible(true);
+$bundleX = ['accessToken' => 'x'];
+
+// --- Deutsch: Variablennamen, Profile, Formular, Meldungen (Standard im Pruefstand)
+$GLOBALS['ips']['locale'] = $deTable;
+$GLOBALS['ips']['profiles'] = [];
+$GLOBALS['ips']['variables'] = [];
+$de = new WPHub(12345);
+$de->Create();
+$ensureProfiles->invoke($de);
+$devDe = $refreshPan->invoke($de, $bundleX, $fake);
+$pfx = $devDe[0]['prefix'];
+check('Deutsch: Variablenname "Erreichbar" und "Warmwasser"', ($GLOBALS['ips']['variables'][$pfx . 'Erreichbar']['name'] ?? '') === 'Heizung: Erreichbar' && ($GLOBALS['ips']['variables'][$pfx . 'Warmwasser']['name'] ?? '') === 'Heizung: Warmwasser', json_encode(array_column($GLOBALS['ips']['variables'], 'name'), JSON_UNESCAPED_UNICODE));
+check('Deutsch: Profiltexte (Betriebsart "Kühlen", Flüsterbetrieb "Stufe 2")', ($GLOBALS['ips']['profiles']['WPHUB.Betriebsart']['assocTexts']['2'] ?? '') === 'Kühlen' && ($GLOBALS['ips']['profiles']['WPHUB.Fluesterbetrieb']['assocTexts']['2'] ?? '') === 'Stufe 2', json_encode($GLOBALS['ips']['profiles']['WPHUB.Betriebsart']['assocTexts'] ?? null, JSON_UNESCAPED_UNICODE));
+$formDe = json_decode($de->GetConfigurationForm(), true);
+$formDeText = json_encode($formDe, JSON_UNESCAPED_UNICODE);
+check('Deutsch: Formular zeigt "🔧 Allgemein" und den Archiv-Knopf deutsch', strpos($formDeText, '"🔧 Allgemein"') !== false && strpos($formDeText, '📈 Logging für die Messwerte einschalten') !== false);
+check('Deutsch: "Neu"-Banner nennt die Zweisprachigkeit', strpos($formDeText, 'Das Modul ist jetzt zweisprachig') !== false);
+check('Deutsch: Kopfzeile "1 Wärmepumpe gefunden"', strpos($discoverySummary->invoke($de), '✅ 1 Wärmepumpe gefunden (zuletzt ') === 0, $discoverySummary->invoke($de));
+check('Deutsch: Caption in GetFunctions ist der Gerätename', ($de->GetFunctions()[0]['Caption'] ?? '') === 'Heizung');
+
+// --- Englisch: keine deutschen Reste
+$GLOBALS['ips']['locale'] = [];
+$GLOBALS['ips']['profiles'] = [];
+$GLOBALS['ips']['variables'] = [];
+$GLOBALS['ips']['log'] = [];
+$GLOBALS['ips']['debug'] = [];
+$en = new WPHub(12345);
+$en->Create();
+$ensureProfiles->invoke($en);
+$devEn = $refreshPan->invoke($en, $bundleX, $fake);
+$namesEn = array_column($GLOBALS['ips']['variables'], 'name');
+check('Englisch: Variablennamen "Reachable" und "Hot water"', in_array('Heizung: Reachable', $namesEn, true) && in_array('Heizung: Hot water', $namesEn, true), json_encode($namesEn));
+$namenDeutsch = array_values(array_filter($namesEn, function ($n) use ($germanLeft) { return $germanLeft(preg_replace('/^Heizung: /', '', $n)); }));
+check('Englisch: alle Variablennamen ohne deutsche Reste', $namenDeutsch === [], implode(' | ', $namenDeutsch));
+$assocEn = [];
+foreach ($GLOBALS['ips']['profiles'] as $pname => $p) {
+    if (strpos($pname, 'WPHUB.') === 0) {
+        $assocEn = array_merge($assocEn, array_values($p['assocTexts'] ?? []));
+    }
+}
+check('Englisch: Profiltexte englisch', in_array('Cooling', $assocEn, true) && in_array('Level 2', $assocEn, true) && count(array_filter($assocEn, $germanLeft)) === 0, implode(', ', $assocEn));
+$formEn = json_decode($en->GetConfigurationForm(), true);
+$restForm = array_values(array_filter($captionsOf($formEn), $germanLeft));
+check('Englisch: Formular ohne deutsche Reste', $restForm === [], implode(' | ', array_map(function ($t) { return mb_substr($t, 0, 70); }, array_slice($restForm, 0, 4))) . ' (' . count($restForm) . ')');
+$formEnText = json_encode($formEn);
+check('Englisch: "Neu"-Banner nennt die Zweisprachigkeit', strpos($formEnText, 'The module is now bilingual') !== false);
+check('Englisch: Länderliste (Vaillant) englisch', strpos($formEnText, '"Germany"') !== false && strpos($formEnText, '"Austria"') !== false);
+check('Englisch: Kopfzeile "1 heat pump found"', strpos($discoverySummary->invoke($en), '✅ 1 heat pump found (last at ') === 0, $discoverySummary->invoke($en));
+$GLOBALS['ips']['archived'] = [];
+$archEn = $en->EnableArchiving();
+check('Englisch: EnableArchiving-Meldung englisch', strpos($archEn, '✅ Logging enabled for ') === 0 && !$germanLeft($archEn), $archEn);
+$GLOBALS['ips']['noArchive'] = true;
+$noArch = $en->EnableArchiving();
+unset($GLOBALS['ips']['noArchive']);
+check('Englisch: Meldung ohne Archiv-Instanz englisch', strpos($noArch, '❌ No archive instance found') === 0, $noArch);
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$setAttr->invoke($en, 'VAI_Token', '');
+$en->TestEmfEndpoint();
+$emfNoLogin = $GLOBALS['ips']['formFieldUpdates']['VAI_EmfResult']['caption'] ?? '';
+check('Englisch: TestEmfEndpoint ohne Anmeldung englisch', strpos($emfNoLogin, '❌ Not logged in') === 0 && !$germanLeft($emfNoLogin), $emfNoLogin);
+
+// Vaillant englisch: Variablennamen, Fähigkeitenübersicht
+$GLOBALS['ips']['variables'] = [];
+$maintainVarsVaillant->invoke($en, 'HPVAIEN_', 'Test-Heatpump', $vaiSystem, true);
+$namesVaiEn = array_column($GLOBALS['ips']['variables'], 'name');
+check('Englisch (Vaillant): Variablennamen englisch', in_array('Test-Heatpump: Outdoor temperature', $namesVaiEn, true) && in_array('Test-Heatpump: Heating circuit 1 flow temperature', $namesVaiEn, true) && in_array('Test-Heatpump: System pressure', $namesVaiEn, true), json_encode($namesVaiEn));
+$vaiDeutsch = array_values(array_filter($namesVaiEn, function ($n) use ($germanLeft) { return $germanLeft(preg_replace('/^Test-Heatpump: /', '', $n)); }));
+check('Englisch (Vaillant): alle Variablennamen ohne deutsche Reste', $vaiDeutsch === [], implode(' | ', $vaiDeutsch));
+$GLOBALS['ips']['debug'] = [];
+$GLOBALS['ips']['formFieldUpdates'] = [];
+$fakeVaiEn = new FakeVaillant('germany');
+$fakeVaiEn->homesResult = [['systemId' => 'sys-cap-tli', 'homeName' => 'Testhaus tli']];
+$fakeVaiEn->controlIdentifiers = ['sys-cap-tli' => 'tli'];
+$fakeVaiEn->systemsById = ['sys-cap-tli' => $vaiSystem];
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiEn) {
+    return $fakeVaiEn;
+};
+$setAttr->invoke($en, 'VAI_Token', json_encode(['accessToken' => 'tok', 'refreshToken' => 'ref', 'expiresAt' => time() + 3600]));
+$writeAttrInt->invoke($en, 'VAI_SystemsCacheAt', 0);
+$en->VaillantCapabilities();
+$capEn = $GLOBALS['ips']['formFieldUpdates']['VAI_CapabilitiesResult']['caption'] ?? '';
+$capDebugEn = implode("\n", array_column(array_filter($GLOBALS['ips']['debug'], fn ($d) => $d['topic'] === 'Vaillant/steuerungsfaehigkeiten'), 'text'));
+unset($GLOBALS['ips']['vaillantClientFactory']);
+check('Englisch: Fähigkeiten-Meldung englisch', strpos($capEn, '✅ 3 element(s) from 1 system(s) logged') === 0 && strpos($capEn, 'NOTHING was written') !== false, $capEn);
+check('Englisch: Fähigkeiten-Übersicht englisch (Zeilen, Wertebereich, Rohfeld)', strpos($capDebugEn, 'Hot water tapping setpoint: current value 50 (raw field tapping_setpoint)') !== false && strpos($capDebugEn, 'real index field: 255') !== false && strpos($capDebugEn, 'Value range:') !== false, $capDebugEn);
+$capDeutsch = array_values(array_filter(explode("\n", preg_replace('/\{[^}]*\}/', '', $capDebugEn)), $germanLeft));
+check('Englisch: Fähigkeiten-Übersicht ohne deutsche Reste', $capDeutsch === [], implode(' | ', array_map(function ($t) { return mb_substr($t, 0, 90); }, array_slice($capDeutsch, 0, 3))));
+
+// Cloud-Clients: Fehlertexte in beiden Sprachen (Meldungen ohne Netz erzeugen)
+$ccClient = new WPHUB_ComfortCloudClient();
+$vaiClient = new WPHUB_VaillantClient('germany');
+$failApi = function ($client, string $what, ?array $r): string {
+    $m = new ReflectionMethod($client, 'failApi');
+    $m->setAccessible(true);
+    $m->invoke($client, $what, $r);
+    return $client->getLastError();
+};
+$ccEn = [
+    $ccClient->refresh(['refreshToken' => '']) === null ? $ccClient->getLastError() : '',
+    $failApi($ccClient, WPHUB_Text::t('Device list (device/group)'), ['status' => 500, 'body' => 'boom']),
+    $failApi($ccClient, WPHUB_Text::t('Device list (device/group)'), ['status' => 401, 'body' => '{"code":4106}']),
+    $failApi($ccClient, WPHUB_Text::t('Device list (device/group)'), ['status' => 401, 'body' => '{"code":4103}']),
+];
+$vaiEn = [
+    $vaiClient->refresh(['refreshToken' => '']) === null ? $vaiClient->getLastError() : '',
+    $failApi($vaiClient, WPHUB_Text::t('System list (homes)'), ['status' => 500, 'body' => 'boom']),
+];
+check('Englisch (Cloud-Clients): Fehlertexte englisch und vollständig', $ccEn[0] === 'No refresh token available — new login required'
+    && $ccEn[1] === 'Device list (device/group) failed (HTTP 500): boom'
+    && strpos($ccEn[2], 'too old for the cloud (code 4106)') !== false && strpos($ccEn[3], 'Accept updated terms') !== false
+    && $vaiEn[0] === 'No refresh token available -- new login required' && $vaiEn[1] === 'System list (homes) failed (HTTP 500): boom', json_encode([$ccEn, $vaiEn]));
+check('Englisch (Cloud-Clients): keine deutschen Reste in den Fehlertexten', count(array_filter(array_merge($ccEn, $vaiEn), $germanLeft)) === 0, json_encode(array_values(array_filter(array_merge($ccEn, $vaiEn), $germanLeft)), JSON_UNESCAPED_UNICODE));
+
+// Deutsch: dieselben Texte wie vor der Umstellung (Wortlaut unveraendert)
+$GLOBALS['ips']['locale'] = $deTable;
+$de2 = new WPHub(12345);
+$de2->Create();
+$ccDe = [
+    $ccClient->refresh(['refreshToken' => '']) === null ? $ccClient->getLastError() : '',
+    $failApi($ccClient, WPHUB_Text::t('Device list (device/group)'), ['status' => 500, 'body' => 'boom']),
+    $failApi($ccClient, WPHUB_Text::t('Device list (device/group)'), ['status' => 401, 'body' => '{"code":4106}']),
+    $failApi($ccClient, WPHUB_Text::t('Device list (device/group)'), ['status' => 401, 'body' => '{"code":4103}']),
+];
+$vaiDe = [
+    $vaiClient->refresh(['refreshToken' => '']) === null ? $vaiClient->getLastError() : '',
+    $failApi($vaiClient, WPHUB_Text::t('System list (homes)'), ['status' => 500, 'body' => 'boom']),
+];
+check('Deutsch (Cloud-Clients): Fehlertexte wie bisher', $ccDe[0] === 'Kein Refresh-Token vorhanden — Neuanmeldung erforderlich'
+    && $ccDe[1] === 'Geraeteliste (device/group) fehlgeschlagen (HTTP 500): boom'
+    && strpos($ccDe[2], 'Geraeteliste (device/group): Die verwendete App-Version') === 0 && strpos($ccDe[3], 'Schaltflaeche „Aktualisierte Bedingungen akzeptieren"') !== false
+    && $vaiDe[0] === 'Kein Refresh-Token vorhanden -- Neuanmeldung erforderlich' && $vaiDe[1] === 'Anlagenliste (homes) fehlgeschlagen (HTTP 500): boom', json_encode([$ccDe, $vaiDe], JSON_UNESCAPED_UNICODE));
+
+// --- Kosten: Symcons Translate() liest bei jedem Aufruf die locale.json -- hoechstens einmal je Text und Prozess
+$GLOBALS['ips']['locale'] = $deTable;
+$cost = new WPHub(12345);
+$cost->Create();
+$GLOBALS['ips']['translateCalls'] = 0;
+$runCycle = function () use ($cost, $refreshPan, $fake, $bundleX, $maintainVarsVaillant, $vaiSystem, $discoverySummary) {
+    $refreshPan->invoke($cost, $bundleX, $fake);
+    $maintainVarsVaillant->invoke($cost, 'HPVAICO_', 'Kosten', $vaiSystem, true);
+    $cost->GetFunctions();
+    $discoverySummary->invoke($cost);
+};
+$runCycle();
+$afterFirst = $GLOBALS['ips']['translateCalls'];
+for ($i = 0; $i < 20; $i++) {
+    $runCycle();
+}
+check('Translate-Kosten: Messzyklus (Panasonic + Vaillant) samt Vertragsabfrage fragt Symcon nur beim ersten Mal', $GLOBALS['ips']['translateCalls'] === $afterFirst && $afterFirst < 120, "erste Runde $afterFirst Aufrufe, nach 21 Runden " . $GLOBALS['ips']['translateCalls']);
+$GLOBALS['ips']['translateCalls'] = 0;
+$cost->GetConfigurationForm();
+$formFirst = $GLOBALS['ips']['translateCalls'];
+$GLOBALS['ips']['translateCalls'] = 0;
+for ($i = 0; $i < 10; $i++) {
+    $cost->GetConfigurationForm();
+}
+check('Translate-Kosten: Formular fragt jeden Text höchstens einmal (danach 0 Aufrufe)', $GLOBALS['ips']['translateCalls'] === 0 && $formFirst <= count($srcTexts), "erstes Formular $formFirst Aufrufe, weitere zehn: " . $GLOBALS['ips']['translateCalls']);
+// Meldungsläufe (Platzhalter, Protokollzeilen) dürfen die Kosten nicht treiben
+$errCycle = function () use ($cost, $writeAttrInt, $setAttr) {
+    $setAttr->invoke($cost, 'VAI_Token', '');
+    $cost->TestEmfEndpoint();
+    $cost->VaillantCapabilities();
+    $cost->EnableArchiving();
+};
+$GLOBALS['ips']['translateCalls'] = 0;
+$errCycle();
+$errCycle(); // der zweite Klick auf "Logging" meldet "schon eingeschaltet": ein anderer Text
+$errFirst = $GLOBALS['ips']['translateCalls'];
+$GLOBALS['ips']['translateCalls'] = 0;
+for ($i = 0; $i < 10; $i++) {
+    $errCycle();
+}
+check('Translate-Kosten: auch Meldungsläufe fragen Symcon nur beim ersten Mal', $GLOBALS['ips']['translateCalls'] === 0, "erster Lauf $errFirst, danach " . $GLOBALS['ips']['translateCalls']);
+// Ein Uebersetzer, der wirft (Instanz weg), darf den Zyklus nicht abbrechen
+WPHUB_Text::setzen(WPHUB_Text::mitMerkliste(function (string $t): string { throw new RuntimeException('Instanz weg'); }));
+check('Übersetzer wirft: Quelltext bleibt stehen, nichts bricht ab', WPHUB_Text::t('Hot water') === 'Hot water' && WPHUB_Text::t('%s failed', 'X') === 'X failed');
+$GLOBALS['ips']['locale'] = $deTable;
+new WPHub(12345); // Uebersetzer zurueck auf die Instanz
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";

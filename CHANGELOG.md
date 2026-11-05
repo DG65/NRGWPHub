@@ -1,5 +1,14 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.17.0 (Build 98) — 05.11.2026
+
+- **Neu: zweisprachig Deutsch/Englisch** (Verbundregel SUITE.md Konvention 9, Dietmars Auftrag nach dem Muster von WPModbusHub 0.8.0). Formular, Meldungen, Protokoll- und Debugzeilen, Fehlertexte der beiden Cloud-Clients, Hinweise, Profiltexte (Betriebsart, Flüsterbetrieb, …) und die Namen neu angelegter Variablen folgen der Symcon-Sprache. Quelltexte sind englisch (Code und `form.json`), die deutsche Fassung steht in `.tools/locale-de.json`; `php .tools/locale-bauen.php` schreibt daraus `WPHub/locale.json` (Symcon liest die Datei nur im Modulordner).
+- **Kein Automat-Fehler:** `Translate()` liest bei jedem Aufruf die `locale.json` (SUITE.md Stolperstein 24). Die neue Klasse `WPHUB_Text` fragt Symcon je Text höchstens einmal je Prozess und merkt sich die Antwort; Aktualisierungszyklus, Vertragsabfrage und Formular kosten danach nur noch einen Array-Zugriff je Text. Kein eigenes Lesen der `locale.json`.
+- **Unverändert:** alle Kennungen (Idents wie `Aussentemperatur`, `Zone1Soll`), Properties, Attribute, Funktionsnamen, Debug-Themen und der Vertrag `WPHUB_GetFunctions()` (contractVersion). Bereits angelegte Variablen und Profile werden nicht umbenannt (Symcon setzt den Namen nur beim Anlegen). Rohwerte aus der Cloud (Fehlermeldungen des Herstellers, Gerätenamen) bleiben unübersetzt.
+- Die „Neu in Version“-Anzeige hat die Zeile zur Zweisprachigkeit. Der Lizenz-Link im Formular zeigt auf den Zweig `main` statt `beta`. Der Hinweis „Version“ im Formular wird nicht mehr zusätzlich als fester deutscher Text geführt.
+- Neu: `README.en.md`.
+- Prüfstand: 541 Prüfungen (vorher 504), neuer Block 10 „Zweisprachigkeit“: jeder Quelltext hat eine deutsche Fassung, Platzhalter gleich, keine verwaisten Einträge, kein deutscher Text im Code außerhalb von `t()`, englisches Formular, englische Variablen-, Profil-, Meldungs- und Fehlertexte ohne deutsche Reste, deutscher Wortlaut unverändert, Translate()-Aufrufe nach dem ersten Mal 0 für Zyklus, Vertrag, Formular und Meldungen. 21 Mutationen der Zielstellen gefangen.
+
 ## 0.16.1 (Build 97) — 30.10.2026
 
 - **Symcon-Review: Logging nur noch auf ausdrücklichen Klick.** Das Modul hat bisher für seine Messwerte automatisch das Logging im Symcon-Archiv eingeschaltet, ohne den Nutzer zu fragen. Das ist entfernt. Im Bereich „Allgemein“ steht jetzt ein Hinweis und der Knopf „📈 Logging für die Messwerte einschalten“ (WPHUB_EnableArchiving()). Er schaltet das Logging für alle Messwerte (Fließkomma-Variablen) dieser Instanz ein, nie etwas aus, und meldet, für wie viele Werte er es getan hat. Schon eingeschaltetes Logging bleibt bestehen.

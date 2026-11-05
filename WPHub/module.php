@@ -1,5 +1,6 @@
 <?php
 
+require_once __DIR__ . '/libs/WPHUB_Text.php';
 require_once __DIR__ . '/libs/ComfortCloudClient.php';
 require_once __DIR__ . '/libs/VaillantClient.php';
 
@@ -30,9 +31,19 @@ require_once __DIR__ . '/libs/VaillantClient.php';
 
 class WPHub extends IPSModule
 {
+    public function __construct($InstanceID)
+    {
+        parent::__construct($InstanceID);
+        // Cloud-Clients und Hilfsfunktionen uebersetzen ueber WPHUB_Text (englische Quelltexte, Deutsch in
+        // locale.json); jeder Text fragt Symcon hoechstens einmal je Prozess (SUITE.md Stolperstein 24).
+        WPHUB_Text::setzen(WPHUB_Text::mitMerkliste(function (string $text): string {
+            return $this->Translate($text);
+        }));
+    }
+
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.16.1';
+    const NEWS_VERSION = '0.17.0';
 
     // Wählbare Fachpanels (SUITE.md 3a "Formular: Aufbau"): stabiler Schlüssel => Panel-Name in form.json.
     // Reihenfolge = Standardreihenfolge. 'managedby' wird nur gebaut, sobald ein Gerät bekannt ist.
@@ -90,10 +101,10 @@ class WPHub extends IPSModule
     // (Realm vaillant-{land}-b2c) -- Auswahl aus signalkraft/myPyllant
     // const.py COUNTRIES['vaillant'], auf den DACH-/West-EU-Kern beschraenkt.
     const VAILLANT_COUNTRIES = [
-        'germany' => 'Deutschland', 'austria' => 'Österreich', 'switzerland' => 'Schweiz',
-        'netherlands' => 'Niederlande', 'belgium' => 'Belgien', 'france' => 'Frankreich',
-        'luxembourg' => 'Luxemburg', 'italy' => 'Italien', 'spain' => 'Spanien',
-        'poland' => 'Polen', 'denmark' => 'Dänemark', 'unitedkingdom' => 'Vereinigtes Königreich',
+        'germany' => 'Germany', 'austria' => 'Austria', 'switzerland' => 'Switzerland',
+        'netherlands' => 'Netherlands', 'belgium' => 'Belgium', 'france' => 'France',
+        'luxembourg' => 'Luxembourg', 'italy' => 'Italy', 'spain' => 'Spain',
+        'poland' => 'Poland', 'denmark' => 'Denmark', 'unitedkingdom' => 'United Kingdom',
     ];
 
     // Wie lange die Anlagenliste/Regler-Typ-Zuordnung (VAI_SystemsCache)
@@ -258,7 +269,9 @@ class WPHub extends IPSModule
 
     public function GetConfigurationForm()
     {
-        $form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
+        // Formulartexte der form.json sind englische Quelltexte; die dynamisch gebauten Teile unten
+        // uebersetzen sich selbst (nicht doppelt uebersetzen).
+        $form = WPHUB_Text::formular(json_decode(file_get_contents(__DIR__ . '/form.json'), true));
 
         // Versionsnummer im Doku-Panel dynamisch aus library.json lesen statt
         // fest im form.json einzutragen -- eine frueher fest eingetragene
@@ -267,7 +280,7 @@ class WPHub extends IPSModule
         $libraryInfo = @json_decode((string)@file_get_contents(__DIR__ . '/../library.json'), true);
         $libraryVersion = (is_array($libraryInfo) && isset($libraryInfo['version'])) ? (string)$libraryInfo['version'] : '?';
         $this->updateFormElement($form['elements'], 'VersionInfo', [
-            'caption' => 'ℹ️ WPHub Version ' . $libraryVersion . ' -- Wärmepumpen-Cloud-Anbindung, Panasonic Comfort Cloud und (neu, ungeprüft) Vaillant myVAILLANT.',
+            'caption' => WPHUB_Text::t('ℹ️ WPHub version %s -- heat pump cloud connection, Panasonic Comfort Cloud and (new, untested) Vaillant myVAILLANT.', $libraryVersion),
         ]);
 
         [$appVersionLine, $appVersionFieldVisible, $appVersionColor] = $this->appVersionStatus();
@@ -282,13 +295,14 @@ class WPHub extends IPSModule
             array_unshift($form['elements'], [
                 'type'     => 'ExpansionPanel',
                 'name'     => 'NewsPanel',
-                'caption'  => '🆕 Neu in Version ' . self::NEWS_VERSION,
+                'caption'  => WPHUB_Text::t('🆕 New in version %s', self::NEWS_VERSION),
                 'expanded' => true,
                 'items'    => [
-                    ['type' => 'Label', 'caption' => '• 📈 Das Logging im Symcon-Archiv wird nicht mehr von selbst eingeschaltet. Im Bereich „Allgemein“ gibt es dafür den Knopf „Logging für die Messwerte einschalten“, damit du es bewusst aktivierst (Symcon-Review). Bereits eingeschaltetes Logging bleibt unangetastet.'],
-                    ['type' => 'Label', 'caption' => '• 🪟 Neu: Formular-Aufbau selbst wählen -- im eingeklappten Panel „Formular: Aufbau“ legst du je Bereich fest, ob er beim Öffnen aufgeklappt, zugeklappt oder ausgeblendet ist und an welcher Position er steht. Symcon merkt sich das Auf- und Zuklappen nicht selbst.'],
-                    ['type' => 'Label', 'caption' => '• Panel "🏭 Hersteller" -- WPHub kann auch Vaillant-Wärmepumpen über myVAILLANT anbinden (zweiter Hersteller neben Panasonic Comfort Cloud). Vaillant ist bewusst nur lesend -- Rückmeldungen willkommen.'],
-                    ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckNews($id);'],
+                    ['type' => 'Label', 'caption' => WPHUB_Text::t('• 🌐 The module is now bilingual (German/English): form, messages, notes and the names of new variables follow the Symcon language.')],
+                    ['type' => 'Label', 'caption' => WPHUB_Text::t('• 📈 Logging in the Symcon archive is no longer switched on automatically. In the "General" section there is the button "Enable logging for the measured values", so you enable it deliberately (Symcon review). Logging that is already enabled stays untouched.')],
+                    ['type' => 'Label', 'caption' => WPHUB_Text::t('• 🪟 New: choose the form layout yourself -- in the collapsed panel "Form: layout" you decide per section whether it is expanded, collapsed or hidden on opening and at which position it stands. Symcon does not remember expanding and collapsing itself.')],
+                    ['type' => 'Label', 'caption' => WPHUB_Text::t('• Panel "🏭 Manufacturer" -- WPHub can also connect Vaillant heat pumps via myVAILLANT (second manufacturer besides Panasonic Comfort Cloud). Vaillant is read-only by design -- feedback welcome.')],
+                    ['type' => 'Button', 'caption' => WPHUB_Text::t('Understood – do not show again'), 'onClick' => 'WPHUB_AckNews($id);'],
                 ],
             ]);
         }
@@ -341,7 +355,7 @@ class WPHub extends IPSModule
             && $this->ReadPropertyInteger('Ext_PowerVariable') <= 0
             && $this->ReadPropertyInteger('Ext_EnergyVariable') <= 0) {
             $this->updateFormElement($form['elements'], 'MeterHubSuggestion', [
-                'caption' => 'ℹ️ MeterHub hat einen Zähler „' . $assignment['label'] . '" mit Funktionszuordnung „Wärmepumpe" gefunden.',
+                'caption' => WPHUB_Text::t('ℹ️ MeterHub has a meter "%s" with the function assignment "Heat pump".', $assignment['label']),
                 'visible' => true,
             ]);
             $this->updateFormElement($form['elements'], 'MeterHubAdoptButton', ['visible' => true]);
@@ -376,13 +390,13 @@ class WPHub extends IPSModule
                 $rows[] = [
                     'type'     => 'Select',
                     'name'     => $fieldName,
-                    'caption'  => $this->managedBySelectCaption($devPrefix, (string)($d['name'] ?? 'Wärmepumpe'), $heishaWarning !== null),
+                    'caption'  => $this->managedBySelectCaption($devPrefix, (string)($d['name'] ?? WPHUB_Text::t('Heat pump')), $heishaWarning !== null),
                     'value'    => $this->deviceManagedBy($devPrefix),
                     'options'  => [
-                        ['caption' => 'WPHub (Comfort Cloud, Standard)', 'value' => 'wphub'],
-                        ['caption' => 'HeishaMon (lokal, WPHub liest nur)', 'value' => 'heishamon'],
-                        ['caption' => 'Anderes Modul', 'value' => 'other'],
-                        ['caption' => 'Niemand -- nur lesen', 'value' => 'none'],
+                        ['caption' => WPHUB_Text::t('WPHub (Comfort Cloud, default)'), 'value' => 'wphub'],
+                        ['caption' => WPHUB_Text::t('HeishaMon (local, WPHub only reads)'), 'value' => 'heishamon'],
+                        ['caption' => WPHUB_Text::t('Other module'), 'value' => 'other'],
+                        ['caption' => WPHUB_Text::t('Nobody -- read only'), 'value' => 'none'],
                     ],
                     'onChange' => 'WPHUB_SetManagedBy($id, "' . $devPrefix . '", $' . $fieldName . ');',
                 ];
@@ -391,7 +405,7 @@ class WPHub extends IPSModule
                 $panel = [
                     'type'     => 'ExpansionPanel',
                     'name'     => 'ManagedByPanel',
-                    'caption'  => '🔀 Steuerhoheit',
+                    'caption'  => WPHUB_Text::t('🔀 Control authority'),
                     'expanded' => ($heishaWarning !== null),
                     'items'    => array_merge([
                         [
@@ -399,18 +413,18 @@ class WPHub extends IPSModule
                             'items' => [
                                 [
                                     'type'    => 'Label',
-                                    'caption' => 'Steuert eine andere Wärmepumpen-Software (z. B. HeishaMon) dieselbe Anlage, hier je Gerät festlegen -- WPHub schreibt dann für dieses Gerät nichts mehr, zeigt aber weiterhin alle Messwerte.',
+                                    'caption' => WPHUB_Text::t('If other heat pump software (e.g. HeishaMon) controls the same system, set it here per device -- WPHub then writes nothing for this device any more but keeps showing all measured values.'),
                                 ],
                                 [
                                     'type'    => 'PopupButton',
-                                    'caption' => 'Was bedeuten die vier Steuerhoheit-Optionen?',
+                                    'caption' => WPHUB_Text::t('What do the four control authority options mean?'),
                                     'width'   => '460px',
                                     'popup'   => [
-                                        'caption' => 'Was bedeuten die vier Steuerhoheit-Optionen?',
+                                        'caption' => WPHUB_Text::t('What do the four control authority options mean?'),
                                         'items'   => [
                                             [
                                                 'type'    => 'Label',
-                                                'caption' => '„WPHub (Comfort Cloud, Standard)": WPHub darf diese Wärmepumpe steuern (z. B. Flüsterbetrieb) -- der Normalfall, solange kein anderes Modul dieselbe Anlage bedient. „HeishaMon (lokal, WPHub liest nur)": eine parallel installierte HeishaMon-Instanz regelt dieselbe Wärmepumpe lokal/per MQTT -- WPHub sendet dann keine Steuerbefehle mehr, zeigt aber weiter alle Messwerte an. „Anderes Modul": irgendein drittes Modul (nicht HeishaMon) hat hier die Steuerhoheit -- gleiche Wirkung wie bei HeishaMon, nur zur Dokumentation getrennt benannt. „Niemand -- nur lesen": bewusst reiner Beobachtungsmodus, auch ohne konkurrierendes Modul. In allen drei nicht-„WPHub"-Fällen bleibt die Anzeige der Messwerte unverändert bestehen -- nur die Steuerbefehle werden unterdrückt. Die Geräteidentität zwischen WPHub und anderen Modulen lässt sich technisch nicht automatisch beweisen, deshalb diese manuelle Angabe je Gerät.',
+                                                'caption' => WPHUB_Text::t('"WPHub (Comfort Cloud, default)": WPHub may control this heat pump (e.g. quiet mode) -- the normal case as long as no other module serves the same system. "HeishaMon (local, WPHub only reads)": a HeishaMon instance installed in parallel controls the same heat pump locally/via MQTT -- WPHub then sends no control commands any more but keeps showing all measured values. "Other module": some third module (not HeishaMon) has the control authority here -- same effect as with HeishaMon, just named separately for documentation. "Nobody -- read only": deliberately a pure observation mode, even without a competing module. In all three non-"WPHub" cases the display of the measured values stays unchanged -- only the control commands are suppressed. The identity of the device between WPHub and other modules cannot be proven technically, which is why this manual entry per device exists.'),
                                             ],
                                         ],
                                     ],
@@ -542,28 +556,28 @@ class WPHub extends IPSModule
             }
         }
         $hiddenLine = $hidden
-            ? [['type' => 'Label', 'caption' => '🙈 Ausgeblendet: ' . implode(', ', $hidden) . ' -- zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen. Ausgeblendete Bereiche arbeiten weiter, nur die Anzeige fehlt.']]
+            ? [['type' => 'Label', 'caption' => WPHUB_Text::t('🙈 Hidden: %s -- to show them again, remove the tick at "Hidden". Hidden sections keep working, only the display is missing.', implode(', ', $hidden))]]
             : [];
         return [
             'type' => 'ExpansionPanel', 'name' => 'LayoutPanel', 'expanded' => false,
-            'caption' => '🪟  Formular: Aufbau' . ($hidden ? ' (' . count($hidden) . ' ausgeblendet)' : ''),
+            'caption' => WPHUB_Text::t('🪟  Form: layout') . ($hidden ? ' ' . WPHUB_Text::t('(%d hidden)', count($hidden)) : ''),
             'items' => array_merge($hiddenLine, [
-                ['type' => 'Label', 'caption' => 'Hier legst du fest, welche Bereiche beim Öffnen des Formulars aufgeklappt sind und in welcher Reihenfolge sie stehen. Symcon merkt sich das Auf- und Zuklappen nicht selbst, deshalb gilt die Einstellung hier jedes Mal beim Öffnen. Sie wirkt nach „Übernehmen“ beim nächsten Öffnen des Formulars.'],
-                ['type' => 'Label', 'caption' => 'Kein Haken heißt „Standard“: wie das Modul es vorsieht. Die Position ist eine Zahl; bei gleicher Zahl bleibt die Standardreihenfolge. „Ausgeblendet“ nimmt einen Bereich aus der Anzeige, ohne dass er etwas verliert: seine Einstellungen bleiben erhalten und wirken weiter. Zum Wiederzeigen den Haken bei „Ausgeblendet“ entfernen oder „Auf Standard zurücksetzen“ klicken. Sind mehrere Haken gesetzt, gilt „Ausgeblendet“ vor „Zugeklappt“ vor „Aufgeklappt“. Von den Anmelde-Bereichen zeigt WPHub ohnehin nur den des gewählten Herstellers. Die Bereiche oben (Zweck, Neu, Dokumentation) und unten (Rückmeldungen, Über dieses Modul) bleiben, wo sie sind, und lassen sich nicht ausblenden.'],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('Here you decide which sections are expanded when the form opens and in which order they appear. Symcon does not remember expanding and collapsing itself, so the setting applies here every time the form opens. It takes effect after "Apply" the next time the form is opened.')],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('No tick means "default": as the module intends it. The position is a number; with equal numbers the default order is kept. "Hidden" takes a section out of the display without it losing anything: its settings are kept and keep working. To show it again, remove the tick at "Hidden" or click "Reset to default". If several ticks are set, "Hidden" wins over "Collapsed" over "Expanded". Of the login sections WPHub shows only the one of the chosen manufacturer anyway. The sections at the top (purpose, news, documentation) and at the bottom (feedback, about this module) stay where they are and cannot be hidden.')],
                 [
-                    'type' => 'List', 'name' => 'FormLayout', 'caption' => 'Bereiche', 'rowCount' => count($rows), 'add' => false, 'delete' => false,
+                    'type' => 'List', 'name' => 'FormLayout', 'caption' => WPHUB_Text::t('Sections'), 'rowCount' => count($rows), 'add' => false, 'delete' => false,
                     'loadValuesFromConfiguration' => false,
                     'values' => $rows,
                     'columns' => [
-                        ['caption' => 'Bereich', 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
-                        ['caption' => 'Schlüssel', 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
-                        ['caption' => 'Aufgeklappt', 'name' => 'Opened', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Zugeklappt', 'name' => 'Closed', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => '🙈 Ausgeblendet', 'name' => 'Hidden', 'width' => '130px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
-                        ['caption' => 'Position', 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
+                        ['caption' => WPHUB_Text::t('Section'), 'name' => 'Panel', 'width' => 'auto', 'add' => ''],
+                        ['caption' => WPHUB_Text::t('Key'), 'name' => 'Key', 'width' => '0px', 'visible' => false, 'add' => '', 'save' => true],
+                        ['caption' => WPHUB_Text::t('Expanded'), 'name' => 'Opened', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => WPHUB_Text::t('Collapsed'), 'name' => 'Closed', 'width' => '110px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => WPHUB_Text::t('🙈 Hidden'), 'name' => 'Hidden', 'width' => '130px', 'add' => false, 'edit' => ['type' => 'CheckBox']],
+                        ['caption' => WPHUB_Text::t('Position'), 'name' => 'Pos', 'width' => '100px', 'add' => 1, 'edit' => ['type' => 'NumberSpinner', 'minimum' => 1, 'maximum' => 99]],
                     ],
                 ],
-                ['type' => 'Button', 'caption' => '↩️ Auf Standard zurücksetzen', 'onClick' => 'echo WPHUB_ResetFormLayout($id);'],
+                ['type' => 'Button', 'caption' => WPHUB_Text::t('↩️ Reset to default'), 'onClick' => 'echo WPHUB_ResetFormLayout($id);'],
             ]),
         ];
     }
@@ -571,14 +585,14 @@ class WPHub extends IPSModule
     /** Setzt Aufklapp-Zustand und Reihenfolge der Fachpanels im offenen Formular auf den Standard (gilt nach „Übernehmen“). */
     public function ResetFormLayout(): string
     {
-        $base = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
+        $base = WPHUB_Text::formular(json_decode(file_get_contents(__DIR__ . '/form.json'), true));
         $captions = [];
         foreach (($base['elements'] ?? []) as $el) {
             if (isset($el['name'])) {
                 $captions[(string)$el['name']] = (string)($el['caption'] ?? '');
             }
         }
-        $captions['ManagedByPanel'] = '🔀 Steuerhoheit';
+        $captions['ManagedByPanel'] = WPHUB_Text::t('🔀 Control authority');
         $rows = [];
         $i = 0;
         foreach (self::FACH_PANELS as $key => $name) {
@@ -589,7 +603,7 @@ class WPHub extends IPSModule
             $rows[] = ['Key' => $key, 'Panel' => $label, 'Opened' => false, 'Closed' => false, 'Hidden' => false, 'Pos' => ++$i];
         }
         $this->UpdateFormField('FormLayout', 'values', json_encode($rows, JSON_UNESCAPED_UNICODE));
-        return 'ℹ️ Auf Standard gesetzt. Zum Speichern unten „Übernehmen“ klicken.';
+        return WPHUB_Text::t('ℹ️ Reset to default. Click "Apply" below to save.');
     }
 
     /**
@@ -667,11 +681,11 @@ class WPHub extends IPSModule
             'type'     => 'ExpansionPanel',
             'name'     => 'PurposeIntroPanel',
             'expanded' => true,
-            'caption'  => '👋  Wozu dieses Modul?',
+            'caption'  => WPHUB_Text::t('👋  What is this module for?'),
             'items'    => [
-                ['type' => 'Label', 'caption' => 'WPHub meldet Panasonic-Aquarea-Wärmepumpen (Comfort-Cloud-Konto) beim NRG-Stack-Verbund an -- Betriebsdaten, Temperaturen und Steuerung (Flüsterbetrieb, Warmwasser-/Zonen-Sollwert, Urlaubstimer) direkt in Symcon, ohne HeishaMon-Zusatzplatine.'],
-                ['type' => 'Label', 'caption' => 'Nützlich für Auswertungen (z. B. NRGDashboard), Energiemanagement (EMS) und als Cloud-Alternative, wenn HeishaMons lokale MQTT-Bridge nicht infrage kommt. Hat WPHub UND HeishaMon dieselbe Wärmepumpe im Zugriff, regelt HeishaMon (siehe Panel „🔀 Steuerhoheit").'],
-                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckPurposeIntro($id);'],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('WPHub registers Panasonic Aquarea heat pumps (Comfort Cloud account) with the NRG-Stack family -- operating data, temperatures and control (quiet mode, hot water/zone setpoint, holiday timer) directly in Symcon, without an additional HeishaMon board.')],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('Useful for evaluations (e.g. NRGDashboard), energy management (EMS) and as a cloud alternative when HeishaMon\'s local MQTT bridge is not an option. If WPHub AND HeishaMon both have access to the same heat pump, HeishaMon controls it (see panel "🔀 Control authority").')],
+                ['type' => 'Button', 'caption' => WPHUB_Text::t('Understood – do not show again'), 'onClick' => 'WPHUB_AckPurposeIntro($id);'],
             ],
         ];
     }
@@ -700,11 +714,11 @@ class WPHub extends IPSModule
             'type'     => 'ExpansionPanel',
             'name'     => 'ForumHintPanel',
             'expanded' => true,
-            'caption'  => '💬  Feedback im Symcon-Forum',
+            'caption'  => WPHUB_Text::t('💬  Feedback in the Symcon forum'),
             'items'    => [
-                ['type' => 'Label', 'caption' => 'Fragen, Fehler, Erfahrungsberichte oder Hilfe beim Testen weiterer Wärmepumpen-Hersteller -- dafür gibt es den WPHub-Forumsthread.'],
-                ['type' => 'Button', 'caption' => 'Zum Forums-Thread', 'onClick' => "echo '" . self::FORUM_THREAD_URL . "';", 'link' => true],
-                ['type' => 'Button', 'caption' => 'Verstanden – nicht mehr anzeigen', 'onClick' => 'WPHUB_AckForumHint($id);'],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('Questions, bugs, experience reports or help testing more heat pump manufacturers -- the WPHub forum thread is the place for that.')],
+                ['type' => 'Button', 'caption' => WPHUB_Text::t('To the forum thread'), 'onClick' => "echo '" . self::FORUM_THREAD_URL . "';", 'link' => true],
+                ['type' => 'Button', 'caption' => WPHUB_Text::t('Understood – do not show again'), 'onClick' => 'WPHUB_AckForumHint($id);'],
             ],
         ];
     }
@@ -725,7 +739,7 @@ class WPHub extends IPSModule
      * nicht). Aktive Entwicklung bleibt auf ems-integration, beta wird nur
      * bei Bedarf nachgezogen.
      */
-    private const LICENSE_URL = 'https://github.com/DG65/NRGWPHub/blob/beta/LICENSE';
+    private const LICENSE_URL = 'https://github.com/DG65/NRGWPHub/blob/main/LICENSE';
     private const PAYPAL_URL = 'https://paypal.me/DietmarGureth';
 
     private function LicenseHint(): array
@@ -733,14 +747,14 @@ class WPHub extends IPSModule
         return [
             'type'     => 'ExpansionPanel',
             'expanded' => false,
-            'caption'  => '🧡  Über dieses Modul',
+            'caption'  => WPHUB_Text::t('🧡  About this module'),
             'items'    => [
-                ['type' => 'Label', 'caption' => 'Entstanden aus echter Begeisterung für die eigene Anlage — und ein paar durchgetippten Abenden. Trotzdem: Software-Hobby hin oder her, das hier ist geistiges Eigentum und echte Arbeit steckt drin.'],
-                ['type' => 'Label', 'caption' => 'Lizenz: PolyForm Noncommercial 1.0.0 — privat und nicht-kommerziell frei nutzbar, für den gewerblichen Einsatz braucht es eine gesonderte Lizenz vom Rechteinhaber.'],
-                ['type' => 'Button', 'caption' => 'Lizenztext ansehen', 'onClick' => "echo '" . self::LICENSE_URL . "';", 'link' => true],
-                ['type' => 'Label', 'caption' => 'Gewerbliche Nutzung oder Fragen zur Lizenz? Einfach melden: dietmar@gureth.eu'],
-                ['type' => 'Label', 'caption' => 'Gefällt dir das Modul und du möchtest trotzdem etwas dalassen? Über eine kleine Spende freue ich mich — völlig freiwillig, keine Gegenleistung nötig.'],
-                ['type' => 'Button', 'caption' => '☕  Spenden via PayPal', 'onClick' => "echo '" . self::PAYPAL_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('Born out of genuine enthusiasm for my own installation — and a few evenings of typing. Still: hobby software or not, this is intellectual property and real work went into it.')],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('License: PolyForm Noncommercial 1.0.0 — free for private and non-commercial use; commercial use needs a separate license from the rights holder.')],
+                ['type' => 'Button', 'caption' => WPHUB_Text::t('View license text'), 'onClick' => "echo '" . self::LICENSE_URL . "';", 'link' => true],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('Commercial use or questions about the license? Just get in touch: dietmar@gureth.eu')],
+                ['type' => 'Label', 'caption' => WPHUB_Text::t('Do you like the module and still want to leave something? I would be happy about a small donation — completely voluntary, nothing owed in return.')],
+                ['type' => 'Button', 'caption' => WPHUB_Text::t('☕  Donate via PayPal'), 'onClick' => "echo '" . self::PAYPAL_URL . "';", 'link' => true],
             ],
         ];
     }
@@ -763,7 +777,7 @@ class WPHub extends IPSModule
         $email = trim($this->ReadPropertyString('CC_Email'));
         $pass  = (string)$this->ReadPropertyString('CC_Password');
         if ($email === '' || $pass === '') {
-            $say('❌ Bitte zuerst E-Mail und Passwort eintragen und übernehmen, dann anmelden.');
+            $say(WPHUB_Text::t('❌ Please enter e-mail and password first and apply, then log in.'));
             return;
         }
 
@@ -794,22 +808,22 @@ class WPHub extends IPSModule
                 // Vor SetStatus(): ApplyChanges() setzt den Status neu.
                 $this->discardLoginPassword('CC_Password');
                 $this->SetStatus(202);
-                $say("✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen.\n📜 Panasonic hat aber Nutzungsbedingungen/Datenschutzerklärung aktualisiert und verlangt eine erneute Zustimmung Deines Kontos. Bitte unten „Aktualisierte Bedingungen akzeptieren“ klicken (oder einmal die offizielle Comfort-Cloud-App öffnen und dort bestätigen).");
+                $say(WPHUB_Text::t('✅ Logged in, access key saved, password discarded.') . "\n" . WPHUB_Text::t('📜 Panasonic has, however, updated its terms of use/privacy policy and requires renewed agreement from your account. Please click "Accept updated terms" below (or open the official Comfort Cloud app once and confirm there).'));
                 return;
             }
-            $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Geräteliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
+            $say(WPHUB_Text::t('✅ Logged in, access key saved, password discarded.') . ' ' . WPHUB_Text::t('The device list could not be loaded yet (%s) — it will be tried again on the next update run.', $client->getLastError()));
             $this->discardLoginPassword('CC_Password');
             return;
         }
         $this->refreshDiscoverySummary();
         if (count($devices) === 0) {
-            $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Im Konto wurde aber keine Aquarea-Wärmepumpe gefunden. Klimageräte bindet WPHub bewusst nicht ein.');
+            $say(WPHUB_Text::t('✅ Logged in, access key saved, password discarded.') . ' ' . WPHUB_Text::t('But no Aquarea heat pump was found in the account. WPHub deliberately does not include air conditioners.'));
             $this->discardLoginPassword('CC_Password');
             return;
         }
-        $lines = ['✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Gefundene Wärmepumpen:'];
+        $lines = [WPHUB_Text::t('✅ Logged in, access key saved, password discarded.') . ' ' . WPHUB_Text::t('Heat pumps found:')];
         foreach ($devices as $d) {
-            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
+            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' ' . WPHUB_Text::t('(currently not reachable)'));
         }
         $say(implode("\n", $lines));
         $this->discardLoginPassword('CC_Password');
@@ -844,7 +858,7 @@ class WPHub extends IPSModule
         };
         $bundle = $this->ensureToken();
         if ($bundle === null) {
-            $say('❌ Keine gültige Anmeldung — bitte zuerst anmelden.');
+            $say(WPHUB_Text::t('❌ No valid login — please log in first.'));
             return;
         }
         $this->doAcceptAgreements($this->ccClient(), $bundle, $say);
@@ -858,24 +872,24 @@ class WPHub extends IPSModule
         // Versionen bestätigen.
         $docs = $client->collectAgreementVersions($bundle);
         if ($docs === null) {
-            $say('❌ Die aktuellen Bedingungen konnten nicht abgerufen werden: ' . $client->getLastError());
+            $say(WPHUB_Text::t('❌ The current terms could not be retrieved: %s', $client->getLastError()));
             return;
         }
         if (count($docs) === 0) {
-            $say('ℹ️ Die Cloud meldet keine offenen Bedingungen. Versuche direkt, die Geräteliste zu laden …');
+            $say(WPHUB_Text::t('ℹ️ The cloud reports no open terms. Trying to load the device list directly …'));
         } elseif (!$client->putAgreementStatus($bundle, $docs)) {
-            $say('❌ Die Zustimmung konnte nicht übermittelt werden: ' . $client->getLastError());
+            $say(WPHUB_Text::t('❌ The agreement could not be submitted: %s', $client->getLastError()));
             return;
         }
 
         $names = [
-            self::AGREEMENT_TERMS   => 'Nutzungsbedingungen',
-            self::AGREEMENT_PRIVACY => 'Datenschutzerklärung',
-            3                        => 'Servicevertrag',
+            self::AGREEMENT_TERMS   => WPHUB_Text::t('terms of use'),
+            self::AGREEMENT_PRIVACY => WPHUB_Text::t('privacy policy'),
+            3                        => WPHUB_Text::t('service contract'),
         ];
         $accepted = [];
         foreach ($docs as $d) {
-            $accepted[] = $names[$d['type']] ?? ('Dokument ' . $d['type']);
+            $accepted[] = $names[$d['type']] ?? WPHUB_Text::t('document %s', (string)$d['type']);
         }
 
         // Wie die offizielle App: nach der Zustimmung läuft dieselbe Sitzung
@@ -901,20 +915,20 @@ class WPHub extends IPSModule
         if ($devices === null) {
             // Diagnose ins Systemprotokoll (keine Geheimnisse) -- macht sichtbar,
             // welche Versionen bestaetigt wurden und wie die Cloud geantwortet hat.
-            $this->LogMessage("WPHub-Diagnose Zustimmung:\n" . $client->getApiTrace(), KL_WARNING);
-            $say('⚠️ Zustimmung übermittelt (' . (count($accepted) ? implode(', ', $accepted) : 'nichts offen') . '), aber die Geräteliste lässt sich weiterhin nicht laden: ' . $client->getLastError() . ' — Details stehen im Systemprotokoll.');
+            $this->LogMessage(WPHUB_Text::t('WPHub diagnostics, agreement:') . "\n" . $client->getApiTrace(), KL_WARNING);
+            $say(WPHUB_Text::t('⚠️ Agreement submitted (%s), but the device list still cannot be loaded: %s — details are in the system log.', count($accepted) ? implode(', ', $accepted) : WPHUB_Text::t('nothing open'), $client->getLastError()));
             return;
         }
         $this->refreshDiscoverySummary();
         $this->SetStatus(102);
         $lines = [count($accepted)
-            ? '✅ Bestätigt: ' . implode(', ', $accepted) . '. Gefundene Wärmepumpen:'
-            : '✅ Es war laut Cloud nichts mehr offen. Gefundene Wärmepumpen:'];
+            ? WPHUB_Text::t('✅ Confirmed: %s. Heat pumps found:', implode(', ', $accepted))
+            : WPHUB_Text::t('✅ According to the cloud nothing was open any more. Heat pumps found:')];
         if (count($devices) === 0) {
-            $lines[] = '   (keine Aquarea-Wärmepumpe im Konto gefunden)';
+            $lines[] = '   ' . WPHUB_Text::t('(no Aquarea heat pump found in the account)');
         }
         foreach ($devices as $d) {
-            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
+            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' ' . WPHUB_Text::t('(currently not reachable)'));
         }
         $say(implode("\n", $lines));
     }
@@ -944,12 +958,12 @@ class WPHub extends IPSModule
             if ($client->agreementRequired()) {
                 // Nur beim Statuswechsel protokollieren, nicht in jedem Zyklus.
                 if ($this->GetStatus() !== 202) {
-                    $this->LogMessage('Panasonic verlangt eine erneute Zustimmung zu Nutzungsbedingungen/Datenschutzerklärung — im WPHub-Formular „Aktualisierte Bedingungen akzeptieren“ klicken oder einmal die offizielle App öffnen.', KL_WARNING);
+                    $this->LogMessage(WPHUB_Text::t('Panasonic requires renewed agreement to the terms of use/privacy policy — click "Accept updated terms" in the WPHub form or open the official app once.'), KL_WARNING);
                 }
                 $this->SetStatus(202);
                 return;
             }
-            $this->LogMessage('Aktualisierung fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('Update failed: %s', $client->getLastError()), KL_WARNING);
             return;
         }
         $this->refreshDiscoverySummary();
@@ -963,7 +977,7 @@ class WPHub extends IPSModule
         $needsAttention = $this->managedByNeedsAttention();
         if (count($needsAttention) > 0) {
             if ($this->GetStatus() !== 203) {
-                $this->LogMessage('Steuerhoheit noch nicht zugeordnet, obwohl eine aktive HeishaMon-Instanz gefunden wurde: ' . implode(', ', $needsAttention) . ' — im WPHub-Formular unter „🔀 Steuerhoheit“ festlegen, sonst steuert WPHub weiterhin mit (Standard „WPHub“).', KL_WARNING);
+                $this->LogMessage(WPHUB_Text::t('Control authority not assigned yet although an active HeishaMon instance was found: %s — set it in the WPHub form under "🔀 Control authority", otherwise WPHub keeps controlling as well (default "WPHub").', implode(', ', $needsAttention)), KL_WARNING);
             }
             $this->SetStatus(203);
             return;
@@ -1016,7 +1030,7 @@ class WPHub extends IPSModule
             $out[] = [
                 'contractVersion'      => '1.15',
                 'Type'                 => 'heatpump',
-                'Caption'              => $d['name'] ?? 'Wärmepumpe',
+                'Caption'              => $d['name'] ?? WPHUB_Text::t('Heat pump'),
                 'PowerID'              => $extPowerID,
                 'EnergyID'             => $extEnergyID,
                 'Measured'             => ($extPowerID > 0),
@@ -1144,7 +1158,7 @@ class WPHub extends IPSModule
         try {
             $archiveID = $this->archiveInstanceID();
             if ($archiveID === 0) {
-                return '❌ Keine Archiv-Instanz gefunden -- das Logging kann nicht eingeschaltet werden.';
+                return WPHUB_Text::t('❌ No archive instance found -- logging cannot be enabled.');
             }
             $new = 0;
             $already = 0;
@@ -1163,11 +1177,13 @@ class WPHub extends IPSModule
                 IPS_ApplyChanges($archiveID);
             }
             if ($new === 0 && $already === 0) {
-                return 'ℹ️ Noch keine Messwerte vorhanden -- erst einen Abruf abwarten und dann erneut klicken.';
+                return WPHUB_Text::t('ℹ️ No measured values yet -- wait for a poll first, then click again.');
             }
-            return '✅ Logging eingeschaltet für ' . $new . ' Messwert(e)' . ($already > 0 ? ' (' . $already . ' waren schon eingeschaltet)' : '') . '.';
+            return $already > 0
+                ? WPHUB_Text::t('✅ Logging enabled for %d measured value(s) (%d were already enabled).', $new, $already)
+                : WPHUB_Text::t('✅ Logging enabled for %d measured value(s).', $new);
         } catch (\Throwable $e) {
-            return '❌ Logging konnte nicht eingeschaltet werden: ' . $e->getMessage();
+            return WPHUB_Text::t('❌ Logging could not be enabled: %s', $e->getMessage());
         }
     }
 
@@ -1182,13 +1198,14 @@ class WPHub extends IPSModule
     {
         $ts = $this->ReadAttributeInteger('LastDiscoveryTs');
         if ($ts <= 0) {
-            return 'ℹ️ Noch nicht gesucht.';
+            return WPHUB_Text::t('ℹ️ Not searched yet.');
         }
         $devices = $this->readDeviceList();
         $count = count($devices);
         $icon = $count > 0 ? '✅' : '⚠️';
-        $was = $count === 1 ? 'Wärmepumpe' : 'Wärmepumpen';
-        return $icon . ' ' . $count . ' ' . $was . ' gefunden (zuletzt ' . date('H:i:s', $ts) . ' Uhr).';
+        return $count === 1
+            ? WPHUB_Text::t('%s %d heat pump found (last at %s).', $icon, $count, date('H:i:s', $ts))
+            : WPHUB_Text::t('%s %d heat pumps found (last at %s).', $icon, $count, date('H:i:s', $ts));
     }
 
     /**
@@ -1253,7 +1270,7 @@ class WPHub extends IPSModule
                     return [
                         'powerID'    => $powerID,
                         'energyID'   => $energyID,
-                        'label'      => (string)($a['label'] ?? 'Wärmepumpe'),
+                        'label'      => (string)($a['label'] ?? WPHUB_Text::t('Heat pump')),
                         'instanceID' => (int)$instanceID,
                     ];
                 }
@@ -1291,7 +1308,7 @@ class WPHub extends IPSModule
             foreach ($instances as $instanceID) {
                 $inst = @IPS_GetInstance((int)$instanceID);
                 if (is_array($inst) && (int)($inst['InstanceStatus'] ?? 0) === 102) {
-                    return 'ℹ️ Eine aktive HeishaMon-Instanz (#' . (int)$instanceID . ') wurde gefunden. Falls sie dieselbe Wärmepumpe steuert: unten bei „Wer regelt diese Wärmepumpe?" „HeishaMon" auswählen, damit WPHub nicht parallel schreibt.';
+                    return WPHUB_Text::t('ℹ️ An active HeishaMon instance (#%d) was found. If it controls the same heat pump: choose "HeishaMon" below at "Who controls this heat pump?" so that WPHub does not write in parallel.', (int)$instanceID);
                 }
             }
         } catch (\Throwable $e) {
@@ -1320,8 +1337,9 @@ class WPHub extends IPSModule
     private function managedBySelectCaption(string $prefix, string $deviceName, bool $heishaMonActive): string
     {
         $needsAttention = ($heishaMonActive && !$this->deviceManagedByIsExplicit($prefix));
-        $captionPrefix = $needsAttention ? '⚠️ Noch nicht zugeordnet -- ' : '';
-        return $captionPrefix . $deviceName . ': Wer regelt diese Wärmepumpe?';
+        return $needsAttention
+            ? WPHUB_Text::t('⚠️ Not assigned yet -- %s: Who controls this heat pump?', $deviceName)
+            : WPHUB_Text::t('%s: Who controls this heat pump?', $deviceName);
     }
 
     private function deviceManagedBy(string $prefix): string
@@ -1365,7 +1383,7 @@ class WPHub extends IPSModule
         foreach ($devices as $d) {
             $devPrefix = (string)($d['prefix'] ?? '');
             if ($devPrefix !== '' && !$this->deviceManagedByIsExplicit($devPrefix)) {
-                $names[] = (string)($d['name'] ?? 'Wärmepumpe');
+                $names[] = (string)($d['name'] ?? WPHUB_Text::t('Heat pump'));
             }
         }
         return $names;
@@ -1441,7 +1459,7 @@ class WPHub extends IPSModule
     {
         $found = $this->meterHubHeatpumpAssignment();
         if ($found === null) {
-            $this->UpdateFormField('MeterHubResult', 'caption', '❌ Keine MeterHub-Zuordnung "Wärmepumpe" (mehr) gefunden.');
+            $this->UpdateFormField('MeterHubResult', 'caption', WPHUB_Text::t('❌ No MeterHub assignment "Heat pump" found (any more).'));
             $this->UpdateFormField('MeterHubResult', 'visible', true);
             return;
         }
@@ -1451,7 +1469,7 @@ class WPHub extends IPSModule
         if ($found['energyID'] > 0) {
             $this->UpdateFormField('Ext_EnergyVariable', 'value', $found['energyID']);
         }
-        $this->UpdateFormField('MeterHubResult', 'caption', '✅ Von MeterHub „' . $found['label'] . '" ins geöffnete Formular übernommen -- zum Speichern unten „Änderungen übernehmen" klicken.');
+        $this->UpdateFormField('MeterHubResult', 'caption', WPHUB_Text::t('✅ Adopted from MeterHub "%s" into the open form -- click "Apply changes" below to save.', $found['label']));
         $this->UpdateFormField('MeterHubResult', 'visible', true);
         $this->UpdateFormField('MeterHubSuggestion', 'visible', false);
     }
@@ -1531,7 +1549,7 @@ class WPHub extends IPSModule
     public function RequestAction($Ident, $Value)
     {
         if (strlen($Ident) <= 9) {
-            $this->LogMessage('RequestAction: unbekannter Ident ' . $Ident, KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('RequestAction: unknown ident %s', (string)$Ident), KL_WARNING);
             return;
         }
         $prefix = substr($Ident, 0, 9);
@@ -1546,13 +1564,13 @@ class WPHub extends IPSModule
             }
         }
         if ($dev === null) {
-            $this->LogMessage('RequestAction: Gerät zu ' . $Ident . ' nicht gefunden.', KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('RequestAction: device for %s not found.', (string)$Ident), KL_WARNING);
             return;
         }
 
         $bundle = $this->ensureToken();
         if ($bundle === null) {
-            $this->LogMessage('RequestAction: keine gültige Anmeldung.', KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('RequestAction: no valid login.'), KL_WARNING);
             return;
         }
         $this->applyControl($Ident, $field, $Value, $dev, $bundle, $this->ccClient());
@@ -1575,7 +1593,7 @@ class WPHub extends IPSModule
         // bestaetigten Stand, wie bei jedem anderen Fehlschlag auch.
         $managedBy = $this->deviceManagedBy((string)($dev['prefix'] ?? ''));
         if ($managedBy !== self::MANAGED_BY_DEFAULT) {
-            $this->LogMessage('Steuerbefehl (' . $field . ') blockiert: Steuerhoheit dieses Geraets steht auf "' . $managedBy . '", nicht "wphub".', KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('Control command (%s) blocked: the control authority of this device is set to "%s", not "wphub".', $field, $managedBy), KL_WARNING);
             return;
         }
 
@@ -1600,14 +1618,14 @@ class WPHub extends IPSModule
             $key = in_array($mode, [2, 4], true) ? 'coolSet' : 'heatSet';
             $ok = $client->setZoneTemperature($bundle, $guid, (int)$m[1], (float)$value, $key);
         } else {
-            $this->LogMessage('RequestAction: unbekanntes Steuerfeld ' . $field, KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('RequestAction: unknown control field %s', $field), KL_WARNING);
             return;
         }
 
         if ($ok) {
             $this->SetValue($ident, $value);
         } else {
-            $this->LogMessage('Steuerbefehl (' . $field . ') fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('Control command (%s) failed: %s', $field, $client->getLastError()), KL_WARNING);
         }
     }
 
@@ -1657,18 +1675,18 @@ class WPHub extends IPSModule
         $manual = trim($this->ReadPropertyString('CC_AppVersion'));
 
         if ($auto !== '' && $manual === '') {
-            return ['🔗 App-Version: ' . $auto . ' (automatisch ermittelt, Quelle: Play Store bzw. AppBrain, nachdem die Comfort Cloud eine ältere Version abgelehnt hatte). Das Eingabefeld erscheint nur, wenn nichts automatisch kommt.', false, self::AUTO_LINE_COLOR];
+            return [WPHUB_Text::t('🔗 App version: %s (determined automatically, source: Play Store or AppBrain, after the Comfort Cloud had rejected an older version). The input field only appears when nothing is determined automatically.', $auto), false, self::AUTO_LINE_COLOR];
         }
         if ($auto !== '' && $manual !== '') {
             if ($manual === $auto) {
-                return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, entspricht der automatisch ermittelten Version). Feld leeren, um wieder nur die automatische zu nutzen.', true, -1];
+                return [WPHUB_Text::t('✏️ App version: %s (your own entry, matches the automatically determined version). Empty the field to use only the automatic one again.', $manual), true, -1];
             }
-            return ['✏️ Eigene App-Version ' . $manual . ' wurde von der Comfort Cloud abgelehnt, es gilt die automatisch ermittelte Version ' . $auto . ' (Vorrang). Feld leeren, um wieder nur die automatische zu nutzen.', true, -1];
+            return [WPHUB_Text::t('✏️ Your own app version %s was rejected by the Comfort Cloud, the automatically determined version %s applies (takes precedence). Empty the field to use only the automatic one again.', $manual, $auto), true, -1];
         }
         if ($manual !== '') {
-            return ['✏️ App-Version: ' . $manual . ' (eigene Angabe, hat Vorrang vor dem Modulstandard). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst und nutzt dann diese.', true, -1];
+            return [WPHUB_Text::t('✏️ App version: %s (your own entry, takes precedence over the module default). If the Comfort Cloud rejects it (error code 4106), WPHub determines the current version itself and then uses that.', $manual), true, -1];
         }
-        return ['ℹ️ App-Version: ' . $version . ' (Standard im Modul, bisher nichts automatisch ermittelt). Lehnt die Comfort Cloud sie ab (Fehlercode 4106), ermittelt WPHub die aktuelle Version selbst. Das Feld unten ist nur der Notnagel, falls das nicht klappt.', true, -1];
+        return [WPHUB_Text::t('ℹ️ App version: %s (module default, nothing determined automatically so far). If the Comfort Cloud rejects it (error code 4106), WPHub determines the current version itself. The field below is only the fallback in case that does not work.', $version), true, -1];
     }
 
     private function ccClient(): WPHUB_ComfortCloudClient
@@ -1694,7 +1712,7 @@ class WPHub extends IPSModule
             return false;
         }
         $this->WriteAttributeString('CC_AppVersionAuto', $new);
-        $this->LogMessage('Comfort-Cloud-App-Version automatisch auf ' . $new . ' aktualisiert.', KL_NOTIFY);
+        $this->LogMessage(WPHUB_Text::t('Comfort Cloud app version automatically updated to %s.', $new), KL_NOTIFY);
         return true;
     }
 
@@ -1728,7 +1746,7 @@ class WPHub extends IPSModule
         $client = $this->ccClient();
         $new = $client->refresh($bundle);
         if ($new === null) {
-            $this->LogMessage('Comfort-Cloud-Zugangsschlüssel abgelaufen und Erneuerung fehlgeschlagen (' . $client->getLastError() . ') — bitte im Formular neu anmelden.', KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('Comfort Cloud access key expired and renewal failed (%s) — please log in again in the form.', $client->getLastError()), KL_WARNING);
             $this->SetStatus(201);
             $this->SetTimerInterval('WPHUB_UpdateTimer', 0);
             return null;
@@ -1864,10 +1882,10 @@ class WPHub extends IPSModule
             // Jetzt: gleiche Sperrfrist wie beim Datenabruf, Timer bleibt an.
             if ($client->quotaRetryAfterSeconds !== null) {
                 $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
-                $this->LogMessage('Vaillant-API-Kontingent aufgebraucht (Zugangsschlüssel-Erneuerung) -- nächster Versuch in ' . $client->quotaRetryAfterSeconds . ' s (' . $client->getLastError() . ').', KL_WARNING);
+                $this->LogMessage(WPHUB_Text::t('Vaillant API quota used up (access key renewal) -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError()), KL_WARNING);
                 return null;
             }
-            $this->LogMessage('myVAILLANT-Zugangsschlüssel abgelaufen und Erneuerung fehlgeschlagen (' . $client->getLastError() . ') — bitte im Formular neu anmelden.', KL_WARNING);
+            $this->LogMessage(WPHUB_Text::t('myVAILLANT access key expired and renewal failed (%s) — please log in again in the form.', $client->getLastError()), KL_WARNING);
             $this->SetStatus(201);
             $this->SetTimerInterval('WPHUB_UpdateTimer', 0);
             return null;
@@ -1893,7 +1911,7 @@ class WPHub extends IPSModule
         $email = trim($this->ReadPropertyString('VAI_Email'));
         $pass  = (string)$this->ReadPropertyString('VAI_Password');
         if ($email === '' || $pass === '') {
-            $say('❌ Bitte zuerst E-Mail und Passwort eintragen und übernehmen, dann anmelden.');
+            $say(WPHUB_Text::t('❌ Please enter e-mail and password first and apply, then log in.'));
             return;
         }
 
@@ -1914,19 +1932,19 @@ class WPHub extends IPSModule
         $this->WriteAttributeInteger('VAI_SystemsCacheAt', 0);
         $devices = $this->refreshDevicesVaillant($bundle, $client);
         if ($devices === null) {
-            $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Die Anlagenliste konnte aber noch nicht geladen werden (' . $client->getLastError() . ') — sie wird beim nächsten Aktualisierungslauf erneut versucht.');
+            $say(WPHUB_Text::t('✅ Logged in, access key saved, password discarded.') . ' ' . WPHUB_Text::t('The system list could not be loaded yet (%s) — it will be tried again on the next update run.', $client->getLastError()));
             $this->discardLoginPassword('VAI_Password');
             return;
         }
         $this->refreshDiscoverySummary();
         if (count($devices) === 0) {
-            $say('✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Im Konto wurde aber keine Anlage gefunden.');
+            $say(WPHUB_Text::t('✅ Logged in, access key saved, password discarded.') . ' ' . WPHUB_Text::t('But no system was found in the account.'));
             $this->discardLoginPassword('VAI_Password');
             return;
         }
-        $lines = ['✅ Angemeldet, Zugangsschlüssel gespeichert, Passwort verworfen. Gefundene Anlagen:'];
+        $lines = [WPHUB_Text::t('✅ Logged in, access key saved, password discarded.') . ' ' . WPHUB_Text::t('Systems found:')];
         foreach ($devices as $d) {
-            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' (derzeit nicht erreichbar)');
+            $lines[] = '   • ' . $d['name'] . ($d['reachable'] ? '' : ' ' . WPHUB_Text::t('(currently not reachable)'));
         }
         $say(implode("\n", $lines));
         $this->discardLoginPassword('VAI_Password');
@@ -1999,12 +2017,12 @@ class WPHub extends IPSModule
 
         $bundle = $this->vaillantEnsureToken();
         if ($bundle === null) {
-            $say('❌ Nicht angemeldet (oder Anmeldung gerade wegen Kontingent gesperrt) -- zuerst oben anmelden.');
+            $say(WPHUB_Text::t('❌ Not logged in (or login currently blocked because of the quota) -- log in above first.'));
             return;
         }
         $devices = $this->readDeviceList();
         if (count($devices) === 0) {
-            $say('❌ Keine Anlage bekannt -- zuerst oben anmelden und Anlagen suchen.');
+            $say(WPHUB_Text::t('❌ No system known -- log in above first and search for systems.'));
             return;
         }
         $client = $this->vaillantClient();
@@ -2048,10 +2066,10 @@ class WPHub extends IPSModule
             }
         }
         if ($ok === 0) {
-            $say('❌ Kein Abruf erfolgreich (' . $client->getLastError() . ') -- Details in der Instanz-Debugausgabe.');
+            $say(WPHUB_Text::t('❌ No request succeeded (%s) -- details in the instance debug output.', $client->getLastError()));
             return;
         }
-        $say('✅ ' . $ok . ' Anlage(n) + ' . $bucketsOk . ' Energiekanal-Testfenster erfolgreich -- Rohdaten stehen in der Instanz-Debugausgabe (Einträge „Vaillant/emf-currentSystem-Rohdaten" und „Vaillant/emf-buckets-Rohdaten").');
+        $say(WPHUB_Text::t('✅ %d system(s) + %d energy channel test window(s) successful -- raw data is in the instance debug output (entries "Vaillant/emf-currentSystem-Rohdaten" and "Vaillant/emf-buckets-Rohdaten").', $ok, $bucketsOk));
     }
 
     /**
@@ -2078,20 +2096,20 @@ class WPHub extends IPSModule
     {
         return [
             'zone' => [
-                ['caption' => 'Betriebsart Heizen', 'fields' => ['heating.operation_mode_heating', 'operation_mode_heating'], 'tli' => 'PATCH zones/{i}/heating-operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH zone/{i}/heating/operation-mode {operationMode: DAY|AUTO|SET_BACK|OFF}', 'range' => 'Enum, siehe Endpunkt'],
-                ['caption' => 'Manueller Sollwert (Raumtemperatur)', 'fields' => ['heating.manual_mode_setpoint_heating', 'heating.day_temperature_heating'], 'tli' => 'PATCH zones/{i}/manual-mode-setpoint {setpoint, type:HEATING}', 'vrc700' => 'PATCH zone/{i}/heating/comfort-room-temperature {comfortRoomTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
-                ['caption' => 'Absenktemperatur', 'fields' => ['heating.set_back_temperature', 'set_back_temperature'], 'tli' => 'PATCH zones/{i}/set-back-temperature {setBackTemperature}', 'vrc700' => 'PATCH zone/{i}/heating/set-back-temperature {setBackTemperature}', 'range' => 'kein bekannter Grenzwert im Referenz-Client'],
-                ['caption' => 'Quick Veto (befristete Raumtemperatur-Übersteuerung)', 'fields' => ['current_special_function'], 'tli' => 'POST/PATCH zones/{i}/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'vrc700' => 'POST/PATCH zone/{i}/heating/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE zum Abbrechen', 'range' => 'Dauer laut Referenz-Client bis 12 h, Standard 3 h; angezeigter Wert = aktive Sonderfunktion der Zone (QUICK_VETO = laeuft, NONE = keine)'],
+                ['caption' => WPHUB_Text::t('Operating mode heating'), 'fields' => ['heating.operation_mode_heating', 'operation_mode_heating'], 'tli' => 'PATCH zones/{i}/heating-operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH zone/{i}/heating/operation-mode {operationMode: DAY|AUTO|SET_BACK|OFF}', 'range' => WPHUB_Text::t('Enum, see endpoint')],
+                ['caption' => WPHUB_Text::t('Manual setpoint (room temperature)'), 'fields' => ['heating.manual_mode_setpoint_heating', 'heating.day_temperature_heating'], 'tli' => 'PATCH zones/{i}/manual-mode-setpoint {setpoint, type:HEATING}', 'vrc700' => 'PATCH zone/{i}/heating/comfort-room-temperature {comfortRoomTemperature}', 'range' => WPHUB_Text::t('no known limit in the reference client')],
+                ['caption' => WPHUB_Text::t('Set-back temperature'), 'fields' => ['heating.set_back_temperature', 'set_back_temperature'], 'tli' => 'PATCH zones/{i}/set-back-temperature {setBackTemperature}', 'vrc700' => 'PATCH zone/{i}/heating/set-back-temperature {setBackTemperature}', 'range' => WPHUB_Text::t('no known limit in the reference client')],
+                ['caption' => WPHUB_Text::t('Quick veto (temporary room temperature override)'), 'fields' => ['current_special_function'], 'tli' => 'POST/PATCH zones/{i}/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE ' . WPHUB_Text::t('to cancel'), 'vrc700' => 'POST/PATCH zone/{i}/heating/quick-veto {desiredRoomTemperatureSetpoint, duration}, DELETE ' . WPHUB_Text::t('to cancel'), 'range' => WPHUB_Text::t('Duration up to 12 h according to the reference client, default 3 h; displayed value = active special function of the zone (QUICK_VETO = running, NONE = none)')],
             ],
             'circuit' => [
-                ['caption' => 'Heizkurve', 'fields' => ['heating_curve'], 'tli' => 'PATCH circuit/{i}/heating-curve {heatingCurve}', 'vrc700' => 'PATCH circuit/{i}/heating-curve {setPoint}', 'range' => '0,1–5,0, Schritt 0,05'],
-                ['caption' => 'Mindest-Vorlauftemperatur', 'fields' => ['min_flow_temperature_setpoint'], 'tli' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'vrc700' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'range' => '0–100 °C, Schritt 0,1'],
-                ['caption' => 'Heizgrenztemperatur', 'fields' => ['heat_demand_limited_by_outside_temperature'], 'tli' => 'POST circuit/{i}/heat-demand-limited-by-outside-temperature {heatDemandLimitedByOutsideTemperature}', 'vrc700' => 'POST .../system-control/v1/systems/{sys}/circuits/{i}/heat-demand-limited-by-outside-temperature {setpoint}', 'range' => '0–100 °C, Schritt 0,1'],
+                ['caption' => WPHUB_Text::t('Heating curve'), 'fields' => ['heating_curve'], 'tli' => 'PATCH circuit/{i}/heating-curve {heatingCurve}', 'vrc700' => 'PATCH circuit/{i}/heating-curve {setPoint}', 'range' => WPHUB_Text::t('0.1–5.0, step 0.05')],
+                ['caption' => WPHUB_Text::t('Minimum flow temperature'), 'fields' => ['min_flow_temperature_setpoint'], 'tli' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'vrc700' => 'PATCH circuit/{i}/min-flow-temperature-setpoint {minFlowTemperatureSetpoint}', 'range' => WPHUB_Text::t('0–100 °C, step 0.1')],
+                ['caption' => WPHUB_Text::t('Heating limit temperature'), 'fields' => ['heat_demand_limited_by_outside_temperature'], 'tli' => 'POST circuit/{i}/heat-demand-limited-by-outside-temperature {heatDemandLimitedByOutsideTemperature}', 'vrc700' => 'POST .../system-control/v1/systems/{sys}/circuits/{i}/heat-demand-limited-by-outside-temperature {setpoint}', 'range' => WPHUB_Text::t('0–100 °C, step 0.1')],
             ],
             'dhw' => [
-                ['caption' => 'Warmwasser-Sollwert', 'fields' => ['tapping_setpoint'], 'tli' => 'PATCH domestic-hot-water/{index}/temperature {setpoint}', 'vrc700' => 'PATCH domestic-hot-water/{index}/tapping-setpoint {setpoint}', 'range' => 'apiRange'],
-                ['caption' => 'Betriebsart Warmwasser', 'fields' => ['operation_mode_dhw'], 'tli' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: DAY|AUTO|OFF}', 'range' => 'Enum, siehe Endpunkt'],
-                ['caption' => 'Warmwasser-Boost (einmalige Sonderladung)', 'fields' => ['current_special_function'], 'tli' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'vrc700' => 'POST domestic-hot-water/{index}/boost, DELETE zum Abbrechen', 'range' => 'kein Parameter (nur an/aus)'],
+                ['caption' => WPHUB_Text::t('Hot water tapping setpoint'), 'fields' => ['tapping_setpoint'], 'tli' => 'PATCH domestic-hot-water/{index}/temperature {setpoint}', 'vrc700' => 'PATCH domestic-hot-water/{index}/tapping-setpoint {setpoint}', 'range' => 'apiRange'],
+                ['caption' => WPHUB_Text::t('Operating mode hot water'), 'fields' => ['operation_mode_dhw'], 'tli' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: MANUAL|TIME_CONTROLLED|OFF}', 'vrc700' => 'PATCH domestic-hot-water/{index}/operation-mode {operationMode: DAY|AUTO|OFF}', 'range' => WPHUB_Text::t('Enum, see endpoint')],
+                ['caption' => WPHUB_Text::t('Hot water boost (one-time special charge)'), 'fields' => ['current_special_function'], 'tli' => 'POST domestic-hot-water/{index}/boost, DELETE ' . WPHUB_Text::t('to cancel'), 'vrc700' => 'POST domestic-hot-water/{index}/boost, DELETE ' . WPHUB_Text::t('to cancel'), 'range' => WPHUB_Text::t('no parameter (on/off only)')],
             ],
         ];
     }
@@ -2162,11 +2180,11 @@ class WPHub extends IPSModule
                     continue;
                 }
                 $count++;
-                $indexField = array_key_exists('index', $merged) ? $merged['index'] : '(kein index-Feld gefunden)';
+                $indexField = array_key_exists('index', $merged) ? $merged['index'] : WPHUB_Text::t('(no index field found)');
                 $activeText = array_key_exists('is_active', $merged)
-                    ? ($merged['is_active'] ? 'ja' : 'NEIN (in der Anlage nicht aktiv -- fehlende Werte sind hier normal)')
-                    : 'keine Angabe';
-                $lines[] = '--- ' . strtoupper($scope) . ' #' . $i . ' (Array-Position, NICHT fuer Schreibzugriffe verwenden) -- echtes index-Feld: ' . json_encode($indexField) . ' -- aktiv: ' . $activeText . ' ---';
+                    ? ($merged['is_active'] ? WPHUB_Text::t('yes') : WPHUB_Text::t('NO (not active in the system -- missing values are normal here)'))
+                    : WPHUB_Text::t('not specified');
+                $lines[] = '--- ' . WPHUB_Text::t('%s #%d (array position, do NOT use for write access) -- real index field: %s -- active: %s', strtoupper($scope), $i, json_encode($indexField), $activeText) . ' ---';
                 foreach ($reference[$scope] as $row) {
                     $present = false;
                     $value = null;
@@ -2174,17 +2192,17 @@ class WPHub extends IPSModule
                         $found = $this->valueAtDotPath($merged, $fieldPath);
                         if ($found !== null) {
                             $present = true;
-                            $value = json_encode($found[0]) . ' (Rohfeld ' . $fieldPath . ')';
+                            $value = WPHUB_Text::t('%s (raw field %s)', json_encode($found[0]), $fieldPath);
                             break;
                         }
                     }
                     $rangeText = $row['range'] === 'apiRange'
                         ? ((array_key_exists('min_setpoint', $merged) || array_key_exists('max_setpoint', $merged))
-                            ? ('von der API selbst geliefert: ' . ($merged['min_setpoint'] ?? '?') . '–' . ($merged['max_setpoint'] ?? '?'))
-                            : 'von der API selbst geliefert, aber min_setpoint/max_setpoint in dieser Antwort nicht vorhanden')
-                        : $row['range'] . ' (aus Referenz-Client, nicht durch diese API-Antwort bestätigt)';
-                    $lines[] = '  ' . $row['caption'] . ': ' . ($present ? ('aktueller Wert ' . $value) : 'in dieser Antwort NICHT vorhanden')
-                        . ' | Wertebereich: ' . $rangeText
+                            ? WPHUB_Text::t('supplied by the API itself: %s–%s', (string)($merged['min_setpoint'] ?? '?'), (string)($merged['max_setpoint'] ?? '?'))
+                            : WPHUB_Text::t('supplied by the API itself, but min_setpoint/max_setpoint not present in this response'))
+                        : WPHUB_Text::t('%s (from reference client, not confirmed by this API response)', $row['range']);
+                    $lines[] = '  ' . $row['caption'] . ': ' . ($present ? WPHUB_Text::t('current value %s', $value) : WPHUB_Text::t('NOT present in this response'))
+                        . ' | ' . WPHUB_Text::t('Value range: %s', $rangeText)
                         . ' | tli: ' . $row['tli'] . ' | vrc700: ' . $row['vrc700'];
                 }
             }
@@ -2193,7 +2211,7 @@ class WPHub extends IPSModule
         if ($count > 0) {
             $this->SendDebug(
                 'Vaillant/steuerungsfaehigkeiten',
-                'Anlage ' . $systemId . ' (' . $controlIdentifier . "):\n" . implode("\n", $lines),
+                WPHUB_Text::t('System %s (%s):', $systemId, $controlIdentifier) . "\n" . implode("\n", $lines),
                 0
             );
         }
@@ -2257,13 +2275,13 @@ class WPHub extends IPSModule
 
         $bundle = $this->vaillantEnsureToken();
         if ($bundle === null) {
-            $say('❌ Nicht angemeldet (oder Anmeldung gerade wegen Kontingent gesperrt) -- zuerst oben anmelden.');
+            $say(WPHUB_Text::t('❌ Not logged in (or login currently blocked because of the quota) -- log in above first.'));
             return;
         }
         $client = $this->vaillantClient();
         $homes = $this->vaillantSystemsCache($bundle, $client);
         if ($homes === null || count($homes) === 0) {
-            $say('❌ Keine Anlage bekannt -- zuerst oben anmelden und Anlagen suchen.');
+            $say(WPHUB_Text::t('❌ No system known -- log in above first and search for systems.'));
             return;
         }
 
@@ -2290,10 +2308,10 @@ class WPHub extends IPSModule
         }
 
         if ($entityCount === 0) {
-            $say('❌ Keine auswertbaren Zonen/Heizkreise/Warmwasser gefunden -- Details in der Instanz-Debugausgabe.');
+            $say(WPHUB_Text::t('❌ No evaluable zones/heating circuits/hot water found -- details in the instance debug output.'));
             return;
         }
-        $say('✅ ' . $entityCount . ' Element(e) aus ' . $systemCount . ' Anlage(n) protokolliert -- siehe Instanz-Debugausgabe, Eintrag „Vaillant/steuerungsfaehigkeiten". Es wurde NICHTS geschrieben, nur gelesen.');
+        $say(WPHUB_Text::t('✅ %d element(s) from %d system(s) logged -- see the instance debug output, entry "Vaillant/steuerungsfaehigkeiten". NOTHING was written, only read.', $entityCount, $systemCount));
     }
 
     /**
@@ -2318,9 +2336,9 @@ class WPHub extends IPSModule
             $this->markAllUnreachable();
             if ($client->quotaRetryAfterSeconds !== null) {
                 $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
-                $this->LogMessage('Vaillant-API-Kontingent aufgebraucht -- naechster Versuch in ' . $client->quotaRetryAfterSeconds . ' s (' . $client->getLastError() . ').', KL_WARNING);
+                $this->LogMessage(WPHUB_Text::t('Vaillant API quota used up -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError()), KL_WARNING);
             } else {
-                $this->LogMessage('Aktualisierung fehlgeschlagen: ' . $client->getLastError(), KL_WARNING);
+                $this->LogMessage(WPHUB_Text::t('Update failed: %s', $client->getLastError()), KL_WARNING);
             }
             return;
         }
@@ -2330,7 +2348,7 @@ class WPHub extends IPSModule
         $needsAttention = $this->managedByNeedsAttention();
         if (count($needsAttention) > 0) {
             if ($this->GetStatus() !== 203) {
-                $this->LogMessage('Steuerhoheit noch nicht zugeordnet, obwohl eine aktive HeishaMon-Instanz gefunden wurde: ' . implode(', ', $needsAttention) . ' — im WPHub-Formular unter „🔀 Steuerhoheit“ festlegen.', KL_WARNING);
+                $this->LogMessage(WPHUB_Text::t('Control authority not assigned yet although an active HeishaMon instance was found: %s — set it in the WPHub form under "🔀 Control authority".', implode(', ', $needsAttention)), KL_WARNING);
             }
             $this->SetStatus(203);
             return;
@@ -2367,7 +2385,7 @@ class WPHub extends IPSModule
         foreach ($devices as $d) {
             $systemId = (string)($d['guid'] ?? '');
             $prefix = (string)($d['prefix'] ?? '');
-            $name = (string)($d['name'] ?? 'Wärmepumpe');
+            $name = (string)($d['name'] ?? WPHUB_Text::t('Heat pump'));
             if ($systemId === '' || $prefix === '') {
                 continue;
             }
@@ -2384,7 +2402,7 @@ class WPHub extends IPSModule
                 // trotzdem alle 13 Buckets weiter abgefragt) -- nur die Energie
                 // pausiert, der Haupt-Takt laeuft weiter.
                 $this->WriteAttributeInteger('VAI_EnergyRetryNotBefore', time() + $quotaSeconds);
-                $this->LogMessage('Vaillant-API-Kontingent beim Energie-Abruf aufgebraucht -- Energiewerte pausieren fuer ' . $quotaSeconds . ' s, die normalen Werte laufen weiter (' . $client->getLastError() . ').', KL_WARNING);
+                $this->LogMessage(WPHUB_Text::t('Vaillant API quota used up during the energy request -- energy values pause for %d s, the normal values continue (%s).', $quotaSeconds, $client->getLastError()), KL_WARNING);
                 return;
             }
             if ($emf === null) {
@@ -2514,18 +2532,18 @@ class WPHub extends IPSModule
         // Zaehlerstand nicht. Platziert die Energie-Variablen bewusst HINTER
         // allen Temperatur-/Statuswerten im WebFront.
         $pos = 200;
-        $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieHeizenHeute', 'Energieverbrauch Heizen (heute)', $sums['HEATING/CONSUMED_ELECTRICAL_ENERGY'] ?? null, $pos++);
-        $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieWarmwasserHeute', 'Energieverbrauch Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieHeizenHeute', WPHUB_Text::t('Energy consumption heating (today)'), $sums['HEATING/CONSUMED_ELECTRICAL_ENERGY'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieWarmwasserHeute', WPHUB_Text::t('Energy consumption hot water (today)'), $sums['DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY'] ?? null, $pos++);
         if (isset($sums['HEATING/CONSUMED_ELECTRICAL_ENERGY']) || isset($sums['DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY'])) {
             $gesamt = ($sums['HEATING/CONSUMED_ELECTRICAL_ENERGY'] ?? 0.0) + ($sums['DOMESTIC_HOT_WATER/CONSUMED_ELECTRICAL_ENERGY'] ?? 0.0);
-            $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieGesamtHeute', 'Energieverbrauch gesamt (heute)', $gesamt, $pos++);
+            $this->maintainDailyEnergyVariable($prefix, $name, 'EnergieGesamtHeute', WPHUB_Text::t('Energy consumption total (today)'), $gesamt, $pos++);
         } else {
             $pos++;
         }
-        $this->maintainDailyEnergyVariable($prefix, $name, 'WaermeHeizenHeute', 'Erzeugte Wärmemenge Heizen (heute)', $sums['HEATING/HEAT_GENERATED'] ?? null, $pos++);
-        $this->maintainDailyEnergyVariable($prefix, $name, 'WaermeWarmwasserHeute', 'Erzeugte Wärmemenge Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/HEAT_GENERATED'] ?? null, $pos++);
-        $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieHeizenHeute', 'Umweltenergie Heizen (heute)', $sums['HEATING/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
-        $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieWarmwasserHeute', 'Umweltenergie Warmwasser (heute)', $sums['DOMESTIC_HOT_WATER/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'WaermeHeizenHeute', WPHUB_Text::t('Heat generated heating (today)'), $sums['HEATING/HEAT_GENERATED'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'WaermeWarmwasserHeute', WPHUB_Text::t('Heat generated hot water (today)'), $sums['DOMESTIC_HOT_WATER/HEAT_GENERATED'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieHeizenHeute', WPHUB_Text::t('Environmental energy heating (today)'), $sums['HEATING/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
+        $this->maintainDailyEnergyVariable($prefix, $name, 'UmweltenergieWarmwasserHeute', WPHUB_Text::t('Environmental energy hot water (today)'), $sums['DOMESTIC_HOT_WATER/EARNED_ENVIRONMENT_ENERGY'] ?? null, $pos++);
         return null;
     }
 
@@ -2635,13 +2653,13 @@ class WPHub extends IPSModule
                     $this->SendDebug('Vaillant/vrc700-Rohdaten', json_encode($system, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0);
                 }
             } else {
-                $this->SendDebug('Vaillant/Geräte', 'Übersprungen (Regler-Typ "' . $controlIdentifier . '" noch nicht unterstützt): ' . $systemId, 0);
+                $this->SendDebug('Vaillant/Geräte', WPHUB_Text::t('Skipped (controller type "%s" not supported yet): %s', $controlIdentifier, $systemId), 0);
                 continue;
             }
             if ($system === null) {
                 continue;
             }
-            $name = trim((string)$home['homeName']) !== '' ? $home['homeName'] : ('Wärmepumpe ' . substr($systemId, 0, 8));
+            $name = trim((string)$home['homeName']) !== '' ? $home['homeName'] : WPHUB_Text::t('Heat pump %s', substr($systemId, 0, 8));
             $prefix = $this->devicePrefix($systemId);
             $reachable = (bool)($system['connected'] ?? true);
 
@@ -2731,17 +2749,17 @@ class WPHub extends IPSModule
     private function maintainDeviceVariablesVaillant(string $prefix, string $name, array $system, bool $reachable): void
     {
         $pos = 0;
-        $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
+        $this->MaintainVariable($prefix . 'Erreichbar', $name . ': ' . WPHUB_Text::t('Reachable'), VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
         $this->SetValue($prefix . 'Erreichbar', $reachable);
 
         $state = (is_array($system['state'] ?? null) && is_array($system['state']['system'] ?? null)) ? $system['state']['system'] : [];
 
         if (isset($state['outdoor_temperature']) && $this->isValidTemperature($state['outdoor_temperature'])) {
-            $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': Außentemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': ' . WPHUB_Text::t('Outdoor temperature'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Aussentemperatur', (float)$state['outdoor_temperature']);
         }
         if (isset($state['system_flow_temperature']) && $this->isValidTemperature($state['system_flow_temperature'])) {
-            $this->MaintainVariable($prefix . 'Vorlauftemperatur', $name . ': Vorlauftemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Vorlauftemperatur', $name . ': ' . WPHUB_Text::t('Flow temperature'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Vorlauftemperatur', (float)$state['system_flow_temperature']);
         }
         // Puffer oben -- FIX 25.09.2026 (cbeham, Forum-Post #32): vrc700
@@ -2759,7 +2777,7 @@ class WPHub extends IPSModule
             // ist bei ihm offenbar die hydraulische Weiche fuer den System-
             // vorlauf). Bewusst NICHT zusammengelegt, andere Anlagen koennen
             // hier durchaus unterschiedliche Werte liefern.
-            $this->MaintainVariable($prefix . 'Puffertemperatur', $name . ': Puffertemperatur (oben)', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Puffertemperatur', $name . ': ' . WPHUB_Text::t('Buffer temperature (top)'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Puffertemperatur', $puffer);
         }
 
@@ -2775,12 +2793,12 @@ class WPHub extends IPSModule
             $state['cylinder_temperature_sensor_top_dhw'] ?? null,  // vrc700 (cbeham)
         ]);
         if ($warmwasser !== null) {
-            $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Warmwasser', $name . ': ' . WPHUB_Text::t('Hot water'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Warmwasser', $warmwasser);
         }
         $dhwConfig = $this->firstListEntry($system, 'configuration', 'dhw');
         if (isset($dhwConfig['tapping_setpoint']) && $this->isValidTemperature($dhwConfig['tapping_setpoint'])) {
-            $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': Warmwasser Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': ' . WPHUB_Text::t('Hot water setpoint'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'WarmwasserSoll', (float)$dhwConfig['tapping_setpoint']);
         }
 
@@ -2792,11 +2810,11 @@ class WPHub extends IPSModule
         // HeishaMon").
         $circuitState = $this->firstListEntry($system, 'state', 'circuits');
         if (isset($circuitState['current_circuit_flow_temperature']) && $this->isValidTemperature($circuitState['current_circuit_flow_temperature'])) {
-            $this->MaintainVariable($prefix . 'Zone1Ist', $name . ': Heizkreis 1 Vorlauftemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Zone1Ist', $name . ': ' . WPHUB_Text::t('Heating circuit 1 flow temperature'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Zone1Ist', (float)$circuitState['current_circuit_flow_temperature']);
         }
         if (isset($circuitState['heating_circuit_flow_setpoint']) && $this->isValidTemperature($circuitState['heating_circuit_flow_setpoint'])) {
-            $this->MaintainVariable($prefix . 'Zone1Soll', $name . ': Heizkreis 1 Vorlauf-Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Zone1Soll', $name . ': ' . WPHUB_Text::t('Heating circuit 1 flow setpoint'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Zone1Soll', (float)$circuitState['heating_circuit_flow_setpoint']);
         }
 
@@ -2817,19 +2835,19 @@ class WPHub extends IPSModule
         // Bereitschaftsstatus.
         $circuitState2 = $this->listEntryAt($system, 1, 'state', 'circuits');
         if (isset($circuitState2['current_circuit_flow_temperature']) && $this->isValidTemperature($circuitState2['current_circuit_flow_temperature'])) {
-            $this->MaintainVariable($prefix . 'Zone2Ist', $name . ': Heizkreis 2 Vorlauftemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Zone2Ist', $name . ': ' . WPHUB_Text::t('Heating circuit 2 flow temperature'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Zone2Ist', (float)$circuitState2['current_circuit_flow_temperature']);
         }
         if (isset($circuitState2['heating_circuit_flow_setpoint']) && $this->isValidTemperature($circuitState2['heating_circuit_flow_setpoint'])) {
-            $this->MaintainVariable($prefix . 'Zone2Soll', $name . ': Heizkreis 2 Vorlauf-Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Zone2Soll', $name . ': ' . WPHUB_Text::t('Heating circuit 2 flow setpoint'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Zone2Soll', (float)$circuitState2['heating_circuit_flow_setpoint']);
         }
         if (isset($circuitState2['circuit_state']) && is_string($circuitState2['circuit_state']) && $circuitState2['circuit_state'] !== '') {
-            $this->MaintainVariable($prefix . 'Heizkreis2Status', $name . ': Heizkreis 2 Status (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'Heizkreis2Status', $name . ': ' . WPHUB_Text::t('Heating circuit 2 status (raw value)'), VARIABLETYPE_STRING, '', $pos++, true);
             $this->SetValue($prefix . 'Heizkreis2Status', $circuitState2['circuit_state']);
         }
         if (isset($circuitState2['calculated_energy_manager_state']) && is_string($circuitState2['calculated_energy_manager_state']) && $circuitState2['calculated_energy_manager_state'] !== '') {
-            $this->MaintainVariable($prefix . 'Heizkreis2Betriebszustand', $name . ': Heizkreis 2 Betriebszustand (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'Heizkreis2Betriebszustand', $name . ': ' . WPHUB_Text::t('Heating circuit 2 operating state (raw value)'), VARIABLETYPE_STRING, '', $pos++, true);
             $this->SetValue($prefix . 'Heizkreis2Betriebszustand', $circuitState2['calculated_energy_manager_state']);
         }
 
@@ -2845,21 +2863,21 @@ class WPHub extends IPSModule
         // Warmwasserbereitung erwiesen (blieb durchgehend REGULAR), die beiden
         // anderen sind reine Diagnosewerte ohne eigenes Vertragsfeld.
         if (isset($state['energy_manager_state']) && is_string($state['energy_manager_state']) && $state['energy_manager_state'] !== '') {
-            $this->MaintainVariable($prefix . 'Systemstatus', $name . ': Systemstatus (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'Systemstatus', $name . ': ' . WPHUB_Text::t('System status (raw value)'), VARIABLETYPE_STRING, '', $pos++, true);
             $this->SetValue($prefix . 'Systemstatus', $state['energy_manager_state']);
-            $this->MaintainVariable($prefix . 'BetriebsartNorm', $name . ': Betriebsart (normiert)', VARIABLETYPE_INTEGER, 'WPHUB.BetriebsartNorm', $pos++, true);
+            $this->MaintainVariable($prefix . 'BetriebsartNorm', $name . ': ' . WPHUB_Text::t('Operating mode (normalized)'), VARIABLETYPE_INTEGER, 'WPHUB.BetriebsartNorm', $pos++, true);
             $this->SetValue($prefix . 'BetriebsartNorm', $this->normalizeVaillantEnergyManagerState($state['energy_manager_state']));
         }
         if (isset($circuitState['circuit_state']) && is_string($circuitState['circuit_state']) && $circuitState['circuit_state'] !== '') {
-            $this->MaintainVariable($prefix . 'Heizkreis1Status', $name . ': Heizkreis 1 Status (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'Heizkreis1Status', $name . ': ' . WPHUB_Text::t('Heating circuit 1 status (raw value)'), VARIABLETYPE_STRING, '', $pos++, true);
             $this->SetValue($prefix . 'Heizkreis1Status', $circuitState['circuit_state']);
         }
         if (isset($circuitState['calculated_energy_manager_state']) && is_string($circuitState['calculated_energy_manager_state']) && $circuitState['calculated_energy_manager_state'] !== '') {
-            $this->MaintainVariable($prefix . 'Heizkreis1Betriebszustand', $name . ': Heizkreis 1 Betriebszustand (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'Heizkreis1Betriebszustand', $name . ': ' . WPHUB_Text::t('Heating circuit 1 operating state (raw value)'), VARIABLETYPE_STRING, '', $pos++, true);
             $this->SetValue($prefix . 'Heizkreis1Betriebszustand', $circuitState['calculated_energy_manager_state']);
         }
         if (isset($dhwState['current_special_function']) && is_string($dhwState['current_special_function']) && $dhwState['current_special_function'] !== '') {
-            $this->MaintainVariable($prefix . 'WarmwasserSonderfunktion', $name . ': Warmwasser Sonderfunktion (Rohwert)', VARIABLETYPE_STRING, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'WarmwasserSonderfunktion', $name . ': ' . WPHUB_Text::t('Hot water special function (raw value)'), VARIABLETYPE_STRING, '', $pos++, true);
             $this->SetValue($prefix . 'WarmwasserSonderfunktion', $dhwState['current_special_function']);
         }
 
@@ -2867,7 +2885,7 @@ class WPHub extends IPSModule
         // gemeinsames *PressureID-Feld) -- Comfort Cloud liefert das gar
         // nicht erst, daher hier bewusst kein Ident-Gleichlauf noetig.
         if (isset($state['system_water_pressure']) && is_numeric($state['system_water_pressure'])) {
-            $this->MaintainVariable($prefix . 'Systemdruck', $name . ': Systemdruck', VARIABLETYPE_FLOAT, '', $pos++, true);
+            $this->MaintainVariable($prefix . 'Systemdruck', $name . ': ' . WPHUB_Text::t('System pressure'), VARIABLETYPE_FLOAT, '', $pos++, true);
             $this->SetValue($prefix . 'Systemdruck', (float)$state['system_water_pressure']);
         }
 
@@ -2876,11 +2894,11 @@ class WPHub extends IPSModule
         // (der Verbund kennt keine Raumklima-*ID, nur Wasser-/Aussentemp.).
         $zoneState = $this->firstListEntry($system, 'state', 'zones');
         if (isset($zoneState['current_room_temperature']) && $this->isValidTemperature($zoneState['current_room_temperature'])) {
-            $this->MaintainVariable($prefix . 'Raumtemperatur', $name . ': Raumtemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Raumtemperatur', $name . ': ' . WPHUB_Text::t('Room temperature'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $this->SetValue($prefix . 'Raumtemperatur', (float)$zoneState['current_room_temperature']);
         }
         if (isset($zoneState['current_room_humidity']) && is_numeric($zoneState['current_room_humidity'])) {
-            $this->MaintainVariable($prefix . 'Raumfeuchte', $name . ': Raumfeuchte', VARIABLETYPE_FLOAT, 'NRG.Percent', $pos++, true);
+            $this->MaintainVariable($prefix . 'Raumfeuchte', $name . ': ' . WPHUB_Text::t('Room humidity'), VARIABLETYPE_FLOAT, 'NRG.Percent', $pos++, true);
             $this->SetValue($prefix . 'Raumfeuchte', (float)$zoneState['current_room_humidity']);
         }
     }
@@ -2917,11 +2935,11 @@ class WPHub extends IPSModule
                 $isA2W = ((string)($entry['deviceType'] ?? '') === '2')
                     || isset($entry['zoneStatus']) || isset($entry['tankStatus']);
                 if (!$isA2W) {
-                    $this->SendDebug('Geräte', 'Übersprungen (kein A2W): ' . ($entry['deviceName'] ?? $guid), 0);
+                    $this->SendDebug('Geräte', WPHUB_Text::t('Skipped (not A2W): %s', (string)($entry['deviceName'] ?? $guid)), 0);
                     continue;
                 }
 
-                $name = (string)($entry['deviceName'] ?? ('Wärmepumpe ' . substr($guid, 0, 8)));
+                $name = (string)($entry['deviceName'] ?? WPHUB_Text::t('Heat pump %s', substr($guid, 0, 8)));
                 $prefix = $this->devicePrefix($guid);
                 // Erreichbar = Geraet ist in device/group vorhanden und liefert
                 // aktuelle Daten. connectionStatus:0 ist der NORMALZUSTAND (die
@@ -2980,7 +2998,7 @@ class WPHub extends IPSModule
         $controlBlocked = ($this->deviceManagedBy($prefix) !== self::MANAGED_BY_DEFAULT);
 
         $pos = 0;
-        $this->MaintainVariable($prefix . 'Erreichbar', $name . ': Erreichbar', VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
+        $this->MaintainVariable($prefix . 'Erreichbar', $name . ': ' . WPHUB_Text::t('Reachable'), VARIABLETYPE_BOOLEAN, '~Alert.Reversed', $pos++, true);
         $this->SetValue($prefix . 'Erreichbar', $reachable);
 
         // Ist-Temperaturen/Zonennamen aus dem Transfer-Statusabruf, nach
@@ -3010,19 +3028,19 @@ class WPHub extends IPSModule
         // ------------------------------------------------------------
         if (is_array($status)) {
             if (isset($status['quietMode'])) {
-                $this->MaintainVariable($prefix . 'Fluesterbetrieb', $name . ': Flüsterbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Fluesterbetrieb', $pos++, true);
+                $this->MaintainVariable($prefix . 'Fluesterbetrieb', $name . ': ' . WPHUB_Text::t('Quiet mode'), VARIABLETYPE_INTEGER, 'WPHUB.Fluesterbetrieb', $pos++, true);
                 $controlBlocked ? $this->DisableAction($prefix . 'Fluesterbetrieb') : $this->EnableAction($prefix . 'Fluesterbetrieb');
                 $this->SetValue($prefix . 'Fluesterbetrieb', (int)$status['quietMode']);
             }
             if (isset($status['powerful'])) {
-                $this->MaintainVariable($prefix . 'Leistungsbetrieb', $name . ': Leistungsbetrieb', VARIABLETYPE_INTEGER, 'WPHUB.Leistungsbetrieb', $pos++, true);
+                $this->MaintainVariable($prefix . 'Leistungsbetrieb', $name . ': ' . WPHUB_Text::t('Powerful mode'), VARIABLETYPE_INTEGER, 'WPHUB.Leistungsbetrieb', $pos++, true);
                 $controlBlocked ? $this->DisableAction($prefix . 'Leistungsbetrieb') : $this->EnableAction($prefix . 'Leistungsbetrieb');
                 $this->SetValue($prefix . 'Leistungsbetrieb', (int)$status['powerful']);
             }
         }
 
         if (is_array($tank) && isset($tank['temperature']) && $this->isValidTemperature($tank['temperature'])) {
-            $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': Warmwasser Sollwert', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'WarmwasserSoll', $name . ': ' . WPHUB_Text::t('Hot water setpoint'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $controlBlocked ? $this->DisableAction($prefix . 'WarmwasserSoll') : $this->EnableAction($prefix . 'WarmwasserSoll');
             $this->SetValue($prefix . 'WarmwasserSoll', (float)$tank['temperature']);
         }
@@ -3035,24 +3053,24 @@ class WPHub extends IPSModule
             }
             $zid = (int)$zone['zoneId'];
             $sz = $statusZones[$zid] ?? null;
-            $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : ('Zone ' . $zid);
-            $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . $zname . ' Solltemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : WPHUB_Text::t('Zone %d', $zid);
+            $this->MaintainVariable($prefix . 'Zone' . $zid . 'Soll', $name . ': ' . WPHUB_Text::t('%s setpoint temperature', $zname), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             $controlBlocked ? $this->DisableAction($prefix . 'Zone' . $zid . 'Soll') : $this->EnableAction($prefix . 'Zone' . $zid . 'Soll');
             $this->SetValue($prefix . 'Zone' . $zid . 'Soll', (float)$zone['temperature']);
         }
 
         if (is_array($status) && isset($status['holidayTimer'])) {
-            $this->MaintainVariable($prefix . 'Urlaubstimer', $name . ': Urlaubstimer aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+            $this->MaintainVariable($prefix . 'Urlaubstimer', $name . ': ' . WPHUB_Text::t('Holiday timer active'), VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
             $controlBlocked ? $this->DisableAction($prefix . 'Urlaubstimer') : $this->EnableAction($prefix . 'Urlaubstimer');
             $this->SetValue($prefix . 'Urlaubstimer', (int)$status['holidayTimer'] === 1);
         }
         if (is_array($status) && isset($status['forceDHW'])) {
-            $this->MaintainVariable($prefix . 'NotbetriebWarmwasser', $name . ': Notbetrieb Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+            $this->MaintainVariable($prefix . 'NotbetriebWarmwasser', $name . ': ' . WPHUB_Text::t('Emergency hot water mode active'), VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
             $controlBlocked ? $this->DisableAction($prefix . 'NotbetriebWarmwasser') : $this->EnableAction($prefix . 'NotbetriebWarmwasser');
             $this->SetValue($prefix . 'NotbetriebWarmwasser', (int)$status['forceDHW'] === 1);
         }
         if (is_array($status) && isset($status['forceHeater'])) {
-            $this->MaintainVariable($prefix . 'NotHeizbetrieb', $name . ': Not-Heizbetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+            $this->MaintainVariable($prefix . 'NotHeizbetrieb', $name . ': ' . WPHUB_Text::t('Emergency heating mode active'), VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
             $controlBlocked ? $this->DisableAction($prefix . 'NotHeizbetrieb') : $this->EnableAction($prefix . 'NotHeizbetrieb');
             $this->SetValue($prefix . 'NotHeizbetrieb', (int)$status['forceHeater'] === 1);
         }
@@ -3061,12 +3079,12 @@ class WPHub extends IPSModule
         // ------------------------------------------------------------
 
         if (isset($dev['operationMode'])) {
-            $this->MaintainVariable($prefix . 'Betriebsart', $name . ': Betriebsart', VARIABLETYPE_INTEGER, 'WPHUB.Betriebsart', $pos++, true);
+            $this->MaintainVariable($prefix . 'Betriebsart', $name . ': ' . WPHUB_Text::t('Operating mode'), VARIABLETYPE_INTEGER, 'WPHUB.Betriebsart', $pos++, true);
             $this->SetValue($prefix . 'Betriebsart', (int)$dev['operationMode']);
         }
 
         if (is_array($status) && isset($status['outdoorNow']) && $this->isValidTemperature($status['outdoorNow'])) {
-            $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': Außentemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+            $this->MaintainVariable($prefix . 'Aussentemperatur', $name . ': ' . WPHUB_Text::t('Outdoor temperature'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
             // Automatische Archivierung: eigene Variable (im Gegensatz zu den
             // extern verknuepften Ext_*-Feldern, die WPHub nicht gehoeren --
             // deren Archivierung bleibt Sache des jeweils besitzenden Moduls),
@@ -3078,11 +3096,11 @@ class WPHub extends IPSModule
         // im Prioritaetsblock behandelt).
         if (is_array($tank)) {
             if (isset($tank['temperatureNow']) && $this->isValidTemperature($tank['temperatureNow'])) {
-                $this->MaintainVariable($prefix . 'Warmwasser', $name . ': Warmwasser', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+                $this->MaintainVariable($prefix . 'Warmwasser', $name . ': ' . WPHUB_Text::t('Hot water'), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
                 $this->SetValue($prefix . 'Warmwasser', (float)$tank['temperatureNow']);
             }
             if (isset($tank['operationStatus'])) {
-                $this->MaintainVariable($prefix . 'WarmwasserBetrieb', $name . ': Warmwasser aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->MaintainVariable($prefix . 'WarmwasserBetrieb', $name . ': ' . WPHUB_Text::t('Hot water active'), VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
                 $this->SetValue($prefix . 'WarmwasserBetrieb', (int)$tank['operationStatus'] === 1);
             }
         }
@@ -3095,7 +3113,7 @@ class WPHub extends IPSModule
         // kennt nur die Heiz-/Kuehlrichtung.
         if (isset($dev['operationMode'])) {
             $dhwActive = is_array($tank) && isset($tank['operationStatus']) && (int)$tank['operationStatus'] === 1;
-            $this->MaintainVariable($prefix . 'BetriebsartNorm', $name . ': Betriebsart (normiert)', VARIABLETYPE_INTEGER, 'WPHUB.BetriebsartNorm', $pos++, true);
+            $this->MaintainVariable($prefix . 'BetriebsartNorm', $name . ': ' . WPHUB_Text::t('Operating mode (normalized)'), VARIABLETYPE_INTEGER, 'WPHUB.BetriebsartNorm', $pos++, true);
             $this->SetValue($prefix . 'BetriebsartNorm', $this->normalizeOperatingMode((int)$dev['operationMode'], $dhwActive));
         }
 
@@ -3107,13 +3125,13 @@ class WPHub extends IPSModule
             }
             $zid = (int)$zone['zoneId'];
             $sz = $statusZones[$zid] ?? null;
-            $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : ('Zone ' . $zid);
+            $zname = (is_array($sz) && ($sz['zoneName'] ?? '') !== '') ? (string)$sz['zoneName'] : WPHUB_Text::t('Zone %d', $zid);
             if (is_array($sz) && isset($sz['temperatureNow']) && $this->isValidTemperature($sz['temperatureNow'])) {
-                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Ist', $name . ': ' . $zname . ' Isttemperatur', VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
+                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Ist', $name . ': ' . WPHUB_Text::t('%s actual temperature', $zname), VARIABLETYPE_FLOAT, 'NRG.Celsius', $pos++, true);
                 $this->SetValue($prefix . 'Zone' . $zid . 'Ist', (float)$sz['temperatureNow']);
             }
             if (isset($zone['operationStatus'])) {
-                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Betrieb', $name . ': ' . $zname . ' aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->MaintainVariable($prefix . 'Zone' . $zid . 'Betrieb', $name . ': ' . WPHUB_Text::t('%s active', $zname), VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
                 $this->SetValue($prefix . 'Zone' . $zid . 'Betrieb', (int)$zone['operationStatus'] === 1);
             }
         }
@@ -3122,21 +3140,21 @@ class WPHub extends IPSModule
         // Urlaubs-/Notbetriebe stehen bereits oben im Prioritaetsblock).
         if (is_array($status)) {
             if (isset($status['deiceStatus'])) {
-                $this->MaintainVariable($prefix . 'Abtaubetrieb', $name . ': Abtaubetrieb aktiv', VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
+                $this->MaintainVariable($prefix . 'Abtaubetrieb', $name . ': ' . WPHUB_Text::t('Defrost mode active'), VARIABLETYPE_BOOLEAN, '~Switch', $pos++, true);
                 $this->SetValue($prefix . 'Abtaubetrieb', (int)$status['deiceStatus'] === 1);
             }
             if (isset($status['direction'])) {
-                $this->MaintainVariable($prefix . 'Betriebsrichtung', $name . ': Betriebsrichtung', VARIABLETYPE_INTEGER, 'WPHUB.Betriebsrichtung', $pos++, true);
+                $this->MaintainVariable($prefix . 'Betriebsrichtung', $name . ': ' . WPHUB_Text::t('Operating direction'), VARIABLETYPE_INTEGER, 'WPHUB.Betriebsrichtung', $pos++, true);
                 $this->SetValue($prefix . 'Betriebsrichtung', (int)$status['direction']);
             }
             if (isset($status['specialStatus'])) {
-                $this->MaintainVariable($prefix . 'EcoKomfort', $name . ': Eco-/Komfortmodus', VARIABLETYPE_INTEGER, 'WPHUB.EcoKomfort', $pos++, true);
+                $this->MaintainVariable($prefix . 'EcoKomfort', $name . ': ' . WPHUB_Text::t('Eco/comfort mode'), VARIABLETYPE_INTEGER, 'WPHUB.EcoKomfort', $pos++, true);
                 $this->SetValue($prefix . 'EcoKomfort', (int)$status['specialStatus']);
             }
             // Fehlerstatus: leere Liste ist der Normalfall, dann 0/"".
             $faults = $status['faultStatus'] ?? [];
             if (is_array($faults)) {
-                $this->MaintainVariable($prefix . 'Fehleranzahl', $name . ': Fehleranzahl', VARIABLETYPE_INTEGER, '', $pos++, true);
+                $this->MaintainVariable($prefix . 'Fehleranzahl', $name . ': ' . WPHUB_Text::t('Error count'), VARIABLETYPE_INTEGER, '', $pos++, true);
                 $this->SetValue($prefix . 'Fehleranzahl', count($faults));
                 $texts = [];
                 foreach ($faults as $f) {
@@ -3144,7 +3162,7 @@ class WPHub extends IPSModule
                         $texts[] = (string)$f['errorMessage'];
                     }
                 }
-                $this->MaintainVariable($prefix . 'Fehlertext', $name . ': Fehlertext', VARIABLETYPE_STRING, '', $pos++, true);
+                $this->MaintainVariable($prefix . 'Fehlertext', $name . ': ' . WPHUB_Text::t('Error text'), VARIABLETYPE_STRING, '', $pos++, true);
                 $this->SetValue($prefix . 'Fehlertext', implode('; ', $texts));
             }
         }
@@ -3154,19 +3172,19 @@ class WPHub extends IPSModule
         // Mitternacht auf 0, sind also kein kumulativer Zaehler).
         if (is_array($consumption)) {
             if (isset($consumption['heat'])) {
-                $this->MaintainVariable($prefix . 'EnergieHeizenHeute', $name . ': Energieverbrauch Heizen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->MaintainVariable($prefix . 'EnergieHeizenHeute', $name . ': ' . WPHUB_Text::t('Energy consumption heating (today)'), VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
                 $this->SetValue($prefix . 'EnergieHeizenHeute', (float)$consumption['heat']);
             }
             if (isset($consumption['cool'])) {
-                $this->MaintainVariable($prefix . 'EnergieKuehlenHeute', $name . ': Energieverbrauch Kühlen (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->MaintainVariable($prefix . 'EnergieKuehlenHeute', $name . ': ' . WPHUB_Text::t('Energy consumption cooling (today)'), VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
                 $this->SetValue($prefix . 'EnergieKuehlenHeute', (float)$consumption['cool']);
             }
             if (isset($consumption['tank'])) {
-                $this->MaintainVariable($prefix . 'EnergieWarmwasserHeute', $name . ': Energieverbrauch Warmwasser (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->MaintainVariable($prefix . 'EnergieWarmwasserHeute', $name . ': ' . WPHUB_Text::t('Energy consumption hot water (today)'), VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
                 $this->SetValue($prefix . 'EnergieWarmwasserHeute', (float)$consumption['tank']);
             }
             if (isset($consumption['total'])) {
-                $this->MaintainVariable($prefix . 'EnergieGesamtHeute', $name . ': Energieverbrauch gesamt (heute)', VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
+                $this->MaintainVariable($prefix . 'EnergieGesamtHeute', $name . ': ' . WPHUB_Text::t('Energy consumption total (today)'), VARIABLETYPE_FLOAT, 'NRG.kWh', $pos++, true);
                 $this->SetValue($prefix . 'EnergieGesamtHeute', (float)$consumption['total']);
             }
         }
@@ -3229,49 +3247,49 @@ class WPHub extends IPSModule
         // Statusabruf, die kein anderes NRG-Stack-Modul teilt.
         if (!IPS_VariableProfileExists('WPHUB.Betriebsart')) {
             IPS_CreateVariableProfile('WPHUB.Betriebsart', VARIABLETYPE_INTEGER);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 0, 'Aus', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 1, 'Heizen', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 2, 'Kühlen', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 3, 'Auto Heizen', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 4, 'Auto Kühlen', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 0, WPHUB_Text::t('Off'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 1, WPHUB_Text::t('Heating'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 2, WPHUB_Text::t('Cooling'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 3, WPHUB_Text::t('Auto heating'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsart', 4, WPHUB_Text::t('Auto cooling'), '', -1);
         }
         // Verbund-weiter normierter Betriebsart-Enum (EMS/SUITE.md, mit
         // HeishaMon abgestimmt) -- Werte/Bedeutung modulübergreifend fest.
         if (!IPS_VariableProfileExists('WPHUB.BetriebsartNorm')) {
             IPS_CreateVariableProfile('WPHUB.BetriebsartNorm', VARIABLETYPE_INTEGER);
-            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', -1, 'Unbekannt', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 0, 'Standby', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 1, 'Heizen', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 2, 'Kühlen', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 3, 'Warmwasser', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 4, 'Heizen + Warmwasser', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 5, 'Kühlen + Warmwasser', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', -1, WPHUB_Text::t('Unknown'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 0, WPHUB_Text::t('Standby'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 1, WPHUB_Text::t('Heating'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 2, WPHUB_Text::t('Cooling'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 3, WPHUB_Text::t('Hot water'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 4, WPHUB_Text::t('Heating + hot water'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.BetriebsartNorm', 5, WPHUB_Text::t('Cooling + hot water'), '', -1);
         }
         if (!IPS_VariableProfileExists('WPHUB.Fluesterbetrieb')) {
             IPS_CreateVariableProfile('WPHUB.Fluesterbetrieb', VARIABLETYPE_INTEGER);
-            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 0, 'Aus', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 1, 'Stufe 1', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 2, 'Stufe 2', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 3, 'Stufe 3', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 0, WPHUB_Text::t('Off'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 1, WPHUB_Text::t('Level 1'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 2, WPHUB_Text::t('Level 2'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Fluesterbetrieb', 3, WPHUB_Text::t('Level 3'), '', -1);
         }
         if (!IPS_VariableProfileExists('WPHUB.Leistungsbetrieb')) {
             IPS_CreateVariableProfile('WPHUB.Leistungsbetrieb', VARIABLETYPE_INTEGER);
-            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 0, 'Aus', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 1, '30 Minuten', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 2, '60 Minuten', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 3, '90 Minuten', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 0, WPHUB_Text::t('Off'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 1, WPHUB_Text::t('30 minutes'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 2, WPHUB_Text::t('60 minutes'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Leistungsbetrieb', 3, WPHUB_Text::t('90 minutes'), '', -1);
         }
         if (!IPS_VariableProfileExists('WPHUB.Betriebsrichtung')) {
             IPS_CreateVariableProfile('WPHUB.Betriebsrichtung', VARIABLETYPE_INTEGER);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 0, 'Ruht', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 1, 'Umwälzpumpe', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 2, 'Warmwasser', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 0, WPHUB_Text::t('Idle'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 1, WPHUB_Text::t('Circulation pump'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.Betriebsrichtung', 2, WPHUB_Text::t('Hot water'), '', -1);
         }
         if (!IPS_VariableProfileExists('WPHUB.EcoKomfort')) {
             IPS_CreateVariableProfile('WPHUB.EcoKomfort', VARIABLETYPE_INTEGER);
-            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 0, 'Aus', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 1, 'Eco', '', -1);
-            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 2, 'Komfort', '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 0, WPHUB_Text::t('Off'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 1, WPHUB_Text::t('Eco'), '', -1);
+            IPS_SetVariableProfileAssociation('WPHUB.EcoKomfort', 2, WPHUB_Text::t('Comfort'), '', -1);
         }
     }
 }

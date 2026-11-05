@@ -16,6 +16,8 @@
 // Kein Passwort und kein Token wird geloggt — Debug-Ausgaben enthalten nur
 // Statuscodes, URLs und gekuerzte Antwortkoerper.
 
+require_once __DIR__ . '/WPHUB_Text.php';
+
 class WPHUB_ComfortCloudClient
 {
     const AUTH_BASE    = 'https://authglb.digital.panasonic.com';
@@ -96,12 +98,12 @@ class WPHUB_ComfortCloudClient
         $r = $this->apiRequest($bundle, 'GET', '/auth/v2/agreement/documents?' . $query);
         $json = ($r !== null) ? json_decode($r['body'], true) : null;
         if ($r === null || $r['status'] !== 200 || !is_array($json) || !isset($json['agreementList'])) {
-            $this->failApi('Bedingungs-Dokumente (v2/agreement/documents)', $r);
+            $this->failApi(WPHUB_Text::t('Agreement documents (v2/agreement/documents)'), $r);
             return null;
         }
         // Rohantwort ins Debug -- macht bei einem erneuten 4002 die genaue
         // Feld-/Versionsstruktur sichtbar (enthaelt keine Geheimnisse).
-        $this->dbg('agreement', 'documents(type=' . ($typeId ?? 'alle') . '): ' . substr($r['body'], 0, 600));
+        $this->dbg('agreement', WPHUB_Text::t('documents(type=%s): %s', (string)($typeId ?? WPHUB_Text::t('all')), substr($r['body'], 0, 600)));
         $out = [];
         foreach ($json['agreementList'] as $entry) {
             if (!is_array($entry) || !isset($entry['type']) || !isset($entry['version'])) {
@@ -143,7 +145,7 @@ class WPHUB_ComfortCloudClient
             }
         }
         if (!$anyOk) {
-            $this->lastError = 'Keiner der Bedingungs-Typen war abrufbar: ' . $this->lastError;
+            $this->lastError = WPHUB_Text::t('None of the agreement types could be retrieved: %s', $this->lastError);
             return null;
         }
         return array_values($out);
@@ -170,7 +172,7 @@ class WPHUB_ComfortCloudClient
             $list[] = ['type' => (int)$it['type'], 'version' => (string)$it['version']];
         }
         if (count($list) === 0) {
-            $this->lastError = 'Zustimmung: keine gueltigen Dokument-Versionen zum Bestaetigen vorhanden.';
+            $this->lastError = WPHUB_Text::t('Agreement: no valid document versions available to confirm.');
             return false;
         }
         // Wie die offizielle App: unmittelbar vor dem PUT einmal den
@@ -179,17 +181,17 @@ class WPHUB_ComfortCloudClient
         // "scharf" zu machen (die App tut es reproduzierbar so).
         $rg = $this->apiRequest($bundle, 'GET', '/auth/v2/agreement/status');
         if ($rg !== null) {
-            $this->dbg('agreement', 'status(vor PUT): ' . substr((string)$rg['body'], 0, 200));
+            $this->dbg('agreement', WPHUB_Text::t('status (before PUT): %s', substr((string)$rg['body'], 0, 200)));
         }
 
         $payload = ['agreementList' => $list];
         $this->dbg('agreement', '[PUT] ' . json_encode($payload));
         $r = $this->apiRequest($bundle, 'PUT', '/auth/v2/agreement/status', $payload);
         if ($r === null || $r['status'] !== 200) {
-            $this->failApi('Zustimmung (v2/agreement/status, ' . count($list) . ' Dokument(e))', $r);
+            $this->failApi(WPHUB_Text::t('Agreement (v2/agreement/status, %d document(s))', count($list)), $r);
             return false;
         }
-        $this->dbg('agreement', 'Zustimmung erfolgreich fuer Typen ' . implode(',', array_column($list, 'type')) . ', Antwort: ' . substr((string)$r['body'], 0, 200));
+        $this->dbg('agreement', WPHUB_Text::t('Agreement successful for types %s, response: %s', implode(',', array_column($list, 'type')), substr((string)$r['body'], 0, 200)));
         return true;
     }
 
@@ -222,7 +224,7 @@ class WPHUB_ComfortCloudClient
             $this->dbg('appversion', 'AppBrain: ' . $m[1]);
             return $m[1];
         }
-        $this->lastError = 'Aktuelle App-Version konnte nicht ermittelt werden (Play Store/AppBrain nicht erreichbar oder Seitenaufbau geaendert)';
+        $this->lastError = WPHUB_Text::t('Current app version could not be determined (Play Store/AppBrain not reachable or page layout changed)');
         $this->dbg('appversion', $this->lastError);
         return null;
     }
@@ -266,7 +268,7 @@ class WPHUB_ComfortCloudClient
             'state'                 => $state,
         ]), ['user-agent: ' . self::UA_API]);
         if ($r === null || $r['status'] !== 302 || !isset($r['headers']['location'])) {
-            return $this->fail('Autorisierung (Schritt 1/5) fehlgeschlagen' . $this->statusSuffix($r));
+            return $this->fail(WPHUB_Text::t('Authorization (step 1/5) failed') . $this->statusSuffix($r));
         }
         $location = $r['headers']['location'];
 
@@ -279,11 +281,11 @@ class WPHUB_ComfortCloudClient
             $state = $this->queryParam($location, 'state') ?? $state;
             $r = $this->request('GET', $this->absoluteAuthUrl($location), ['user-agent: ' . self::UA_API]);
             if ($r === null || $r['status'] !== 200) {
-                return $this->fail('Login-Seite (Schritt 2/5) fehlgeschlagen' . $this->statusSuffix($r));
+                return $this->fail(WPHUB_Text::t('Login page (step 2/5) failed') . $this->statusSuffix($r));
             }
             $csrf = $this->cookieValue($r, '_csrf');
             if ($csrf === null) {
-                return $this->fail('Login-Seite (Schritt 2/5): kein _csrf-Cookie erhalten');
+                return $this->fail(WPHUB_Text::t('Login page (step 2/5): no _csrf cookie received'));
             }
 
             // Schritt 3: Benutzername/Passwort einreichen — 200 mit HTML,
@@ -308,14 +310,14 @@ class WPHUB_ComfortCloudClient
                 'connection'    => 'PanasonicID-Authentication',
             ]));
             if ($r === null || $r['status'] !== 200) {
-                return $this->fail('Anmeldung (Schritt 3/5) fehlgeschlagen — E-Mail oder Passwort falsch?' . $this->statusSuffix($r));
+                return $this->fail(WPHUB_Text::t('Login (step 3/5) failed — wrong e-mail or password?') . $this->statusSuffix($r));
             }
             $hidden = $this->parseHiddenInputs($r['body']);
             if (isset($hidden['mfa_token'])) {
-                return $this->fail('Das Konto verlangt Zwei-Faktor-Authentifizierung (2FA). Die wird von WPHub noch nicht unterstuetzt — bitte 2FA fuer dieses Konto deaktivieren oder ein eigenes Konto ohne 2FA fuer die Anbindung freigeben.');
+                return $this->fail(WPHUB_Text::t('The account requires two-factor authentication (2FA). WPHub does not support it yet — please disable 2FA for this account or provide a separate account without 2FA for the connection.'));
             }
             if (!isset($hidden['wresult']) || !isset($hidden['wctx'])) {
-                return $this->fail('Anmeldung (Schritt 3/5): unerwartete Antwort (keine Callback-Felder). E-Mail oder Passwort falsch?');
+                return $this->fail(WPHUB_Text::t('Login (step 3/5): unexpected response (no callback fields). Wrong e-mail or password?'));
             }
 
             // Schritt 4: Callback + Redirects folgen bis zum Code.
@@ -324,17 +326,17 @@ class WPHUB_ComfortCloudClient
                 'User-Agent: ' . self::UA_BROWSER,
             ], http_build_query($hidden));
             if ($r === null || $r['status'] !== 302 || !isset($r['headers']['location'])) {
-                return $this->fail('Callback (Schritt 4/5) fehlgeschlagen' . $this->statusSuffix($r));
+                return $this->fail(WPHUB_Text::t('Callback (step 4/5) failed') . $this->statusSuffix($r));
             }
             $r = $this->request('GET', $this->absoluteAuthUrl($r['headers']['location']), ['user-agent: ' . self::UA_API]);
             if ($r === null || $r['status'] !== 302 || !isset($r['headers']['location'])) {
-                return $this->fail('Callback-Weiterleitung (Schritt 4/5) fehlgeschlagen' . $this->statusSuffix($r));
+                return $this->fail(WPHUB_Text::t('Callback redirect (step 4/5) failed') . $this->statusSuffix($r));
             }
             $code = $this->queryParam($r['headers']['location'], 'code');
         }
 
         if (!is_string($code) || $code === '') {
-            return $this->fail('Kein Autorisierungscode erhalten (Schritt 4/5)');
+            return $this->fail(WPHUB_Text::t('No authorization code received (step 4/5)'));
         }
 
         // Schritt 5: Code gegen Access-/Refresh-Token tauschen.
@@ -351,7 +353,7 @@ class WPHUB_ComfortCloudClient
             'redirect_uri'  => self::REDIRECT_URI,
             'code_verifier' => $verifier,
         ]));
-        $bundle = $this->tokenBundleFromResponse($r, $issuedAt, 'Token-Tausch (Schritt 5/5)');
+        $bundle = $this->tokenBundleFromResponse($r, $issuedAt, WPHUB_Text::t('Token exchange (step 5/5)'));
         return $bundle;
     }
 
@@ -360,7 +362,7 @@ class WPHUB_ComfortCloudClient
     {
         $this->lastError = '';
         if (($bundle['refreshToken'] ?? '') === '') {
-            return $this->fail('Kein Refresh-Token vorhanden — Neuanmeldung erforderlich');
+            return $this->fail(WPHUB_Text::t('No refresh token available — new login required'));
         }
         $issuedAt = time();
         $r = $this->request('POST', self::AUTH_BASE . '/oauth/token', [
@@ -373,7 +375,7 @@ class WPHUB_ComfortCloudClient
             'refresh_token' => $bundle['refreshToken'],
             'grant_type'    => 'refresh_token',
         ]));
-        $new = $this->tokenBundleFromResponse($r, $issuedAt, 'Token-Erneuerung');
+        $new = $this->tokenBundleFromResponse($r, $issuedAt, WPHUB_Text::t('Token renewal'));
         if ($new === null) {
             return null;
         }
@@ -392,7 +394,7 @@ class WPHUB_ComfortCloudClient
         }
         $json = json_decode($r['body'], true);
         if ($r['status'] !== 200 || !is_array($json) || !isset($json['clientId'])) {
-            $this->failApi('App-Anmeldung (auth/v2/login)', $r);
+            $this->failApi(WPHUB_Text::t('App login (auth/v2/login)'), $r);
             return false;
         }
         $bundle['clientId'] = (string)$json['clientId'];
@@ -406,7 +408,7 @@ class WPHUB_ComfortCloudClient
         $r = $this->apiRequest($bundle, 'GET', '/device/group');
         $json = ($r !== null) ? json_decode($r['body'], true) : null;
         if ($r === null || $r['status'] !== 200 || !is_array($json)) {
-            $this->failApi('Geraeteliste (device/group)', $r);
+            $this->failApi(WPHUB_Text::t('Device list (device/group)'), $r);
             return null;
         }
         return $json;
@@ -435,7 +437,7 @@ class WPHUB_ComfortCloudClient
                 return $json['status'];
             }
         }
-        $this->failApi('A2W-Statusabruf (Transfer-Proxy)', $r ?? null);
+        $this->failApi(WPHUB_Text::t('A2W status request (transfer proxy)'), $r ?? null);
         return null;
     }
 
@@ -472,7 +474,7 @@ class WPHUB_ComfortCloudClient
         $r = $this->apiRequest($bundle, 'POST', '/remote/v1/app/common/transfer', $body);
         $json = ($r !== null) ? json_decode($r['body'], true) : null;
         if ($r === null || $r['status'] !== 200 || !is_array($json) || !isset($json['historyDataList']) || !is_array($json['historyDataList'])) {
-            $this->failApi('Energieverbrauch (Transfer-Proxy)', $r);
+            $this->failApi(WPHUB_Text::t('Energy consumption (transfer proxy)'), $r);
             return null;
         }
         $heat = 0.0;
@@ -514,7 +516,7 @@ class WPHUB_ComfortCloudClient
         if ($r !== null && $r['status'] === 200 && is_array($json) && !isset($json['code'])) {
             return true;
         }
-        $this->failApi('Geraetesteuerung', $r);
+        $this->failApi(WPHUB_Text::t('Device control'), $r);
         return false;
     }
 
@@ -563,7 +565,7 @@ class WPHUB_ComfortCloudClient
     {
         $json = ($r !== null) ? json_decode($r['body'], true) : null;
         if ($r === null || $r['status'] !== 200 || !is_array($json) || !isset($json['access_token'])) {
-            return $this->fail($step . ' fehlgeschlagen' . $this->statusSuffix($r));
+            return $this->fail(WPHUB_Text::t('%s failed', $step) . $this->statusSuffix($r));
         }
         return [
             'accessToken'  => (string)$json['access_token'],
@@ -589,7 +591,7 @@ class WPHUB_ComfortCloudClient
         $pathForTrace = explode('?', $path)[0];
         $reqBody = ($body !== null) ? ' req=' . substr($body, 0, 120) : '';
         if ($r === null) {
-            $this->apiTrace[] = $method . ' ' . $pathForTrace . ' -> (kein Ergebnis: ' . $this->lastError . ')';
+            $this->apiTrace[] = $method . ' ' . $pathForTrace . ' -> ' . WPHUB_Text::t('(no result: %s)', $this->lastError);
         } else {
             $this->apiTrace[] = $method . ' ' . $pathForTrace . ' -> ' . $r['status'] . $reqBody . ' resp=' . substr((string)$r['body'], 0, 200);
         }
@@ -665,7 +667,7 @@ class WPHUB_ComfortCloudClient
         }
         $responseBody = curl_exec($ch);
         if ($responseBody === false) {
-            $this->lastError = 'HTTP-Fehler: ' . curl_error($ch);
+            $this->lastError = WPHUB_Text::t('HTTP error: %s', curl_error($ch));
             curl_close($ch);
             $this->dbg('http', $method . ' ' . $this->urlForLog($url) . ' -> ' . $this->lastError);
             return null;
@@ -754,18 +756,18 @@ class WPHUB_ComfortCloudClient
     {
         if ($r === null) {
             // lastError kommt bereits aus request()
-            $this->lastError = $what . ' fehlgeschlagen (' . $this->lastError . ')';
+            $this->lastError = WPHUB_Text::t('%s failed (%s)', $what, $this->lastError);
             return;
         }
         $body = substr((string)$r['body'], 0, 300);
         if ($r['status'] === 401 && strpos($body, '4106') !== false) {
             $this->versionRejected = true;
-            $this->lastError = $what . ': Die verwendete App-Version (' . $this->appVersion . ') ist der Cloud zu alt (Code 4106). Sie wird normalerweise automatisch aktualisiert; schlaegt das fehl, im Formular die aktuelle Versionsnummer der Comfort-Cloud-App eintragen.';
+            $this->lastError = WPHUB_Text::t('%s: The app version used (%s) is too old for the cloud (code 4106). It is normally updated automatically; if that fails, enter the current version number of the Comfort Cloud app in the form.', $what, $this->appVersion);
         } elseif ($r['status'] === 401 && strpos($body, '4103') !== false) {
             $this->agreementRequired = true;
-            $this->lastError = $what . ': Panasonic hat Nutzungsbedingungen/Datenschutzerklaerung aktualisiert (Code 4103). Bestaetigung noetig — Schaltflaeche „Aktualisierte Bedingungen akzeptieren" im Formular oder einmal die offizielle Comfort-Cloud-App oeffnen.';
+            $this->lastError = WPHUB_Text::t('%s: Panasonic has updated the terms of use/privacy policy (code 4103). Confirmation required — "Accept updated terms" button in the form, or open the official Comfort Cloud app once.', $what);
         } else {
-            $this->lastError = $what . ' fehlgeschlagen (HTTP ' . $r['status'] . '): ' . $body;
+            $this->lastError = WPHUB_Text::t('%s failed (HTTP %d): %s', $what, $r['status'], $body);
         }
         $this->dbg('fehler', $this->lastError);
     }

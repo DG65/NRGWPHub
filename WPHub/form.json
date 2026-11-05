@@ -2,56 +2,56 @@
     "elements": [
         {
             "type": "ExpansionPanel",
-            "caption": "📖 Dokumentation & Hilfe",
+            "caption": "📖 Documentation & help",
             "expanded": false,
             "items": [
                 {
                     "type": "Label",
                     "name": "VersionInfo",
-                    "caption": "ℹ️ WPHub Version -- Wärmepumpen-Cloud-Anbindung, Start mit Panasonic Comfort Cloud."
+                    "caption": ""
                 },
                 {
                     "type": "Label",
-                    "caption": "Verbindet sich mit der Panasonic Comfort Cloud (gleiches Konto wie die offizielle App) und stellt gefundene Aquarea-Wärmepumpen dem NRG-Stack-Verbund (z. B. EMS) zur Verfügung. Klimageräte werden bewusst nicht eingebunden. Details: https://github.com/DG65/NRGWPHub"
+                    "caption": "Connects to the Panasonic Comfort Cloud (same account as the official app) and makes the Aquarea heat pumps it finds available to the NRG-Stack family (e.g. EMS). Air conditioners are deliberately not included. Details: https://github.com/DG65/NRGWPHub"
                 },
                 {
                     "type": "Label",
-                    "caption": "Ablauf: 1. E-Mail und Passwort eintragen → 2. Übernehmen → 3. „Anmelden und Wärmepumpen suchen“ → 4. „WPHub aktiv“ einschalten und Übernehmen."
+                    "caption": "Steps: 1. Enter e-mail and password → 2. Apply → 3. \"Log in and search for heat pumps\" → 4. Switch on \"WPHub active\" and apply."
                 },
                 {
                     "type": "Button",
-                    "caption": "🔄 Übernehmen erzwingen (ohne Formularänderung)",
-                    "confirm": "Wirklich ApplyChanges() erzwingen? Praktisch direkt nach einem Modul-Update über die Modulverwaltung.",
-                    "onClick": "IPS_ApplyChanges($id); echo '✅ ApplyChanges() ausgeführt.';"
+                    "caption": "🔄 Force apply (without a form change)",
+                    "confirm": "Really force ApplyChanges()? Handy right after a module update via the module control.",
+                    "onClick": "IPS_ApplyChanges($id); echo '✅ ApplyChanges()';"
                 }
             ]
         },
         {
             "type": "ExpansionPanel",
             "name": "GeneralPanel",
-            "caption": "🔧 Allgemein",
+            "caption": "🔧 General",
             "expanded": true,
             "items": [
                 {
                     "type": "CheckBox",
                     "name": "WPHUB_Active",
-                    "caption": "WPHub aktiv"
+                    "caption": "WPHub active"
                 },
                 {
                     "type": "NumberSpinner",
                     "name": "WPHUB_Interval",
-                    "caption": "Aktualisierungsintervall (Sekunden)",
+                    "caption": "Update interval (seconds)",
                     "minimum": 30,
                     "maximum": 600,
                     "suffix": " s"
                 },
                 {
                     "type": "Label",
-                    "caption": "📈 Archivierung: Das Modul schaltet das Logging im Symcon-Archiv nie von selbst ein. Mit dem Knopf unten aktivierst du es bewusst für alle Messwerte (Fließkomma-Variablen) dieser Instanz, z. B. für Diagramme und Auswertungen. Bereits eingeschaltetes Logging bleibt unangetastet."
+                    "caption": "📈 Archiving: the module never switches on logging in the Symcon archive by itself. With the button below you deliberately enable it for all measured values (floating-point variables) of this instance, e.g. for charts and evaluations. Logging that is already enabled stays untouched."
                 },
                 {
                     "type": "Button",
-                    "caption": "📈 Logging für die Messwerte einschalten",
+                    "caption": "📈 Enable logging for the measured values",
                     "onClick": "echo WPHUB_EnableArchiving($id);"
                 }
             ]
@@ -59,7 +59,7 @@
         {
             "type": "ExpansionPanel",
             "name": "ManufacturerPanel",
-            "caption": "🏭 Hersteller",
+            "caption": "🏭 Manufacturer",
             "expanded": true,
             "items": [
                 {
@@ -68,22 +68,22 @@
                         {
                             "type": "Select",
                             "name": "Manufacturer",
-                            "caption": "Wärmepumpen-Hersteller",
+                            "caption": "Heat pump manufacturer",
                             "options": [
                                 {"caption": "Panasonic (Comfort Cloud)", "value": "panasonic"},
-                                {"caption": "Vaillant (myVAILLANT) -- neu, ungeprüft", "value": "vaillant"}
+                                {"caption": "Vaillant (myVAILLANT) -- new, untested", "value": "vaillant"}
                             ]
                         },
                         {
                             "type": "PopupButton",
-                            "caption": "Warum steht bei Vaillant „ungeprüft“?",
+                            "caption": "Why does Vaillant say \"untested\"?",
                             "width": "460px",
                             "popup": {
-                                "caption": "Warum steht bei Vaillant „ungeprüft“?",
+                                "caption": "Why does Vaillant say \"untested\"?",
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "Die Vaillant-Anbindung ist nach der aktiv gepflegten Referenz signalkraft/myPyllant gebaut, aber noch nie gegen ein echtes myVAILLANT-Konto gelaufen -- es gibt (Stand 14.09.2026) noch keinen Tester mit passender Anlage. Sie ist bewusst nur lesend (keine Steuerbefehle). Rückmeldungen (auch Fehler) gerne im WPHub-Forumsthread."
+                                        "caption": "The Vaillant connection is built after the actively maintained reference signalkraft/myPyllant, but has never run against a real myVAILLANT account -- as of 14 Sep 2026 there is no tester with a matching system yet. It is read-only by design (no control commands). Feedback (including errors) is welcome in the WPHub forum thread."
                                     }
                                 ]
                             }
@@ -103,18 +103,18 @@
                     "items": [
                         {
                             "type": "Label",
-                            "caption": "Zugangsdaten werden nur für die einmalige Anmeldung verwendet, danach nicht mehr gespeichert -- nur der resultierende Zugangsschlüssel."
+                            "caption": "Credentials are only used for the one-time login and are not stored afterwards -- only the resulting access key is kept."
                         },
                         {
                             "type": "PopupButton",
-                            "caption": "Ist die Speicherung der Zugangsdaten sicher?",
+                            "caption": "Is the storage of the credentials safe?",
                             "width": "460px",
                             "popup": {
-                                "caption": "Ist die Speicherung der Zugangsdaten sicher?",
+                                "caption": "Is the storage of the credentials safe?",
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "IP-Symcon verschlüsselt Attribute NICHT at rest. \"Sicher\" heißt hier: nicht im Formular/Protokoll sichtbar -- keine echte Verschlüsselung. Das Passwort wird nur für die einmalige Anmeldung verwendet und danach automatisch geleert; gespeichert bleibt nur der Zugangsschlüssel (Token). Konten mit Zwei-Faktor-Authentifizierung (2FA) werden noch nicht unterstützt."
+                                        "caption": "Symcon does NOT encrypt attributes at rest. \"Safe\" here means: not visible in the form or log -- no real encryption. The password is only used for the one-time login and cleared automatically afterwards; only the access key (token) is kept. Accounts with two-factor authentication (2FA) are not supported yet."
                                     }
                                 ]
                             }
@@ -124,23 +124,23 @@
                 {
                     "type": "ValidationTextBox",
                     "name": "CC_Email",
-                    "caption": "Comfort Cloud E-Mail"
+                    "caption": "Comfort Cloud e-mail"
                 },
                 {
                     "type": "PasswordTextBox",
                     "name": "CC_Password",
-                    "caption": "Comfort Cloud Passwort (wird nach der Anmeldung geleert)"
+                    "caption": "Comfort Cloud password (cleared after login)"
                 },
                 {
                     "type": "Button",
                     "name": "CC_LoginButton",
-                    "caption": "🔑  Anmelden und Wärmepumpen suchen",
+                    "caption": "🔑  Log in and search for heat pumps",
                     "onClick": "WPHUB_Login($id);"
                 },
                 {
                     "type": "Label",
                     "name": "DiscoverySummary",
-                    "caption": "ℹ️ Noch nicht gesucht."
+                    "caption": "ℹ️ Not searched yet."
                 },
                 {
                     "type": "RowLayout",
@@ -148,19 +148,19 @@
                         {
                             "type": "Button",
                             "name": "CC_AgreementButton",
-                            "caption": "📜  Aktualisierte Bedingungen akzeptieren",
+                            "caption": "📜  Accept updated terms",
                             "onClick": "WPHUB_AcceptAgreements($id);"
                         },
                         {
                             "type": "PopupButton",
-                            "caption": "Wann brauche ich „Aktualisierte Bedingungen akzeptieren“?",
+                            "caption": "When do I need \"Accept updated terms\"?",
                             "width": "460px",
                             "popup": {
-                                "caption": "Wann brauche ich „Aktualisierte Bedingungen akzeptieren“?",
+                                "caption": "When do I need \"Accept updated terms\"?",
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "Panasonic verlangt nach Aktualisierungen von Nutzungsbedingungen oder Datenschutzerklärung eine erneute Zustimmung des Kontos (Cloud-Fehlercode 4103, Instanzstatus \"Zustimmung erforderlich\") -- so wie beim nächsten Start der offiziellen App. Diese Schaltfläche bestätigt beides im Namen Deines Kontos; WPHub tut das bewusst NIE automatisch. Die Texte selbst gibt es in der offiziellen App bzw. auf panasonic.com. Alternativ: einmal die offizielle Comfort-Cloud-App öffnen und dort bestätigen."
+                                        "caption": "After updates of the terms of use or the privacy policy Panasonic requires the account to agree again (cloud error code 4103, instance status \"Agreement required\") -- just like on the next start of the official app. This button confirms both on behalf of your account; WPHub deliberately NEVER does this automatically. The texts themselves are in the official app or on panasonic.com. Alternatively: open the official Comfort Cloud app once and confirm there."
                                     }
                                 ]
                             }
@@ -180,18 +180,18 @@
                         {
                             "type": "ValidationTextBox",
                             "name": "CC_AppVersion",
-                            "caption": "App-Version (Notnagel, leer lassen)"
+                            "caption": "App version (fallback, leave empty)"
                         },
                         {
                             "type": "PopupButton",
-                            "caption": "Wozu das Feld App-Version?",
+                            "caption": "What is the app version field for?",
                             "width": "460px",
                             "popup": {
-                                "caption": "Wozu das Feld App-Version?",
+                                "caption": "What is the app version field for?",
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "Die Comfort Cloud weist Anfragen zu alter App-Versionen ab (Fehlercode 4106). WPHub ermittelt die aktuelle Versionsnummer der offiziellen App dann selbst (Play Store, ersatzweise AppBrain) und verwendet sie automatisch weiter. Dieses Feld ist nur der Notnagel, falls die automatische Ermittlung fehlschlägt: dann hier die Versionsnummer aus dem Play Store/App Store eintragen und übernehmen. Eine automatisch ermittelte Version hat Vorrang vor diesem Feld."
+                                        "caption": "The Comfort Cloud rejects requests from outdated app versions (error code 4106). WPHub then determines the current version number of the official app itself (Play Store, AppBrain as fallback) and keeps using it automatically. This field is only a fallback in case the automatic detection fails: then enter the version number from the Play Store/App Store here and apply. A version determined automatically takes precedence over this field."
                                     }
                                 ]
                             }
@@ -216,18 +216,18 @@
                     "items": [
                         {
                             "type": "Label",
-                            "caption": "Zugangsdaten werden nur für die einmalige Anmeldung verwendet, danach nicht mehr gespeichert -- nur der resultierende Zugangsschlüssel."
+                            "caption": "Credentials are only used for the one-time login and are not stored afterwards -- only the resulting access key is kept."
                         },
                         {
                             "type": "PopupButton",
-                            "caption": "Ist die Speicherung der Zugangsdaten sicher?",
+                            "caption": "Is the storage of the credentials safe?",
                             "width": "460px",
                             "popup": {
-                                "caption": "Ist die Speicherung der Zugangsdaten sicher?",
+                                "caption": "Is the storage of the credentials safe?",
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "IP-Symcon verschlüsselt Attribute NICHT at rest. \"Sicher\" heißt hier: nicht im Formular/Protokoll sichtbar -- keine echte Verschlüsselung. Das Passwort wird nur für die einmalige Anmeldung verwendet und danach automatisch geleert; gespeichert bleibt nur der Zugangsschlüssel (Token)."
+                                        "caption": "Symcon does NOT encrypt attributes at rest. \"Safe\" here means: not visible in the form or log -- no real encryption. The password is only used for the one-time login and cleared automatically afterwards; only the access key (token) is kept."
                                     }
                                 ]
                             }
@@ -237,36 +237,36 @@
                 {
                     "type": "ValidationTextBox",
                     "name": "VAI_Email",
-                    "caption": "myVAILLANT E-Mail"
+                    "caption": "myVAILLANT e-mail"
                 },
                 {
                     "type": "PasswordTextBox",
                     "name": "VAI_Password",
-                    "caption": "myVAILLANT Passwort (wird nach der Anmeldung geleert)"
+                    "caption": "myVAILLANT password (cleared after login)"
                 },
                 {
                     "type": "Select",
                     "name": "VAI_Country",
-                    "caption": "Land des Kontos",
+                    "caption": "Country of the account",
                     "options": [
-                        {"caption": "Deutschland", "value": "germany"},
-                        {"caption": "Österreich", "value": "austria"},
-                        {"caption": "Schweiz", "value": "switzerland"},
-                        {"caption": "Niederlande", "value": "netherlands"},
-                        {"caption": "Belgien", "value": "belgium"},
-                        {"caption": "Frankreich", "value": "france"},
-                        {"caption": "Luxemburg", "value": "luxembourg"},
-                        {"caption": "Italien", "value": "italy"},
-                        {"caption": "Spanien", "value": "spain"},
-                        {"caption": "Polen", "value": "poland"},
-                        {"caption": "Dänemark", "value": "denmark"},
-                        {"caption": "Vereinigtes Königreich", "value": "unitedkingdom"}
+                        {"caption": "Germany", "value": "germany"},
+                        {"caption": "Austria", "value": "austria"},
+                        {"caption": "Switzerland", "value": "switzerland"},
+                        {"caption": "Netherlands", "value": "netherlands"},
+                        {"caption": "Belgium", "value": "belgium"},
+                        {"caption": "France", "value": "france"},
+                        {"caption": "Luxembourg", "value": "luxembourg"},
+                        {"caption": "Italy", "value": "italy"},
+                        {"caption": "Spain", "value": "spain"},
+                        {"caption": "Poland", "value": "poland"},
+                        {"caption": "Denmark", "value": "denmark"},
+                        {"caption": "United Kingdom", "value": "unitedkingdom"}
                     ]
                 },
                 {
                     "type": "Button",
                     "name": "VAI_LoginButton",
-                    "caption": "🔑  Anmelden und Anlagen suchen",
+                    "caption": "🔑  Log in and search for systems",
                     "onClick": "WPHUB_LoginVaillant($id);"
                 },
                 {
@@ -278,7 +278,7 @@
                 {
                     "type": "Button",
                     "name": "VAI_TestEmfButton",
-                    "caption": "🔋  Energiedaten testweise abrufen (nicht im normalen Takt)",
+                    "caption": "🔋  Fetch energy data as a test (not part of the normal cycle)",
                     "onClick": "WPHUB_TestEmfEndpoint($id);"
                 },
                 {
@@ -290,7 +290,7 @@
                 {
                     "type": "Button",
                     "name": "VAI_CapabilitiesButton",
-                    "caption": "🔎  Steuerungsfähigkeiten anzeigen (nur lesen, kein Schreibzugriff)",
+                    "caption": "🔎  Show control capabilities (read only, no write access)",
                     "onClick": "WPHUB_VaillantCapabilities($id);"
                 },
                 {
@@ -304,7 +304,7 @@
         {
             "type": "ExpansionPanel",
             "name": "ExtSensorsPanel",
-            "caption": "🔌 Externe Sensoren & Zähler (optional)",
+            "caption": "🔌 External sensors & meters (optional)",
             "expanded": false,
             "items": [
                 {
@@ -312,18 +312,18 @@
                     "items": [
                         {
                             "type": "Label",
-                            "caption": "Die Comfort Cloud liefert keine echte Leistung/Energie und keine Vor-/Rücklauf-/Puffertemperatur. Hier lässt sich optional eine beliebige vorhandene Symcon-Variable verknüpfen (z. B. ein Shelly, MeterHub, ein eigener Fühler) -- WPHub meldet den Wert dann als echte Messung im Verbund-Vertrag statt ihn leer zu lassen. Ist in MeterHub ein Zähler mit der Funktionszuordnung \"Wärmepumpe\" markiert, schlägt WPHub ihn hier automatisch vor."
+                            "caption": "The Comfort Cloud provides no real power/energy and no flow/return/buffer temperature. Here you can optionally link any existing Symcon variable (e.g. a Shelly, MeterHub, your own sensor) -- WPHub then reports the value as a real measurement in the family contract instead of leaving it empty. If a meter in MeterHub is marked with the function assignment \"Heat pump\", WPHub suggests it here automatically."
                         },
                         {
                             "type": "PopupButton",
-                            "caption": "Wofür sind externe Sensoren & Zähler gut?",
+                            "caption": "What are external sensors & meters good for?",
                             "width": "460px",
                             "popup": {
-                                "caption": "Wofür sind externe Sensoren & Zähler gut?",
+                                "caption": "What are external sensors & meters good for?",
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "WPHub braucht dafür kein bestimmtes anderes Modul -- jede Symcon-Variable geht (Shelly-Instanz, MeterHub, HeishaMon, eigener 1-Wire-Fühler). Verknüpfte Werte tauchen im Verbund-Vertrag (WPHUB_GetFunctions) als echte Messung auf und werden z. B. im Anlagenschema angezeigt. Keine COP-/Arbeitszahl-Berechnung: dafür fehlt WPHub strukturell die erzeugte Wärmemenge (kein Durchfluss, keine Wassermenge), auch mit Stromzähler nicht ableitbar."
+                                        "caption": "WPHub does not need any particular other module for this -- any Symcon variable works (Shelly instance, MeterHub, HeishaMon, your own 1-wire sensor). Linked values appear as a real measurement in the family contract (WPHUB_GetFunctions) and are shown e.g. in the system diagram. No COP/seasonal performance calculation: WPHub structurally lacks the heat output for it (no flow rate, no water volume), which cannot be derived even with an electricity meter."
                                     }
                                 ]
                             }
@@ -339,7 +339,7 @@
                 {
                     "type": "Button",
                     "name": "MeterHubAdoptButton",
-                    "caption": "🔗  Von MeterHub übernehmen",
+                    "caption": "🔗  Adopt from MeterHub",
                     "visible": false,
                     "onClick": "WPHUB_AdoptMeterHubAssignment($id);"
                 },
@@ -352,27 +352,27 @@
                 {
                     "type": "SelectVariable",
                     "name": "Ext_PowerVariable",
-                    "caption": "Stromzähler: elektrische Leistung der Wärmepumpe (W)"
+                    "caption": "Electricity meter: electrical power of the heat pump (W)"
                 },
                 {
                     "type": "SelectVariable",
                     "name": "Ext_EnergyVariable",
-                    "caption": "Stromzähler: Energiezähler der Wärmepumpe (kWh)"
+                    "caption": "Electricity meter: energy counter of the heat pump (kWh)"
                 },
                 {
                     "type": "SelectVariable",
                     "name": "Ext_MainInletTempVariable",
-                    "caption": "Fühler: Rücklauftemperatur"
+                    "caption": "Sensor: return temperature"
                 },
                 {
                     "type": "SelectVariable",
                     "name": "Ext_MainOutletTempVariable",
-                    "caption": "Fühler: Vorlauftemperatur"
+                    "caption": "Sensor: flow temperature"
                 },
                 {
                     "type": "SelectVariable",
                     "name": "Ext_BufferTempVariable",
-                    "caption": "Fühler: Puffertemperatur"
+                    "caption": "Sensor: buffer temperature"
                 }
             ]
         }
@@ -381,17 +381,17 @@
         {
             "code": 201,
             "icon": "error",
-            "caption": "Anmeldung erforderlich -- im Formular anmelden"
+            "caption": "Login required -- log in in the form"
         },
         {
             "code": 202,
             "icon": "error",
-            "caption": "Zustimmung erforderlich -- Panasonic hat die Bedingungen aktualisiert (Formular)"
+            "caption": "Agreement required -- Panasonic has updated the terms (form)"
         },
         {
             "code": 203,
             "icon": "inactive",
-            "caption": "Steuerhoheit prüfen -- HeishaMon aktiv gefunden, aber im Formular noch nicht je Gerät zugeordnet (Panel „🔀 Steuerhoheit“)"
+            "caption": "Check control authority -- HeishaMon found active, but not yet assigned per device in the form (panel \"🔀 Control authority\")"
         }
     ]
 }

@@ -29,6 +29,8 @@
 //
 // Kein Passwort und kein Token wird geloggt.
 
+require_once __DIR__ . '/WPHUB_Text.php';
+
 class WPHUB_VaillantClient
 {
     const AUTH_BASE          = 'https://identity.vaillant-group.com/auth/realms';
@@ -104,7 +106,7 @@ class WPHUB_VaillantClient
             'code_challenge'        => $challenge,
         ]), ['user-agent: ' . self::UA]);
         if ($r === null || $r['status'] !== 200) {
-            return $this->fail('Login-Seite (Schritt 1/3) fehlgeschlagen' . $this->statusSuffix($r));
+            return $this->fail(WPHUB_Text::t('Login page (step 1/3) failed') . $this->statusSuffix($r));
         }
 
         // Schritt 2: Login-Formular-Aktion aus dem HTML ziehen (enthaelt
@@ -112,7 +114,7 @@ class WPHUB_VaillantClient
         // absenden.
         $loginUrl = $this->extractLoginFormUrl($r['body']);
         if ($loginUrl === null) {
-            return $this->fail('Login-Seite (Schritt 1/3): Login-Formular nicht gefunden -- Realm/Land falsch?');
+            return $this->fail(WPHUB_Text::t('Login page (step 1/3): login form not found -- wrong realm/country?'));
         }
         $payload = ['username' => $email, 'password' => $password, 'credentialId' => ''];
         $altcha = $this->request('GET', self::ALTCHA_CHALLENGE, ['user-agent: ' . self::UA]);
@@ -132,11 +134,11 @@ class WPHUB_VaillantClient
             'content-type: application/x-www-form-urlencoded',
         ], http_build_query($payload));
         if ($r === null || $r['status'] !== 302 || !isset($r['headers']['location'])) {
-            return $this->fail('Anmeldung (Schritt 2/3) fehlgeschlagen -- E-Mail oder Passwort falsch?' . $this->statusSuffix($r));
+            return $this->fail(WPHUB_Text::t('Login (step 2/3) failed -- wrong e-mail or password?') . $this->statusSuffix($r));
         }
         $code = $this->queryParam($r['headers']['location'], 'code');
         if ($code === null) {
-            return $this->fail('Anmeldung (Schritt 2/3): kein Autorisierungscode erhalten');
+            return $this->fail(WPHUB_Text::t('Login (step 2/3): no authorization code received'));
         }
 
         // Schritt 3: Code gegen Access-/Refresh-Token tauschen.
@@ -151,14 +153,14 @@ class WPHUB_VaillantClient
             'code_verifier' => $verifier,
             'redirect_uri'  => self::REDIRECT_URI,
         ]));
-        return $this->tokenBundleFromResponse($r, $issuedAt, 'Token-Tausch (Schritt 3/3)');
+        return $this->tokenBundleFromResponse($r, $issuedAt, WPHUB_Text::t('Token exchange (step 3/3)'));
     }
 
     public function refresh(array $bundle): ?array
     {
         $this->lastError = '';
         if (($bundle['refreshToken'] ?? '') === '') {
-            return $this->fail('Kein Refresh-Token vorhanden -- Neuanmeldung erforderlich');
+            return $this->fail(WPHUB_Text::t('No refresh token available -- new login required'));
         }
         $issuedAt = time();
         $r = $this->request('POST', self::AUTH_BASE . '/' . $this->realm() . '/protocol/openid-connect/token', [
@@ -169,7 +171,7 @@ class WPHUB_VaillantClient
             'client_id'     => self::CLIENT_ID,
             'refresh_token' => $bundle['refreshToken'],
         ]));
-        return $this->tokenBundleFromResponse($r, $issuedAt, 'Token-Erneuerung');
+        return $this->tokenBundleFromResponse($r, $issuedAt, WPHUB_Text::t('Token renewal'));
     }
 
     /** Konfigurierte Anlagen des Kontos -- je eine Zeile ['systemId','homeName']. */
@@ -179,7 +181,7 @@ class WPHUB_VaillantClient
         $r = $this->apiRequest($bundle, 'GET', self::API_BASE_TLI . '/homes');
         $json = ($r !== null) ? json_decode($r['body'], true) : null;
         if ($r === null || $r['status'] !== 200 || !is_array($json)) {
-            $this->failApi('Anlagenliste (homes)', $r);
+            $this->failApi(WPHUB_Text::t('System list (homes)'), $r);
             return null;
         }
         $out = [];
@@ -216,12 +218,12 @@ class WPHUB_VaillantClient
         $this->lastError = '';
         $r = $this->apiRequest($bundle, 'GET', self::API_BASE_TLI . '/systems/' . rawurlencode($systemId) . '/tli');
         if ($r === null || $r['status'] !== 200) {
-            $this->failApi('Systemdaten (systems/' . $systemId . '/tli)', $r);
+            $this->failApi(WPHUB_Text::t('System data (systems/%s/tli)', $systemId), $r);
             return null;
         }
         $parsed = self::parseTliBody((string)$r['body']);
         if ($parsed === null) {
-            $this->failApi('Systemdaten (systems/' . $systemId . '/tli) -- ungueltiges JSON', $r);
+            $this->failApi(WPHUB_Text::t('System data (systems/%s/tli) -- invalid JSON', $systemId), $r);
         }
         return $parsed;
     }
@@ -269,12 +271,12 @@ class WPHUB_VaillantClient
         $this->lastError = '';
         $r = $this->apiRequest($bundle, 'GET', self::API_BASE_TLI . '/emf/v2/' . rawurlencode($systemId) . '/currentSystem');
         if ($r === null || $r['status'] !== 200) {
-            $this->failApi('EMF-Energiedaten (emf/v2/' . $systemId . '/currentSystem)', $r);
+            $this->failApi(WPHUB_Text::t('EMF energy data (emf/v2/%s/currentSystem)', $systemId), $r);
             return null;
         }
         $parsed = self::parseTliBody((string)$r['body']);
         if ($parsed === null) {
-            $this->failApi('EMF-Energiedaten (emf/v2/' . $systemId . '/currentSystem) -- ungueltiges JSON', $r);
+            $this->failApi(WPHUB_Text::t('EMF energy data (emf/v2/%s/currentSystem) -- invalid JSON', $systemId), $r);
         }
         return $parsed;
     }
@@ -310,7 +312,7 @@ class WPHUB_VaillantClient
             'startDate'     => $from->format('Y-m-d\TH:i:s.v\Z'),
             'endDate'       => $to->format('Y-m-d\TH:i:s.v\Z'),
         ]);
-        $label = 'EMF-Buckets (' . $deviceUuid . '/' . $operationMode . '/' . $energyType . ')';
+        $label = WPHUB_Text::t('EMF buckets (%s/%s/%s)', $deviceUuid, $operationMode, $energyType);
         $r = $this->apiRequest($bundle, 'GET', self::API_BASE_TLI . '/emf/v2/' . rawurlencode($systemId)
             . '/devices/' . rawurlencode($deviceUuid) . '/buckets?' . $query);
         if ($r === null || $r['status'] !== 200) {
@@ -319,7 +321,7 @@ class WPHUB_VaillantClient
         }
         $parsed = self::parseTliBody((string)$r['body']);
         if ($parsed === null) {
-            $this->failApi($label . ' -- ungueltiges JSON', $r);
+            $this->failApi(WPHUB_Text::t('%s -- invalid JSON', $label), $r);
         }
         return $parsed;
     }
@@ -362,12 +364,12 @@ class WPHUB_VaillantClient
         $this->lastError = '';
         $r = $this->apiRequest($bundle, 'GET', self::API_BASE_VRC700 . '/systems/' . rawurlencode($systemId));
         if ($r === null || $r['status'] !== 200) {
-            $this->failApi('Systemdaten vrc700 (systems/' . $systemId . ')', $r);
+            $this->failApi(WPHUB_Text::t('System data vrc700 (systems/%s)', $systemId), $r);
             return null;
         }
         $parsed = self::parseVrc700Body((string)$r['body']);
         if ($parsed === null) {
-            $this->failApi('Systemdaten vrc700 (systems/' . $systemId . ') -- ungueltiges JSON nach Ersetzung', $r);
+            $this->failApi(WPHUB_Text::t('System data vrc700 (systems/%s) -- invalid JSON after replacement', $systemId), $r);
         }
         return $parsed;
     }
@@ -549,7 +551,7 @@ class WPHUB_VaillantClient
         }
         $responseBody = curl_exec($ch);
         if ($responseBody === false) {
-            $this->lastError = 'HTTP-Fehler: ' . curl_error($ch);
+            $this->lastError = WPHUB_Text::t('HTTP error: %s', curl_error($ch));
             curl_close($ch);
             $this->dbg('http', $method . ' ' . $this->urlForLog($url) . ' -> ' . $this->lastError);
             return null;
@@ -598,10 +600,10 @@ class WPHUB_VaillantClient
     private function failApi(string $what, ?array $r): void
     {
         if ($r === null) {
-            $this->lastError = $what . ' fehlgeschlagen (' . $this->lastError . ')';
+            $this->lastError = WPHUB_Text::t('%s failed (%s)', $what, $this->lastError);
             return;
         }
-        $this->lastError = $what . ' fehlgeschlagen (HTTP ' . $r['status'] . '): ' . substr((string)$r['body'], 0, 300);
+        $this->lastError = WPHUB_Text::t('%s failed (HTTP %d): %s', $what, $r['status'], substr((string)$r['body'], 0, 300));
         $this->dbg('fehler', $this->lastError);
         if ((int)$r['status'] === 403) {
             $this->quotaRetryAfterSeconds = self::parseQuotaRetrySeconds((string)$r['body']);

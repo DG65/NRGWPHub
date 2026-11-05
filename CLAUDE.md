@@ -1184,6 +1184,25 @@ das Ergebnis im Klartext zurückgibt. Schon eingeschaltetes Logging bleibt bei B
 bestehen. Gleiches Muster in allen vier WP-Modulen (WPHub, WPModbusHub samt Gateway, WPBsbLan,
 SamsungEhs). Neue Module: nie `AC_SetLoggingStatus()` ohne Nutzerklick aufrufen.
 
+## Zweisprachig Deutsch/Englisch (0.17.0, 05.11.2026)
+
+Verbundregel SUITE.md Konvention 9, Dietmars Auftrag nach dem Muster WPModbusHub 0.8.0:
+
+- **Quelltexte englisch** (Code, `form.json`), Deutsch in `.tools/locale-de.json`; `php .tools/locale-bauen.php` schreibt
+  `WPHub/locale.json` (Symcon liest `locale.json` nur im Modulordner). Die `locale.json` nie von Hand ändern, der Prüfstand vergleicht.
+- **`WPHub/libs/WPHUB_Text.php`** (`WPHUB_Text::t()`, `::formular()`, `::mitMerkliste()`): Clients und Hilfsfunktionen haben kein
+  `$this->Translate()`; der Konstruktor von `WPHub` setzt den Übersetzer. Symcon wird je Text höchstens **einmal je Prozess**
+  gefragt (Stolperstein 24, Automat-Fehler). Der Übersetzer ist prozessweit: ein neu gebautes Modul-Objekt ersetzt ihn.
+- **Unverändert:** Idents, Properties, Attribute, Funktions- und Vertragsnamen, Debug-Themen (`Vaillant/steuerungsfaehigkeiten`,
+  `Vaillant/emf-…-Rohdaten`, `Geräte`). Rohwerte aus der Cloud (Herstellermeldungen, Gerätenamen) bleiben unübersetzt. Variablennamen
+  (`$name . ': ' . WPHUB_Text::t('Reachable')`) und Profiltexte werden nur beim Anlegen gesetzt, vorhandene bleiben.
+- Jeder Text steht nur einmal in der Tabelle: zwei deutsche Fassungen mit demselben englischen Quelltext gehen nicht (Beispiel
+  „Warmwasser Sollwert“ ↔ „Warmwasser-Sollwert“ → die Fähigkeitenzeile heißt englisch „Hot water tapping setpoint“).
+- Neue Texte: englisch in Code/`form.json`, deutsch in `.tools/locale-de.json`, `locale-bauen.php`, Prüfstand Block 10 (Vollständigkeit,
+  Platzhalter, verwaiste Einträge, kein Deutsch im Code außerhalb von `t()`, englische Ausgaben ohne deutsche Reste, Translate()-Kosten).
+- **Vor dem Store-Release live messen** (Stolperstein 24): Laufzeit von `WPHUB_Update`, `IPS_GetConfigurationForm`, Timer `NextRun`.
+  Englisch nie in einer echten Konsole gesehen (nur Prüfstand).
+
 ## Verbund-Kontakt
 
 Bei Rückfragen zur Kontraktform: HeishaMon-Sitzung direkt anschreiben
