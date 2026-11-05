@@ -83,7 +83,7 @@
                                 "items": [
                                     {
                                         "type": "Label",
-                                        "caption": "The Vaillant connection is built after the actively maintained reference signalkraft/myPyllant, but has never run against a real myVAILLANT account -- as of 14 Sep 2026 there is no tester with a matching system yet. It is read-only by design (no control commands). Feedback (including errors) is welcome in the WPHub forum thread."
+                                        "caption": "The Vaillant connection is built after the actively maintained reference signalkraft/myPyllant and has been confirmed on two real systems by testers (controllers tli and vrc700). It is read-only by design (no control commands). The manufacturer's energy interface has a limited quota and is therefore queried only every four hours. Feedback (including errors) is welcome in the WPHub forum thread."
                                     }
                                 ]
                             }

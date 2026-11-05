@@ -2,6 +2,8 @@
 
 ## 0.17.0 (Build 98) — 05.11.2026
 
+- **Vaillant-Hinweis im Formular aufgefrischt:** Er sagte noch „noch nie gegen ein echtes Konto gelaufen, Stand 14.09.2026“. Jetzt: an zwei echten Anlagen von Testern bestätigt (Regler tli und vrc700), nur lesend, Energie-Schnittstelle wegen des Kontingents nur alle vier Stunden.
+
 - **Neu: zweisprachig Deutsch/Englisch** (Verbundregel SUITE.md Konvention 9, Dietmars Auftrag nach dem Muster von WPModbusHub 0.8.0). Formular, Meldungen, Protokoll- und Debugzeilen, Fehlertexte der beiden Cloud-Clients, Hinweise, Profiltexte (Betriebsart, Flüsterbetrieb, …) und die Namen neu angelegter Variablen folgen der Symcon-Sprache. Quelltexte sind englisch (Code und `form.json`), die deutsche Fassung steht in `.tools/locale-de.json`; `php .tools/locale-bauen.php` schreibt daraus `WPHub/locale.json` (Symcon liest die Datei nur im Modulordner).
 - **Kein Automat-Fehler:** `Translate()` liest bei jedem Aufruf die `locale.json` (SUITE.md Stolperstein 24). Die neue Klasse `WPHUB_Text` fragt Symcon je Text höchstens einmal je Prozess und merkt sich die Antwort; Aktualisierungszyklus, Vertragsabfrage und Formular kosten danach nur noch einen Array-Zugriff je Text. Kein eigenes Lesen der `locale.json`.
 - **Unverändert:** alle Kennungen (Idents wie `Aussentemperatur`, `Zone1Soll`), Properties, Attribute, Funktionsnamen, Debug-Themen und der Vertrag `WPHUB_GetFunctions()` (contractVersion). Bereits angelegte Variablen und Profile werden nicht umbenannt (Symcon setzt den Namen nur beim Anlegen). Rohwerte aus der Cloud (Fehlermeldungen des Herstellers, Gerätenamen) bleiben unübersetzt.
