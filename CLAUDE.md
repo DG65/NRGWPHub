@@ -1190,7 +1190,7 @@ Verbundregel SUITE.md Konvention 9, Dietmars Auftrag nach dem Muster WPModbusHub
 
 - **Quelltexte englisch** (Code, `form.json`), Deutsch in `.tools/locale-de.json`; `php .tools/locale-bauen.php` schreibt
   `WPHub/locale.json` (Symcon liest `locale.json` nur im Modulordner). Die `locale.json` nie von Hand ändern, der Prüfstand vergleicht.
-- **`WPHub/libs/WPHUB_Text.php`** (`WPHUB_Text::t()`, `::formular()`, `::mitMerkliste()`): Clients und Hilfsfunktionen haben kein
+- **`WPHub/libs/WPHUB_Text.php`** (`WPHUB_Text::t()`, `::ausFormular()`, `::mitMerkliste()`; seit 0.17.1 übersetzt Symcon statische Formulartexte selbst, Store-Punkt 25): Clients und Hilfsfunktionen haben kein
   `$this->Translate()`; der Konstruktor von `WPHub` setzt den Übersetzer. Symcon wird je Text höchstens **einmal je Prozess**
   gefragt (Stolperstein 24, Automat-Fehler). Der Übersetzer ist prozessweit: ein neu gebautes Modul-Objekt ersetzt ihn.
 - **Unverändert:** Idents, Properties, Attribute, Funktions- und Vertragsnamen, Debug-Themen (`Vaillant/steuerungsfaehigkeiten`,

@@ -1,5 +1,10 @@
 # Changelog — NRG-Stack WPHub
 
+
+## 0.17.1 (Build 99) — 06.11.2026
+
+- **Store-Prüfung (Punkt 25): Formulartexte nicht mehr selbst übersetzt.** `WPHUB_Text::formular()` entfällt; die Konsole übersetzt die statischen Texte der `form.json` aus `locale.json` selbst. Variablennamen, Meldungen, Statuszeilen mit eingesetzten Werten und dynamisch gebaute Abschnitte übersetzt das Modul weiter (mit Merkliste). Die Zeilen des Panels „Formular: Aufbau“ (Listenwerte, keine Beschriftungen) übersetzt das Modul weiter, über `WPHUB_Text::ausFormular()`. Der Prüfstand sichert, dass jeder statische Formulartext in `locale.json` steht. Keine Änderung für Anwender.
+
 ## 0.17.0 (Build 98) — 05.11.2026
 
 - **Vaillant-Hinweis im Formular aufgefrischt:** Er sagte noch „noch nie gegen ein echtes Konto gelaufen, Stand 14.09.2026“. Jetzt: an zwei echten Anlagen von Testern bestätigt (Regler tli und vrc700), nur lesend, Energie-Schnittstelle wegen des Kontingents nur alle vier Stunden.

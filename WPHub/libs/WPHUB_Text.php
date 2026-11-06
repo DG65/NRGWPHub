@@ -65,21 +65,11 @@ final class WPHUB_Text
     }
 
     /**
-     * Uebersetzt in einem Formular (form.json) alle Anzeigetexte: caption, confirm, label sowie die
-     * Beschriftungen in options/popup/items/status. Kommandos (onClick, onChange) und Namen bleiben.
+     * Ein Text aus der form.json als DATENWERT (z. B. Zeile einer Liste): die Konsole uebersetzt nur Beschriftungen
+     * (caption/label), keine Zellen. Der Quelltext steht in form.json und wird von dort geprueft.
      */
-    public static function formular($knoten)
+    public static function ausFormular(string $text): string
     {
-        if (!is_array($knoten)) {
-            return $knoten;
-        }
-        foreach ($knoten as $schluessel => $wert) {
-            if (is_string($schluessel) && in_array($schluessel, ['caption', 'confirm', 'label'], true) && is_string($wert)) {
-                $knoten[$schluessel] = $wert === '' ? $wert : self::t($wert);
-            } elseif (is_array($wert)) {
-                $knoten[$schluessel] = self::formular($wert);
-            }
-        }
-        return $knoten;
+        return self::t($text);
     }
 }

@@ -271,7 +271,7 @@ class WPHub extends IPSModule
     {
         // Formulartexte der form.json sind englische Quelltexte; die dynamisch gebauten Teile unten
         // uebersetzen sich selbst (nicht doppelt uebersetzen).
-        $form = WPHUB_Text::formular(json_decode(file_get_contents(__DIR__ . '/form.json'), true));
+        $form = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
 
         // Versionsnummer im Doku-Panel dynamisch aus library.json lesen statt
         // fest im form.json einzutragen -- eine frueher fest eingetragene
@@ -548,7 +548,7 @@ class WPHub extends IPSModule
         $rows = [];
         $hidden = [];
         foreach ($layout as $key => $l) {
-            $name = trim((string)preg_replace('/\s*\(.*$/u', '', (string)($free[$key]['caption'] ?? $key)));
+            $name = trim((string)preg_replace('/\s*\(.*$/u', '', WPHUB_Text::ausFormular((string)($free[$key]['caption'] ?? $key))));
             $rows[] = ['Key' => $key, 'Panel' => $name, 'Opened' => $l['open'] === 'open', 'Closed' => $l['open'] === 'closed',
                 'Hidden' => $l['open'] === 'hidden', 'Pos' => $l['pos']];
             if ($l['open'] === 'hidden') {
@@ -585,11 +585,11 @@ class WPHub extends IPSModule
     /** Setzt Aufklapp-Zustand und Reihenfolge der Fachpanels im offenen Formular auf den Standard (gilt nach „Übernehmen“). */
     public function ResetFormLayout(): string
     {
-        $base = WPHUB_Text::formular(json_decode(file_get_contents(__DIR__ . '/form.json'), true));
+        $base = json_decode(file_get_contents(__DIR__ . '/form.json'), true);
         $captions = [];
         foreach (($base['elements'] ?? []) as $el) {
             if (isset($el['name'])) {
-                $captions[(string)$el['name']] = (string)($el['caption'] ?? '');
+                $captions[(string)$el['name']] = WPHUB_Text::ausFormular((string)($el['caption'] ?? ''));
             }
         }
         $captions['ManagedByPanel'] = WPHUB_Text::t('🔀 Control authority');

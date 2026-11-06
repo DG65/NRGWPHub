@@ -1508,7 +1508,7 @@ check('Aufbau: "Über dieses Modul" bleibt ganz unten', ($lastEl['caption'] ?? '
 $dokuAt = null;
 $generalAt = null;
 foreach ($fLayoutStd['elements'] as $i => $el) {
-    if (($el['caption'] ?? '') === '📖 Dokumentation & Hilfe') {
+    if (($el['caption'] ?? '') === '📖 Documentation & help') {
         $dokuAt = $i;
     }
     if (($el['name'] ?? null) === 'GeneralPanel') {
@@ -2745,7 +2745,7 @@ check('Deutsch: Variablenname "Erreichbar" und "Warmwasser"', ($GLOBALS['ips']['
 check('Deutsch: Profiltexte (Betriebsart "Kühlen", Flüsterbetrieb "Stufe 2")', ($GLOBALS['ips']['profiles']['WPHUB.Betriebsart']['assocTexts']['2'] ?? '') === 'Kühlen' && ($GLOBALS['ips']['profiles']['WPHUB.Fluesterbetrieb']['assocTexts']['2'] ?? '') === 'Stufe 2', json_encode($GLOBALS['ips']['profiles']['WPHUB.Betriebsart']['assocTexts'] ?? null, JSON_UNESCAPED_UNICODE));
 $formDe = json_decode($de->GetConfigurationForm(), true);
 $formDeText = json_encode($formDe, JSON_UNESCAPED_UNICODE);
-check('Deutsch: Formular zeigt "🔧 Allgemein" und den Archiv-Knopf deutsch', strpos($formDeText, '"🔧 Allgemein"') !== false && strpos($formDeText, '📈 Logging für die Messwerte einschalten') !== false);
+check('Formular: statische Texte bleiben englischer Quelltext (Symcon übersetzt sie selbst, Store-Punkt 25); Listenzeilen des Aufbau-Panels sind übersetzt', strpos($formDeText, '"Panel":"🔧 Allgemein"') !== false && strpos($formDeText, '📈 Logging für die Messwerte einschalten') === false && strpos($formDeText, '📈 Enable logging for the measured values') !== false);
 check('Deutsch: "Neu"-Banner nennt die Zweisprachigkeit', strpos($formDeText, 'Das Modul ist jetzt zweisprachig') !== false);
 check('Deutsch: Kopfzeile "1 Wärmepumpe gefunden"', strpos($discoverySummary->invoke($de), '✅ 1 Wärmepumpe gefunden (zuletzt ') === 0, $discoverySummary->invoke($de));
 check('Deutsch: Caption in GetFunctions ist der Gerätename', ($de->GetFunctions()[0]['Caption'] ?? '') === 'Heizung');
