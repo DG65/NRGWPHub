@@ -1,0 +1,57 @@
+name: Kronoterm API cumulative patch
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/kronoterm-complete
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout including base commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify source, run offline tests and build patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          php --version
+          git rev-parse --verify kronoterm-upstream-base
+          git diff --check kronoterm-upstream-base HEAD
+          for script in .tools/test-kronoterm-client.php .tools/test-kronoterm-mapper.php .tools/test-kronoterm-buffer.php .tools/test-kronoterm-energy.php; do
+            php "$script"
+          done
+          for script in WPHub/module.php WPHub/libs/KronotermClient.php WPHub/libs/KronotermDataMapper.php WPHub/libs/KronotermBufferMapper.php WPHub/libs/KronotermEnergyMapper.php; do
+            php -l "$script"
+          done
+          php -r 'foreach (["WPHub/form.json", "WPHub/locale.json", ".tools/locale-de.json"] as $f) {json_decode(file_get_contents($f), true, 512, JSON_THROW_ON_ERROR); echo "VALID $f\n";}'
+          VERSION="$(git show kronoterm-upstream-base:library.json | php -r '$d=json_decode(stream_get_contents(STDIN),true); echo $d["version"];')"
+          NAME="NRGWPHub_${VERSION}_Kronoterm-API-Gesamtpatch"
+          mkdir -p dist
+          git diff --binary kronoterm-upstream-base HEAD > "dist/${NAME}.patch"
+          test -s "dist/${NAME}.patch"
+          cat > "dist/README-PATCH.txt" <<EOF
+          Kronoterm API cumulative patch
+          Original version: ${VERSION}
+          Base commit: $(git rev-parse kronoterm-upstream-base)
+          Target commit: $(git rev-parse HEAD)
+          Apply on clean original baseline:
+              git apply --check --ignore-whitespace ${NAME}.patch
+              git apply --ignore-whitespace ${NAME}.patch
+          EOF
+          TMP="$(mktemp -d)"
+          trap 'git worktree remove --force "$TMP" >/dev/null 2>&1 || true' EXIT
+          git worktree add --detach "$TMP" kronoterm-upstream-base
+          git -C "$TMP" apply --check --ignore-whitespace "$GITHUB_WORKSPACE/dist/${NAME}.patch"
+          git -C "$TMP" apply --ignore-whitespace "$GITHUB_WORKSPACE/dist/${NAME}.patch"
+          (cd dist && zip -q "${NAME}.zip" "${NAME}.patch" README-PATCH.txt)
+          (cd dist && sha256sum "${NAME}.zip" > "${NAME}.zip.sha256")
+      - name: Publish verified patch artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kronoterm-api-cumulative
+          path: |
+            dist/*.zip
+            dist/*.sha256
