@@ -3,7 +3,7 @@
 # WPHub — heat pump cloud connection for Symcon
 
 ![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue)
-![Module Version](https://img.shields.io/badge/Module_Version-0.17.0-blue)
+![Module Version](https://img.shields.io/badge/Module_Version-0.18.0-blue)
 ![Symcon Version](https://img.shields.io/badge/Symcon_Version-9.0%2B-blue)
 ![License](https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-lightgrey)
 [![Check Style](https://github.com/DG65/NRGWPHub/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/NRGWPHub/actions/workflows/check-style.yml)
@@ -29,6 +29,8 @@ Panasonic has been running on a real account for several builds (Aquarea, standa
 - **Control authority per device** (`managedBy`): deliberately coexists with [HeishaMon](https://github.com/DG65/NRGHeishaMon) on the same system — per heat pump you choose who actually regulates.
 - **EMS contract:** `WPHUB_GetFunctions()` returns a `Type=>'heatpump'` entry per device (contractVersion 1.15). `PowerID`/`EnergyID` stay 0 unless linked manually to an external meter variable (e.g. from MeterHub) — the Comfort Cloud itself provides neither instantaneous power nor cumulative counters, and by the family rule energy is never extrapolated from daily values.
 - **Vaillant myVAILLANT:** its own form panel "☁️ Vaillant myVAILLANT", its own login (Keycloak/OIDC + PKCE + ALTCHA proof of work). Provides reachability, outdoor temperature, flow/buffer temperature, hot water (actual/setpoint), heating circuits 1 and 2, room temperature/humidity, system pressure, operating states and daily energy (electricity, heat generated, environmental energy) from the manufacturer's energy interface (queried only every four hours, the manufacturer's quota is limited). **Read-only by design** (no control commands). Built after the actively maintained reference [signalkraft/myPyllant](https://github.com/signalkraft/myPyllant).
+
+- **Kronoterm Cloud:** read only, via Kronoterm's undocumented cloud interface, tested on one system so far. Electrical power and energy only via external meter variables (the WPModbusHub provides them locally via Modbus). Selectable additional values. The credentials stay stored as an attribute because the cloud has no token. Based on a contribution by Dirk Allard, details: [KRONOTERM.md](KRONOTERM.md).
 
 Open: 2FA support (Panasonic), control for Vaillant. See [CLAUDE.md](CLAUDE.md) for the full handover context (German).
 

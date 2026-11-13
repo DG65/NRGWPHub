@@ -1495,7 +1495,7 @@ $setAttr->invoke($mod, 'CC_DeviceList', '[]');
 $setAttr->invoke($mod, 'VAI_DeviceList', '[]');
 $fLayoutStd = json_decode($mod->GetConfigurationForm(), true);
 $stdNames = $layoutNames($fLayoutStd);
-check('Aufbau: Standardreihenfolge der Fachpanels (ohne Geraet kein Steuerhoheit-Panel)', array_slice($stdNames, array_search('GeneralPanel', $stdNames, true), 5) === ['GeneralPanel', 'ManufacturerPanel', 'PanasonicPanel', 'VaillantPanel', 'ExtSensorsPanel'], json_encode($stdNames));
+check('Aufbau: Standardreihenfolge der Fachpanels (ohne Geraet kein Steuerhoheit-Panel)', array_slice($stdNames, array_search('GeneralPanel', $stdNames, true), 6) === ['GeneralPanel', 'ManufacturerPanel', 'PanasonicPanel', 'VaillantPanel', 'KronotermPanel', 'ExtSensorsPanel'], json_encode($stdNames));
 $posLayout = array_search('LayoutPanel', $stdNames, true);
 check('Aufbau: Panel "Formular: Aufbau" steht direkt nach den Fachpanels', $posLayout === array_search('ExtSensorsPanel', $stdNames, true) + 1, json_encode($stdNames));
 $layoutPanel = findFormElement($fLayoutStd['elements'], 'LayoutPanel');
@@ -1517,9 +1517,9 @@ foreach ($fLayoutStd['elements'] as $i => $el) {
 }
 check('Aufbau: Doku-Panel bleibt oben vor den Fachpanels', $dokuAt !== null && $generalAt !== null && $dokuAt < $generalAt, json_encode([$dokuAt, $generalAt]));
 $layoutList = findFormElement($fLayoutStd['elements'], 'FormLayout');
-check('Aufbau: Liste hat eine Zeile je Fachpanel (5 ohne Geraet)', count($layoutList['values'] ?? []) === 5, (string)count($layoutList['values'] ?? []));
+check('Aufbau: Liste hat eine Zeile je Fachpanel (6 ohne Geraet)', count($layoutList['values'] ?? []) === 6, (string)count($layoutList['values'] ?? []));
 check('Aufbau: Schluesselspalte unsichtbar mit save:true', ($layoutList['columns'][1]['name'] ?? '') === 'Key' && ($layoutList['columns'][1]['save'] ?? false) === true && ($layoutList['columns'][1]['visible'] ?? true) === false);
-check('Aufbau: Standard-Position je Zeile = laufende Nummer', array_column($layoutList['values'], 'Pos') === [1, 2, 3, 4, 5]);
+check('Aufbau: Standard-Position je Zeile = laufende Nummer', array_column($layoutList['values'], 'Pos') === [1, 2, 3, 4, 5, 6]);
 
 // Position: Zeile "ext" nach vorn, "general" ans Ende
 $GLOBALS['ips']['properties']['FormLayout'] = json_encode([
@@ -1528,7 +1528,7 @@ $GLOBALS['ips']['properties']['FormLayout'] = json_encode([
 ]);
 $fMoved = json_decode($mod->GetConfigurationForm(), true);
 $movedNames = $layoutNames($fMoved);
-$firstFach = array_values(array_filter($movedNames, fn ($n) => in_array($n, ['GeneralPanel', 'ManufacturerPanel', 'PanasonicPanel', 'VaillantPanel', 'ExtSensorsPanel'], true)));
+$firstFach = array_values(array_filter($movedNames, fn ($n) => in_array($n, ['GeneralPanel', 'ManufacturerPanel', 'PanasonicPanel', 'VaillantPanel', 'KronotermPanel', 'ExtSensorsPanel'], true)));
 check('Aufbau: Position 1 zieht ein Panel nach vorn, Position 50 ans Ende', $firstFach[0] === 'ExtSensorsPanel' && end($firstFach) === 'GeneralPanel', json_encode($firstFach));
 
 // Aufklapp-Zustand
@@ -1586,7 +1586,7 @@ $GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';
 $GLOBALS['ips']['properties']['FormLayout'] = '[]';
 $setAttr->invoke($mod, 'CC_DeviceList', json_encode([['guid' => 'g1', 'name' => 'WP', 'prefix' => 'HPAUFB_', 'reachable' => true]]));
 $fManaged = json_decode($mod->GetConfigurationForm(), true);
-check('Aufbau: mit Geraet erscheint "Steuerhoheit" als sechstes Fachpanel in der Liste', count(findFormElement($fManaged['elements'], 'FormLayout')['values']) === 6);
+check('Aufbau: mit Geraet erscheint "Steuerhoheit" als siebtes Fachpanel in der Liste', count(findFormElement($fManaged['elements'], 'FormLayout')['values']) === 7);
 check('Aufbau: Steuerhoheit steht direkt hinter "Allgemein"', array_search('ManagedByPanel', $layoutNames($fManaged), true) === array_search('GeneralPanel', $layoutNames($fManaged), true) + 1);
 $setAttr->invoke($mod, 'CC_DeviceList', '[]');
 
@@ -1597,7 +1597,7 @@ $propsBeforeReset = $GLOBALS['ips']['properties']['FormLayout'];
 $resetText = $mod->ResetFormLayout();
 check('Aufbau: ResetFormLayout() gibt Klartext mit Hinweis auf "Übernehmen" zurueck', strpos($resetText, 'Übernehmen') !== false, $resetText);
 $resetRows = json_decode($GLOBALS['ips']['formFieldUpdates']['FormLayout']['values'] ?? '[]', true);
-check('Aufbau: Reset setzt alle Zeilen auf Standard (keine Haken, Position 1..n)', count($resetRows) === 5 && array_column($resetRows, 'Pos') === [1, 2, 3, 4, 5] && !array_filter($resetRows, fn ($r) => $r['Opened'] || $r['Closed'] || $r['Hidden']));
+check('Aufbau: Reset setzt alle Zeilen auf Standard (keine Haken, Position 1..n)', count($resetRows) === 6 && array_column($resetRows, 'Pos') === [1, 2, 3, 4, 5, 6] && !array_filter($resetRows, fn ($r) => $r['Opened'] || $r['Closed'] || $r['Hidden']));
 check('Aufbau: Reset speichert nichts selbst (Property unveraendert, kein ApplyChanges)', $GLOBALS['ips']['properties']['FormLayout'] === $propsBeforeReset && $GLOBALS['ips']['applied'] === false);
 check('Aufbau: Reset-Knopf im Panel ruft WPHUB_ResetFormLayout auf', (function () use ($fLayoutStd) {
     foreach (findFormElement($fLayoutStd['elements'], 'LayoutPanel')['items'] as $it) {
@@ -2651,7 +2651,7 @@ foreach (array_merge([__DIR__ . '/../WPHub/module.php'], glob(__DIR__ . '/../WPH
         if (!is_array($t)) {
             continue;
         }
-        if ($t[0] === T_STRING && $t[1] === 'WPHUB_Text' && ($tokens[$i + 1][1] ?? '') === '::' && ($tokens[$i + 2][1] ?? '') === 't' && ($tokens[$i + 3] ?? '') === '(') {
+        if ($t[0] === T_STRING && $t[1] === 'WPHUB_Text' && ($tokens[$i + 1][1] ?? '') === '::' && in_array(($tokens[$i + 2][1] ?? ''), ['t', 'quelle'], true) && ($tokens[$i + 3] ?? '') === '(') {
             $arg = $tokens[$i + 4] ?? null;
             if (is_array($arg) && $arg[0] === T_CONSTANT_ENCAPSED_STRING) {
                 $lit = $arg[1];
@@ -2908,6 +2908,109 @@ WPHUB_Text::setzen(WPHUB_Text::mitMerkliste(function (string $t): string { throw
 check('Übersetzer wirft: Quelltext bleibt stehen, nichts bricht ab', WPHUB_Text::t('Hot water') === 'Hot water' && WPHUB_Text::t('%s failed', 'X') === 'X failed');
 $GLOBALS['ips']['locale'] = $deTable;
 new WPHub(12345); // Uebersetzer zurueck auf die Instanz
+
+// ---------------------------------------------------------------------------
+echo "Block 13: Kronoterm-Cloud (Vorlage Dirk Allard, nach NRG-Stack-Konventionen ueberarbeitet)\n";
+// ---------------------------------------------------------------------------
+
+// Reine Klassen (Client, Mapper, Puffer, Energie, Inventar) als Unterprozesse
+foreach (['client', 'mapper', 'buffer', 'energy', 'cloud-inventory'] as $krTest) {
+    $krOut = [];
+    exec(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . '/kronoterm/test-' . $krTest . '.php') . ' 2>&1', $krOut, $krCode);
+    check('Kronoterm-Klassentest ' . $krTest, $krCode === 0, implode(' | ', array_slice($krOut, -2)));
+}
+
+// Seiten der Kronoterm-Cloud als Attrappe (nur Lesen)
+$krCalls = [];
+$krState = ['mode' => 'ok'];
+$krTransport = function (array $o) use (&$krCalls, &$krState): array {
+    $krCalls[] = $o['method'] . ' ' . $o['url'];
+    if ($krState['mode'] === 'denied') {
+        return ['status' => 401, 'body' => ''];
+    }
+    if ($krState['mode'] === 'down') {
+        return ['status' => 503, 'body' => ''];
+    }
+    $url = $o['url'];
+    if (str_contains($url, 'Menu=1')) {
+        return ['status' => 200, 'body' => json_encode(['hp_id' => '4711'])];
+    }
+    if (str_contains($url, 'TopPage=5') && str_contains($url, 'Subpage=3')) {
+        return ['status' => 200, 'body' => json_encode(['ModbusReg' => [
+            ['address' => 2103, 'value' => '-3.5'], ['address' => 2101, 'value' => '31.5'],
+            ['address' => 2104, 'value' => '38.0'], ['address' => 2001, 'value' => 0], ['address' => 2006, 'value' => 0],
+        ]])];
+    }
+    if (str_contains($url, 'TopPage=1') && str_contains($url, 'Subpage=1')) {
+        return ['status' => 200, 'body' => json_encode(['TemperaturesAndConfig' => ['reservoir_temp' => '33.3 °C']])];
+    }
+    return ['status' => 404, 'body' => ''];
+};
+$GLOBALS['ips']['kronotermClientFactory'] = fn (string $u, string $p) => new WPHUB_KronotermClient($u, $p, $krTransport);
+
+$krLogin = new ReflectionMethod(WPHub::class, 'KronotermLogin');
+$krLogin->setAccessible(true);
+$readAttrMethod = new ReflectionMethod(WPHub::class, 'ReadAttributeString');
+$readAttrMethod->setAccessible(true);
+$readAttr = new class($readAttrMethod) {
+    public function __construct(private ReflectionMethod $m) {}
+    public function invoke($obj, string $name) { return $this->m->invoke($obj, $name); }
+};
+$krStatus = function () use ($mod): int { $p = new ReflectionProperty($mod, 'status'); $p->setAccessible(true); return $p->getValue($mod); };
+$GLOBALS['ips']['properties']['Manufacturer'] = 'kronoterm';
+$GLOBALS['ips']['properties']['WPHUB_Active'] = true;
+$GLOBALS['ips']['properties']['KR_Username'] = 'dirk@example.invalid';
+$GLOBALS['ips']['properties']['KR_Password'] = 'Geheim-4711';
+$GLOBALS['ips']['variables'] = [];
+$GLOBALS['ips']['log'] = [];
+$GLOBALS['ips']['debug'] = [];
+$setAttr->invoke($mod, 'KR_Credentials', '');
+
+// falsche Zugangsdaten: nichts wird gespeichert, das Passwortfeld bleibt zum Korrigieren
+$krState['mode'] = 'denied';
+$krLogin->invoke($mod);
+check('Kronoterm: abgelehnte Anmeldung speichert keine Zugangsdaten', $readAttr->invoke($mod, 'KR_Credentials') === '');
+check('Kronoterm: bei abgelehnter Anmeldung bleibt das Passwortfeld stehen (zum Korrigieren)', ($GLOBALS['ips']['properties']['KR_Password'] ?? '') === 'Geheim-4711');
+
+// richtige Zugangsdaten: Attribut statt Property, Passwortfeld leer, kein UpdateFormField nach ApplyChanges
+$krState['mode'] = 'ok';
+$GLOBALS['ips']['applied'] = false;
+$GLOBALS['ips']['formUpdatesAfterApply'] = 0;
+$krLogin->invoke($mod);
+$krCred = json_decode((string)$readAttr->invoke($mod, 'KR_Credentials'), true);
+check('Kronoterm: Zugangsdaten stehen im Attribut KR_Credentials', ($krCred['u'] ?? '') === 'dirk@example.invalid' && ($krCred['p'] ?? '') === 'Geheim-4711');
+check('Kronoterm: Passwort-Property danach leer, ApplyChanges ausgeloest', ($GLOBALS['ips']['properties']['KR_Password'] ?? null) === '' && ($GLOBALS['ips']['applied'] ?? false) === true);
+check('Kronoterm: nach ApplyChanges kein UpdateFormField mehr (Checkliste 9l)', ($GLOBALS['ips']['formUpdatesAfterApply'] ?? -1) === 0);
+$krVars = array_keys($GLOBALS['ips']['variables']);
+$krFind = fn (string $suffix) => array_values(array_filter($krVars, fn ($k) => str_ends_with((string)$k, $suffix)))[0] ?? null;
+check('Kronoterm: Anmeldung liest die Anlage (Aussentemperatur -3,5, Puffer 33,3)', $krFind('Aussentemperatur') !== null && $GLOBALS['ips']['variables'][$krFind('Aussentemperatur')]['value'] === -3.5
+    && $krFind('Puffertemperatur') !== null && $GLOBALS['ips']['variables'][$krFind('Puffertemperatur')]['value'] === 33.3);
+check('Kronoterm: das Passwort steht in keinem Protokoll- oder Debugeintrag', strpos(json_encode([$GLOBALS['ips']['log'], $GLOBALS['ips']['debug']]), 'Geheim-4711') === false);
+check('Kronoterm: nur lesende Anfragen (GET; POST nur Anmeldeformular und Verbrauchsseite)', count(array_filter($krCalls, fn ($c) => !(str_starts_with($c, 'GET ') || (str_starts_with($c, 'POST ') && (str_contains($c, 'TopPage=4') || str_contains($c, '?login=1')))))) === 0, implode(' | ', array_slice($krCalls, 0, 3)));
+
+// Vertrag: Messwerte ueber contractFieldID, Leistung/Energie nur aus externen Variablen
+$krFn = $mod->GetFunctions();
+check('Kronoterm: Vertrag nennt WP-Eintritt, WP-Austritt und Puffer, PowerID/EnergyID bleiben ohne externe Zaehler 0', ($krFn[0]['mainInletTempID'] ?? 0) > 0 && ($krFn[0]['mainOutletTempID'] ?? 0) > 0
+    && ($krFn[0]['bufferTempID'] ?? 0) > 0 && ($krFn[0]['PowerID'] ?? -1) === 0 && ($krFn[0]['EnergyID'] ?? -1) === 0, json_encode($krFn[0] ?? null));
+check('Kronoterm: Abfrageintervall im Vertrag mindestens 300 s', ($krFn[0]['pollInterval'] ?? 0) >= 300);
+
+// Ausfall der Cloud: nicht erreichbar, Status 201, alte Werte bleiben
+$krState['mode'] = 'down';
+$mod->Update();
+check('Kronoterm: Cloud-Ausfall setzt Erreichbar auf false und Status 201', $GLOBALS['ips']['variables'][$krFind('Erreichbar')]['value'] === false && $krStatus() === 201);
+check('Kronoterm: Cloud-Ausfall loescht keinen Messwert', $GLOBALS['ips']['variables'][$krFind('Aussentemperatur')]['value'] === -3.5);
+
+// Cloud wieder da
+$krState['mode'] = 'ok';
+$mod->Update();
+check('Kronoterm: nach dem Ausfall wieder erreichbar, Status 102', $GLOBALS['ips']['variables'][$krFind('Erreichbar')]['value'] === true && $krStatus() === 102);
+
+// Archivierung nur auf Klick: kein Logging-Aufruf, keine Sichtbarkeitsaenderung durch den Kronoterm-Zweig
+check('Kronoterm: der Zweig schaltet kein Logging ein', array_reduce(array_keys($GLOBALS['ips']['variables']), fn ($c, $k) => $c && (($GLOBALS['ips']['archived'][$GLOBALS['ips']['variables'][$k]['id']] ?? false) === false), true));
+unset($GLOBALS['ips']['kronotermClientFactory']);
+$GLOBALS['ips']['properties']['Manufacturer'] = 'panasonic';
+$setAttr->invoke($mod, 'KR_Credentials', '');
+$setAttr->invoke($mod, 'KR_DeviceList', '[]');
 
 // ---------------------------------------------------------------------------
 echo "Block 5: Vollstaendigkeit der Methodenaufrufe\n";

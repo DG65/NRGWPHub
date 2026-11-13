@@ -1,6 +1,6 @@
 <?php
 /** Offline smoke/regression tests: php .tools/test-kronoterm-client.php */
-require_once __DIR__ . '/../WPHub/libs/KronotermClient.php';
+require_once __DIR__ . '/../../WPHub/libs/KronotermClient.php';
 
 function check(bool $condition, string $message): void
 {

@@ -355,7 +355,7 @@
             "items": [
                 {
                     "type": "Label",
-                    "caption": "Kronoterm Cloud requires reusable credentials for automatic reconnection."
+                    "caption": "The Kronoterm Cloud has no access token: every request needs the username and password. After a successful login the module keeps both in a hidden internal field (not encrypted, but not visible in the form or the log) and clears the password field here."
                 },
                 {
                     "type": "ValidationTextBox",
@@ -365,11 +365,17 @@
                 {
                     "type": "PasswordTextBox",
                     "name": "KR_Password",
-                    "caption": "Kronoterm password"
+                    "caption": "Kronoterm password (cleared after login)"
                 },
                 {
                     "type": "Button",
-                    "caption": "Test Kronoterm Cloud and read installation inventory",
+                    "name": "KR_LoginButton",
+                    "caption": "🔑  Log in to the Kronoterm Cloud",
+                    "onClick": "WPHUB_KronotermLogin($id);"
+                },
+                {
+                    "type": "Button",
+                    "caption": "Test the connection and read the installation",
                     "onClick": "WPHUB_TestKronoterm($id);"
                 },
                 {
@@ -398,416 +404,407 @@
                     "type": "Label",
                     "name": "KR_EnergyStatus",
                     "caption": ""
-                }
-            ]
-        },
-        {
-            "type": "ExpansionPanel",
-            "name": "KronotermValuesPanel",
-            "caption": "Kronoterm additional Cloud values (unmapped, deduplicated)",
-            "expanded": false,
-            "items": [
-                {
-                    "type": "Label",
-                    "name": "KR_CloudCatalogSummary",
-                    "caption": "No Cloud field inventory available yet; read the installation inventory first."
                 },
                 {
-                    "type": "Label",
-                    "caption": "Only unassigned fields appear. Repeated complete, identical API blocks are collapsed; equal single values are never assumed to be duplicates. Enable a row to create a variable. Archiving is effective only for enabled rows. BMS descriptions cite the manual; meanings inferred from Cloud field names are explicitly marked unverified. Unknown register meanings remain undocumented."
-                },
-                {
-                    "type": "List",
-                    "name": "KR_ExtraValues",
-                    "caption": "Available additional Cloud fields",
-                    "rowCount": 15,
-                    "loadValuesFromConfiguration": false,
-                    "add": false,
-                    "delete": false,
-                    "columns": [
+                    "type": "ExpansionPanel",
+                    "name": "KronotermValuesPanel",
+                    "caption": "Kronoterm additional Cloud values (unmapped, deduplicated)",
+                    "expanded": false,
+                    "items": [
                         {
-                            "caption": "Name (Cloud path)",
-                            "name": "Name",
-                            "width": "auto",
-                            "save": false
+                            "type": "Label",
+                            "name": "KR_CloudCatalogSummary",
+                            "caption": "No Cloud field inventory available yet; read the installation inventory first."
                         },
                         {
-                            "caption": "Purpose",
-                            "name": "Purpose",
-                            "width": "270px",
-                            "save": false
+                            "type": "Label",
+                            "caption": "Only unassigned fields appear. Repeated complete, identical API blocks are collapsed; equal single values are never assumed to be duplicates. Enable a row to create a variable. Archiving is effective only for enabled rows. BMS descriptions cite the manual; meanings inferred from Cloud field names are explicitly marked unverified. Unknown register meanings remain undocumented."
                         },
                         {
-                            "caption": "Nachweis / Quelle",
-                            "name": "Evidence",
-                            "width": "270px",
-                            "save": false
-                        },
-                        {
-                            "caption": "Unit",
-                            "name": "Unit",
-                            "width": "95px",
-                            "add": "",
-                            "edit": {
-                                "type": "Select",
-                                "options": [
-                                    {
-                                        "caption": "—",
-                                        "value": ""
-                                    },
-                                    {
-                                        "caption": "°C",
-                                        "value": "°C"
-                                    },
-                                    {
-                                        "caption": "K",
-                                        "value": "K"
-                                    },
-                                    {
-                                        "caption": "%",
-                                        "value": "%"
-                                    },
-                                    {
-                                        "caption": "W",
-                                        "value": "W"
-                                    },
-                                    {
-                                        "caption": "kW",
-                                        "value": "kW"
-                                    },
-                                    {
-                                        "caption": "Wh",
-                                        "value": "Wh"
-                                    },
-                                    {
-                                        "caption": "kWh",
-                                        "value": "kWh"
-                                    },
-                                    {
-                                        "caption": "bar",
-                                        "value": "bar"
-                                    },
-                                    {
-                                        "caption": "Pa",
-                                        "value": "Pa"
-                                    },
-                                    {
-                                        "caption": "Hz",
-                                        "value": "Hz"
-                                    },
-                                    {
-                                        "caption": "rpm",
-                                        "value": "rpm"
-                                    },
-                                    {
-                                        "caption": "A",
-                                        "value": "A"
-                                    },
-                                    {
-                                        "caption": "V",
-                                        "value": "V"
-                                    },
-                                    {
-                                        "caption": "h",
-                                        "value": "h"
-                                    },
-                                    {
-                                        "caption": "min",
-                                        "value": "min"
-                                    },
-                                    {
-                                        "caption": "s",
-                                        "value": "s"
-                                    },
-                                    {
-                                        "caption": "d",
-                                        "value": "d"
-                                    },
-                                    {
-                                        "caption": "m³",
-                                        "value": "m³"
-                                    },
-                                    {
-                                        "caption": "m³/h",
-                                        "value": "m³/h"
-                                    },
-                                    {
-                                        "caption": "l/min",
-                                        "value": "l/min"
-                                    },
-                                    {
-                                        "caption": "Count",
-                                        "value": "count"
+                            "type": "List",
+                            "name": "KR_ExtraValues",
+                            "caption": "Available additional Cloud fields",
+                            "rowCount": 15,
+                            "loadValuesFromConfiguration": false,
+                            "add": false,
+                            "delete": false,
+                            "columns": [
+                                {
+                                    "caption": "Name (Cloud path)",
+                                    "name": "Name",
+                                    "width": "auto",
+                                    "save": false
+                                },
+                                {
+                                    "caption": "Purpose",
+                                    "name": "Purpose",
+                                    "width": "270px",
+                                    "save": false
+                                },
+                                {
+                                    "caption": "Evidence / source",
+                                    "name": "Evidence",
+                                    "width": "270px",
+                                    "save": false
+                                },
+                                {
+                                    "caption": "Unit",
+                                    "name": "Unit",
+                                    "width": "95px",
+                                    "add": "",
+                                    "edit": {
+                                        "type": "Select",
+                                        "options": [
+                                            {
+                                                "caption": "—",
+                                                "value": ""
+                                            },
+                                            {
+                                                "caption": "°C",
+                                                "value": "°C"
+                                            },
+                                            {
+                                                "caption": "K",
+                                                "value": "K"
+                                            },
+                                            {
+                                                "caption": "%",
+                                                "value": "%"
+                                            },
+                                            {
+                                                "caption": "W",
+                                                "value": "W"
+                                            },
+                                            {
+                                                "caption": "kW",
+                                                "value": "kW"
+                                            },
+                                            {
+                                                "caption": "Wh",
+                                                "value": "Wh"
+                                            },
+                                            {
+                                                "caption": "kWh",
+                                                "value": "kWh"
+                                            },
+                                            {
+                                                "caption": "bar",
+                                                "value": "bar"
+                                            },
+                                            {
+                                                "caption": "Pa",
+                                                "value": "Pa"
+                                            },
+                                            {
+                                                "caption": "Hz",
+                                                "value": "Hz"
+                                            },
+                                            {
+                                                "caption": "rpm",
+                                                "value": "rpm"
+                                            },
+                                            {
+                                                "caption": "A",
+                                                "value": "A"
+                                            },
+                                            {
+                                                "caption": "V",
+                                                "value": "V"
+                                            },
+                                            {
+                                                "caption": "h",
+                                                "value": "h"
+                                            },
+                                            {
+                                                "caption": "min",
+                                                "value": "min"
+                                            },
+                                            {
+                                                "caption": "s",
+                                                "value": "s"
+                                            },
+                                            {
+                                                "caption": "d",
+                                                "value": "d"
+                                            },
+                                            {
+                                                "caption": "m³",
+                                                "value": "m³"
+                                            },
+                                            {
+                                                "caption": "m³/h",
+                                                "value": "m³/h"
+                                            },
+                                            {
+                                                "caption": "l/min",
+                                                "value": "l/min"
+                                            },
+                                            {
+                                                "caption": "Count",
+                                                "value": "count"
+                                            }
+                                        ]
                                     }
-                                ]
-                            }
-                        },
-                        {
-                            "caption": "Enabled",
-                            "name": "Active",
-                            "width": "75px",
-                            "add": false,
-                            "edit": {
-                                "type": "CheckBox"
-                            }
-                        },
-                        {
-                            "caption": "Archive (if enabled)",
-                            "name": "Archive",
-                            "width": "80px",
-                            "add": false,
-                            "edit": {
-                                "type": "CheckBox"
-                            }
-                        },
-                        {
-                            "caption": "Last value",
-                            "name": "LastValue",
-                            "width": "110px",
-                            "save": false
-                        },
-                        {
-                            "caption": "Last received",
-                            "name": "LastReceived",
-                            "width": "150px",
-                            "save": false
-                        },
-                        {
-                            "caption": "Cloud Path",
-                            "name": "Path",
-                            "width": "0px",
-                            "visible": false,
-                            "save": true,
-                            "add": ""
-                        }
-                    ],
-                    "values": []
-                }
-            ]
-        },
-        {
-            "type": "ExpansionPanel",
-            "name": "KronotermBufferPanel",
-            "caption": "Kronoterm buffer installation and sensors",
-            "expanded": false,
-            "items": [
-                {
-                    "type": "Label",
-                    "caption": "The upper heating buffer sensor is automatically read from info.TemperaturesAndConfig.reservoir_temp. No manual source selection is required for this sensor."
-                },
-                {
-                    "type": "Label",
-                    "caption": "Choose the physical buffer layout. Unknown Cloud flags do not mean absent installation."
-                },
-                {
-                    "type": "Select",
-                    "name": "KR_BufferLayout",
-                    "caption": "Physical buffer layout",
-                    "options": [
-                        {
-                            "caption": "Automatic (verified flags only)",
-                            "value": "auto"
-                        },
-                        {
-                            "caption": "No buffer",
-                            "value": "none"
-                        },
-                        {
-                            "caption": "Heating buffer only",
-                            "value": "heating"
-                        },
-                        {
-                            "caption": "Cooling buffer only",
-                            "value": "cooling"
-                        },
-                        {
-                            "caption": "Separate heating and cooling buffers",
-                            "value": "separate"
-                        },
-                        {
-                            "caption": "Combined heating/cooling buffer",
-                            "value": "combined"
-                        }
-                    ]
-                },
-                {
-                    "type": "Label",
-                    "name": "KR_BufferCandidates",
-                    "caption": ""
-                },
-                {
-                    "type": "Label",
-                    "caption": "For each sensor choose Cloud or a measured external Symcon temperature. Cloud field paths must be verified against this controller."
-                },
-                {
-                    "type": "ExpansionPanel",
-                    "name": "KR_HeatTopPanel",
-                    "caption": "Buffer 1 / heating top",
-                    "expanded": false,
-                    "items": [
-                        {
-                            "type": "Select",
-                            "name": "KR_HeatTopSource",
-                            "caption": "Temperature source",
-                            "options": [
-                                {
-                                    "caption": "Disabled",
-                                    "value": "off"
                                 },
                                 {
-                                    "caption": "Kronoterm Cloud",
-                                    "value": "cloud"
+                                    "caption": "Enabled",
+                                    "name": "Active",
+                                    "width": "75px",
+                                    "add": false,
+                                    "edit": {
+                                        "type": "CheckBox"
+                                    }
                                 },
                                 {
-                                    "caption": "External Symcon variable",
-                                    "value": "external"
-                                }
-                            ]
-                        },
-                        {
-                            "type": "SelectVariable",
-                            "name": "KR_HeatTopExternal",
-                            "caption": "External temperature variable (°C)"
-                        },
-                        {
-                            "type": "Select",
-                            "name": "KR_HeatTopCloudPath",
-                            "options": [
+                                    "caption": "Last value",
+                                    "name": "LastValue",
+                                    "width": "110px",
+                                    "save": false
+                                },
                                 {
-                                    "caption": "Select Cloud measurement",
-                                    "value": ""
+                                    "caption": "Last received",
+                                    "name": "LastReceived",
+                                    "width": "150px",
+                                    "save": false
+                                },
+                                {
+                                    "caption": "Cloud Path",
+                                    "name": "Path",
+                                    "width": "0px",
+                                    "visible": false,
+                                    "save": true,
+                                    "add": ""
                                 }
                             ],
-                            "caption": "Cloud measurement (identify sensor before assigning)"
+                            "values": []
                         }
                     ]
                 },
                 {
                     "type": "ExpansionPanel",
-                    "name": "KR_HeatBottomPanel",
-                    "caption": "Buffer 1 / heating bottom",
+                    "name": "KronotermBufferPanel",
+                    "caption": "Kronoterm buffer installation and sensors",
                     "expanded": false,
                     "items": [
                         {
+                            "type": "Label",
+                            "caption": "The upper heating buffer sensor is automatically read from info.TemperaturesAndConfig.reservoir_temp. No manual source selection is required for this sensor."
+                        },
+                        {
+                            "type": "Label",
+                            "caption": "Choose the physical buffer layout. Unknown Cloud flags do not mean absent installation."
+                        },
+                        {
                             "type": "Select",
-                            "name": "KR_HeatBottomSource",
-                            "caption": "Temperature source",
+                            "name": "KR_BufferLayout",
+                            "caption": "Physical buffer layout",
                             "options": [
                                 {
-                                    "caption": "Disabled",
-                                    "value": "off"
+                                    "caption": "Automatic (verified flags only)",
+                                    "value": "auto"
                                 },
                                 {
-                                    "caption": "Kronoterm Cloud",
-                                    "value": "cloud"
+                                    "caption": "No buffer",
+                                    "value": "none"
                                 },
                                 {
-                                    "caption": "External Symcon variable",
-                                    "value": "external"
+                                    "caption": "Heating buffer only",
+                                    "value": "heating"
+                                },
+                                {
+                                    "caption": "Cooling buffer only",
+                                    "value": "cooling"
+                                },
+                                {
+                                    "caption": "Separate heating and cooling buffers",
+                                    "value": "separate"
+                                },
+                                {
+                                    "caption": "Combined heating/cooling buffer",
+                                    "value": "combined"
                                 }
                             ]
                         },
                         {
-                            "type": "SelectVariable",
-                            "name": "KR_HeatBottomExternal",
-                            "caption": "External temperature variable (°C)"
+                            "type": "Label",
+                            "name": "KR_BufferCandidates",
+                            "caption": ""
                         },
                         {
-                            "type": "Select",
-                            "name": "KR_HeatBottomCloudPath",
-                            "options": [
-                                {
-                                    "caption": "Select Cloud measurement",
-                                    "value": ""
-                                }
-                            ],
-                            "caption": "Cloud measurement (identify sensor before assigning)"
-                        }
-                    ]
-                },
-                {
-                    "type": "ExpansionPanel",
-                    "name": "KR_CoolTopPanel",
-                    "caption": "Cooling buffer top",
-                    "expanded": false,
-                    "items": [
+                            "type": "Label",
+                            "caption": "For each sensor choose Cloud or a measured external Symcon temperature. Cloud field paths must be verified against this controller."
+                        },
                         {
-                            "type": "Select",
-                            "name": "KR_CoolTopSource",
-                            "caption": "Temperature source",
-                            "options": [
+                            "type": "ExpansionPanel",
+                            "name": "KR_HeatTopPanel",
+                            "caption": "Buffer 1 / heating top",
+                            "expanded": false,
+                            "items": [
                                 {
-                                    "caption": "Disabled",
-                                    "value": "off"
+                                    "type": "Select",
+                                    "name": "KR_HeatTopSource",
+                                    "caption": "Temperature source",
+                                    "options": [
+                                        {
+                                            "caption": "Disabled",
+                                            "value": "off"
+                                        },
+                                        {
+                                            "caption": "Kronoterm Cloud",
+                                            "value": "cloud"
+                                        },
+                                        {
+                                            "caption": "External Symcon variable",
+                                            "value": "external"
+                                        }
+                                    ]
                                 },
                                 {
-                                    "caption": "Kronoterm Cloud",
-                                    "value": "cloud"
+                                    "type": "SelectVariable",
+                                    "name": "KR_HeatTopExternal",
+                                    "caption": "External temperature variable (°C)"
                                 },
                                 {
-                                    "caption": "External Symcon variable",
-                                    "value": "external"
+                                    "type": "Select",
+                                    "name": "KR_HeatTopCloudPath",
+                                    "options": [
+                                        {
+                                            "caption": "Select Cloud measurement",
+                                            "value": ""
+                                        }
+                                    ],
+                                    "caption": "Cloud measurement (identify sensor before assigning)"
                                 }
                             ]
                         },
                         {
-                            "type": "SelectVariable",
-                            "name": "KR_CoolTopExternal",
-                            "caption": "External temperature variable (°C)"
-                        },
-                        {
-                            "type": "Select",
-                            "name": "KR_CoolTopCloudPath",
-                            "options": [
+                            "type": "ExpansionPanel",
+                            "name": "KR_HeatBottomPanel",
+                            "caption": "Buffer 1 / heating bottom",
+                            "expanded": false,
+                            "items": [
                                 {
-                                    "caption": "Select Cloud measurement",
-                                    "value": ""
-                                }
-                            ],
-                            "caption": "Cloud measurement (identify sensor before assigning)"
-                        }
-                    ]
-                },
-                {
-                    "type": "ExpansionPanel",
-                    "name": "KR_CoolBottomPanel",
-                    "caption": "Cooling buffer bottom",
-                    "expanded": false,
-                    "items": [
-                        {
-                            "type": "Select",
-                            "name": "KR_CoolBottomSource",
-                            "caption": "Temperature source",
-                            "options": [
-                                {
-                                    "caption": "Disabled",
-                                    "value": "off"
+                                    "type": "Select",
+                                    "name": "KR_HeatBottomSource",
+                                    "caption": "Temperature source",
+                                    "options": [
+                                        {
+                                            "caption": "Disabled",
+                                            "value": "off"
+                                        },
+                                        {
+                                            "caption": "Kronoterm Cloud",
+                                            "value": "cloud"
+                                        },
+                                        {
+                                            "caption": "External Symcon variable",
+                                            "value": "external"
+                                        }
+                                    ]
                                 },
                                 {
-                                    "caption": "Kronoterm Cloud",
-                                    "value": "cloud"
+                                    "type": "SelectVariable",
+                                    "name": "KR_HeatBottomExternal",
+                                    "caption": "External temperature variable (°C)"
                                 },
                                 {
-                                    "caption": "External Symcon variable",
-                                    "value": "external"
+                                    "type": "Select",
+                                    "name": "KR_HeatBottomCloudPath",
+                                    "options": [
+                                        {
+                                            "caption": "Select Cloud measurement",
+                                            "value": ""
+                                        }
+                                    ],
+                                    "caption": "Cloud measurement (identify sensor before assigning)"
                                 }
                             ]
                         },
                         {
-                            "type": "SelectVariable",
-                            "name": "KR_CoolBottomExternal",
-                            "caption": "External temperature variable (°C)"
+                            "type": "ExpansionPanel",
+                            "name": "KR_CoolTopPanel",
+                            "caption": "Cooling buffer top",
+                            "expanded": false,
+                            "items": [
+                                {
+                                    "type": "Select",
+                                    "name": "KR_CoolTopSource",
+                                    "caption": "Temperature source",
+                                    "options": [
+                                        {
+                                            "caption": "Disabled",
+                                            "value": "off"
+                                        },
+                                        {
+                                            "caption": "Kronoterm Cloud",
+                                            "value": "cloud"
+                                        },
+                                        {
+                                            "caption": "External Symcon variable",
+                                            "value": "external"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "type": "SelectVariable",
+                                    "name": "KR_CoolTopExternal",
+                                    "caption": "External temperature variable (°C)"
+                                },
+                                {
+                                    "type": "Select",
+                                    "name": "KR_CoolTopCloudPath",
+                                    "options": [
+                                        {
+                                            "caption": "Select Cloud measurement",
+                                            "value": ""
+                                        }
+                                    ],
+                                    "caption": "Cloud measurement (identify sensor before assigning)"
+                                }
+                            ]
                         },
                         {
-                            "type": "Select",
-                            "name": "KR_CoolBottomCloudPath",
-                            "options": [
+                            "type": "ExpansionPanel",
+                            "name": "KR_CoolBottomPanel",
+                            "caption": "Cooling buffer bottom",
+                            "expanded": false,
+                            "items": [
                                 {
-                                    "caption": "Select Cloud measurement",
-                                    "value": ""
+                                    "type": "Select",
+                                    "name": "KR_CoolBottomSource",
+                                    "caption": "Temperature source",
+                                    "options": [
+                                        {
+                                            "caption": "Disabled",
+                                            "value": "off"
+                                        },
+                                        {
+                                            "caption": "Kronoterm Cloud",
+                                            "value": "cloud"
+                                        },
+                                        {
+                                            "caption": "External Symcon variable",
+                                            "value": "external"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "type": "SelectVariable",
+                                    "name": "KR_CoolBottomExternal",
+                                    "caption": "External temperature variable (°C)"
+                                },
+                                {
+                                    "type": "Select",
+                                    "name": "KR_CoolBottomCloudPath",
+                                    "options": [
+                                        {
+                                            "caption": "Select Cloud measurement",
+                                            "value": ""
+                                        }
+                                    ],
+                                    "caption": "Cloud measurement (identify sensor before assigning)"
                                 }
-                            ],
-                            "caption": "Cloud measurement (identify sensor before assigning)"
+                            ]
                         }
                     ]
                 }

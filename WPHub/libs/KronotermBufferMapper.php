@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/WPHUB_Text.php';
 require_once __DIR__ . '/KronotermMeasurementCatalog.php';
 /**
  * User-controlled Kronoterm buffer inventory and measured temperatures.
@@ -21,16 +22,16 @@ final class WPHUB_KronotermBufferMapper
         }
         $points = [];
         if ($layout === 'heating' || $layout === 'separate') {
-            $points['heat_top'] = ['KTHeizpufferOben', 'Kronoterm heating buffer top temperature'];
-            $points['heat_bottom'] = ['KTHeizpufferUnten', 'Kronoterm heating buffer bottom temperature'];
+            $points['heat_top'] = ['KTHeizpufferOben', WPHUB_Text::quelle('Kronoterm heating buffer top temperature')];
+            $points['heat_bottom'] = ['KTHeizpufferUnten', WPHUB_Text::quelle('Kronoterm heating buffer bottom temperature')];
         }
         if ($layout === 'cooling' || $layout === 'separate') {
-            $points['cool_top'] = ['KTKuehlpufferOben', 'Kronoterm cooling buffer top temperature'];
-            $points['cool_bottom'] = ['KTKuehlpufferUnten', 'Kronoterm cooling buffer bottom temperature'];
+            $points['cool_top'] = ['KTKuehlpufferOben', WPHUB_Text::quelle('Kronoterm cooling buffer top temperature')];
+            $points['cool_bottom'] = ['KTKuehlpufferUnten', WPHUB_Text::quelle('Kronoterm cooling buffer bottom temperature')];
         }
         if ($layout === 'combined') {
-            $points['heat_top'] = ['KTKombipufferOben', 'Kronoterm combined buffer top temperature'];
-            $points['heat_bottom'] = ['KTKombipufferUnten', 'Kronoterm combined buffer bottom temperature'];
+            $points['heat_top'] = ['KTKombipufferOben', WPHUB_Text::quelle('Kronoterm combined buffer top temperature')];
+            $points['heat_bottom'] = ['KTKombipufferUnten', WPHUB_Text::quelle('Kronoterm combined buffer bottom temperature')];
         }
         $out = [];
         $channels = is_array($config['channels'] ?? null) ? $config['channels'] : [];

@@ -1,6 +1,6 @@
 <?php
 /** Offline tests: php .tools/test-kronoterm-mapper.php */
-require_once __DIR__ . '/../WPHub/libs/KronotermDataMapper.php';
+require_once __DIR__ . '/../../WPHub/libs/KronotermDataMapper.php';
 function checkMap(bool $pass, string $name): void {
     if (!$pass) throw new RuntimeException('FAILED: ' . $name);
     echo 'OK  ' . $name . "\n";
@@ -70,7 +70,7 @@ $extended = WPHUB_KronotermDataMapper::mapSnapshot([
 checkMap(abs($extended['KTCOP']['value'] - 4.2) < 0.001, 'COP dynamically scaled');
 checkMap(abs($extended['KTSCOP']['value'] - 3.5) < 0.001, 'SCOP dynamically scaled');
 checkMap($extended['KTThermischeLeistung']['value'] === 2800.0, 'Thermal output not electric power');
-checkMap($extended['KTEnergieElektrischKumuliert']['value'] === 65538.0, 'Cumulative electric counter combined from words');
+checkMap(!isset($extended['KTEnergieElektrischKumuliert']), 'Cloud electric counter is NOT mapped (power/energy only from external meters)');
 checkMap($extended['KTEnergieThermischKumuliert']['value'] === 10.0, 'Thermal counter scaling');
 checkMap(!isset($extended['EnergyID']) && !isset($extended['PowerID']), 'No unverified direct contract mapping');
 checkMap($extended['KTUmwaelzpumpe']['value'] === true && !isset($extended['KTWarmwasserUmwaelzpumpe']), 'Bit pump without unconfigured DHW');

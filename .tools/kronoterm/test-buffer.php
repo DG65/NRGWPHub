@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../WPHub/libs/KronotermBufferMapper.php';
+require_once __DIR__ . '/../../WPHub/libs/KronotermBufferMapper.php';
 function testBuffer(bool $ok, string $name): void {
     if (!$ok) { throw new RuntimeException('FAILED: ' . $name); }
     echo 'OK  ' . $name . "\n";

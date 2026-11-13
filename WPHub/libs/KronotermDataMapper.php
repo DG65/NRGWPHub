@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/WPHUB_Text.php';
 /**
  * Kronoterm Cloud snapshot -> typed, quality-checked WPHub variables.
  * Source: Favio25/Kronoterm-homeassistant, const.py, climate.py, binary_sensor.py.
@@ -37,28 +38,28 @@ final class WPHUB_KronotermDataMapper
             $out[$ident] = ['value' => $value, 'type' => 'boolean', 'profile' => '', 'label' => $label, 'source' => $source];
         };
         $r = static fn(int $address) => $registers[$address] ?? null;
-        $float('Aussentemperatur', 'Outdoor temperature', 'main.ModbusReg[2103]', $r(2103), 'NRG.Celsius', -60, 80);
+        $float('Aussentemperatur', WPHUB_Text::quelle('Outdoor temperature'), 'main.ModbusReg[2103]', $r(2103), 'NRG.Celsius', -60, 80);
         // WP inlet/outlet are NOT necessarily the mixed heating-circuit flow/return.
-        $float('KTWPEintritt', 'Kronoterm HP inlet temperature', 'main.ModbusReg[2101]', $r(2101), 'NRG.Celsius', -60, 150);
-        $float('KTWPAustritt', 'Kronoterm HP outlet temperature', 'main.ModbusReg[2104]', $r(2104), 'NRG.Celsius', -60, 150);
+        $float('KTWPEintritt', WPHUB_Text::quelle('Kronoterm HP inlet temperature'), 'main.ModbusReg[2101]', $r(2101), 'NRG.Celsius', -60, 150);
+        $float('KTWPAustritt', WPHUB_Text::quelle('Kronoterm HP outlet temperature'), 'main.ModbusReg[2104]', $r(2104), 'NRG.Celsius', -60, 150);
         // Verified upper reservoir sensor in this VERSI-X installation.
         // Never substitute reservoir.HeatingCircleData.circle_calc_temp (setpoint).
         $info = is_array($pages['info'] ?? null) ? $pages['info'] : [];
-        $float('Puffertemperatur', 'Kronoterm upper buffer sensor',
+        $float('Puffertemperatur', WPHUB_Text::quelle('Kronoterm upper buffer sensor'),
             'info.TemperaturesAndConfig.reservoir_temp',
             self::path($info, ['TemperaturesAndConfig', 'reservoir_temp']), 'NRG.Celsius', -40, 120);
-        $float('KTVerdichterEintritt', 'Kronoterm compressor inlet temperature', 'main.ModbusReg[2105]', $r(2105), 'NRG.Celsius', -60, 150);
-        $float('KTVerdichterAustritt', 'Kronoterm compressor outlet temperature', 'main.ModbusReg[2106]', $r(2106), 'NRG.Celsius', -60, 150);
-        $float('Systemdruck', 'System pressure', 'main.ModbusReg[2326]', $r(2326), '', 0, 15);
-        $float('WPAuslastung', 'Kronoterm HP load', 'main.ModbusReg[2327]', $r(2327), 'NRG.Percent', 0, 100);
+        $float('KTVerdichterEintritt', WPHUB_Text::quelle('Kronoterm compressor inlet temperature'), 'main.ModbusReg[2105]', $r(2105), 'NRG.Celsius', -60, 150);
+        $float('KTVerdichterAustritt', WPHUB_Text::quelle('Kronoterm compressor outlet temperature'), 'main.ModbusReg[2106]', $r(2106), 'NRG.Celsius', -60, 150);
+        $float('Systemdruck', WPHUB_Text::quelle('System pressure'), 'main.ModbusReg[2326]', $r(2326), '', 0, 15);
+        $float('WPAuslastung', WPHUB_Text::quelle('Kronoterm HP load'), 'main.ModbusReg[2327]', $r(2327), 'NRG.Percent', 0, 100);
         // Additional documented Cloud registers. Values are not automatically
         // assigned to EMS PowerID/EnergyID; their semantics must first be
         // checked at the actual controller.
-        $float('KTThermischeLeistung', 'Kronoterm thermal output', 'main.ModbusReg[2329]', $r(2329), '', 0, 100000);
-        $float('KTSystemdruckGrenze', 'Kronoterm pressure limit', 'main.ModbusReg[2325]', $r(2325), '', 0, 15);
-        $integer('KTZusatzquelleBetriebsstunden', 'Kronoterm additional source operating hours', 'main.ModbusReg[2095]', $r(2095), 0);
-        $integer('KTZusatzkesselStarts', 'Kronoterm boiler starts', 'main.ModbusReg[2157]', $r(2157), 0);
-        foreach ([2371 => ['KTCOP','Kronoterm COP'], 2372 => ['KTSCOP','Kronoterm SCOP']] as $addr => [$ident, $label]) {
+        $float('KTThermischeLeistung', WPHUB_Text::quelle('Kronoterm thermal output'), 'main.ModbusReg[2329]', $r(2329), '', 0, 100000);
+        $float('KTSystemdruckGrenze', WPHUB_Text::quelle('Kronoterm pressure limit'), 'main.ModbusReg[2325]', $r(2325), '', 0, 15);
+        $integer('KTZusatzquelleBetriebsstunden', WPHUB_Text::quelle('Kronoterm additional source operating hours'), 'main.ModbusReg[2095]', $r(2095), 0);
+        $integer('KTZusatzkesselStarts', WPHUB_Text::quelle('Kronoterm boiler starts'), 'main.ModbusReg[2157]', $r(2157), 0);
+        foreach ([2371 => ['KTCOP',WPHUB_Text::quelle('Kronoterm COP')], 2372 => ['KTSCOP',WPHUB_Text::quelle('Kronoterm SCOP')]] as $addr => [$ident, $label]) {
             $factor = self::performanceFactor($r($addr));
             if ($factor !== null) $float($ident, $label, 'main.ModbusReg[' . $addr . ']', $factor, '', 0, 20);
         }
@@ -66,46 +67,46 @@ final class WPHUB_KronotermDataMapper
         // must be supplied solely by external, verified meters.
         $thermalCounter = self::combineWords($r(2363), $r(2364));
         if ($thermalCounter !== null) {
-            $float('KTEnergieThermischKumuliert', 'Kronoterm thermal energy counter (verify)',
+            $float('KTEnergieThermischKumuliert', WPHUB_Text::quelle('Kronoterm thermal energy counter (verify)'),
                 'main.ModbusReg[2363:2364]', $thermalCounter * 0.1, 'NRG.kWh', 0);
         }
         $pumpBits = self::integer($r(2028));
         if ($pumpBits !== null && $pumpBits >= 0) {
-            $boolean('KTUmwaelzpumpe', 'Kronoterm circulation pump', 'main.ModbusReg[2028].bit0', (bool)($pumpBits & 1));
+            $boolean('KTUmwaelzpumpe', WPHUB_Text::quelle('Kronoterm circulation pump'), 'main.ModbusReg[2028].bit0', (bool)($pumpBits & 1));
             if (($inventory['dhw'] ?? null) !== false) {
-                $boolean('KTWarmwasserUmwaelzpumpe', 'Kronoterm hot water circulation pump',
+                $boolean('KTWarmwasserUmwaelzpumpe', WPHUB_Text::quelle('Kronoterm hot water circulation pump'),
                     'main.ModbusReg[2028].bit1', (bool)($pumpBits & 2));
             }
         }
         $additional = self::integer($r(2002));
         if ($additional !== null && $additional >= 0) {
-            $boolean('KTZusatzquelleAktiv', 'Kronoterm additional heat source active',
+            $boolean('KTZusatzquelleAktiv', WPHUB_Text::quelle('Kronoterm additional heat source active'),
                 'main.ModbusReg[2002].bit0', (bool)($additional & 1));
         }
-        $boolean('KTAlternativeQuellenpumpe', 'Kronoterm alternative source pump', 'main.ModbusReg[2088]', $r(2088));
-        $integer('KTVerdichterstundenHeizen', 'Kronoterm compressor heating hours', 'main.ModbusReg[2090]', $r(2090), 0);
-        $integer('KTVerdichterstundenWW', 'Kronoterm compressor DHW hours', 'main.ModbusReg[2091]', $r(2091), 0);
-        $integer('KTVerdichterstartsHeizen', 'Kronoterm compressor heating starts', 'main.ModbusReg[2155]', $r(2155), 0);
-        $integer('KTVerdichterstartsKuehlen', 'Kronoterm compressor cooling starts', 'main.ModbusReg[2156]', $r(2156), 0);
-        $integer('KTAbtauungen', 'Kronoterm defrost cycles', 'main.ModbusReg[2158]', $r(2158), 0);
-        $boolean('Abtaubetrieb', 'Defrost operation', 'main.ModbusReg[2011]', $r(2011));
-        $boolean('KTHauptpumpe', 'Kronoterm main pump', 'main.ModbusReg[2038]', $r(2038));
-        $boolean('KTReservewaermequelle', 'Kronoterm reserve heat source', 'main.ModbusReg[2003]', $r(2003));
-        $boolean('KTAlternativeWaermequelle', 'Kronoterm alternative heat source', 'main.ModbusReg[2004]', $r(2004));
+        $boolean('KTAlternativeQuellenpumpe', WPHUB_Text::quelle('Kronoterm alternative source pump'), 'main.ModbusReg[2088]', $r(2088));
+        $integer('KTVerdichterstundenHeizen', WPHUB_Text::quelle('Kronoterm compressor heating hours'), 'main.ModbusReg[2090]', $r(2090), 0);
+        $integer('KTVerdichterstundenWW', WPHUB_Text::quelle('Kronoterm compressor DHW hours'), 'main.ModbusReg[2091]', $r(2091), 0);
+        $integer('KTVerdichterstartsHeizen', WPHUB_Text::quelle('Kronoterm compressor heating starts'), 'main.ModbusReg[2155]', $r(2155), 0);
+        $integer('KTVerdichterstartsKuehlen', WPHUB_Text::quelle('Kronoterm compressor cooling starts'), 'main.ModbusReg[2156]', $r(2156), 0);
+        $integer('KTAbtauungen', WPHUB_Text::quelle('Kronoterm defrost cycles'), 'main.ModbusReg[2158]', $r(2158), 0);
+        $boolean('Abtaubetrieb', WPHUB_Text::quelle('Defrost operation'), 'main.ModbusReg[2011]', $r(2011));
+        $boolean('KTHauptpumpe', WPHUB_Text::quelle('Kronoterm main pump'), 'main.ModbusReg[2038]', $r(2038));
+        $boolean('KTReservewaermequelle', WPHUB_Text::quelle('Kronoterm reserve heat source'), 'main.ModbusReg[2003]', $r(2003));
+        $boolean('KTAlternativeWaermequelle', WPHUB_Text::quelle('Kronoterm alternative heat source'), 'main.ModbusReg[2004]', $r(2004));
         $error = self::integer($r(2006));
         if ($error !== null && $error >= 0 && $error <= 3) {
-            $integer('Fehlerstatus', 'Kronoterm error status (0-3)', 'main.ModbusReg[2006]', $error);
+            $integer('Fehlerstatus', WPHUB_Text::quelle('Kronoterm error status (0-3)'), 'main.ModbusReg[2006]', $error);
         }
         $operation = self::integer($r(2001));
         if ($operation !== null && $operation >= 0 && $operation <= 8) {
-            $integer('KTBetriebsfunktion', 'Kronoterm working function (raw)', 'main.ModbusReg[2001]', $operation);
+            $integer('KTBetriebsfunktion', WPHUB_Text::quelle('Kronoterm working function (raw)'), 'main.ModbusReg[2001]', $operation);
             // NRG normalized contract: 0=standby, 1=heat, 2=cool, 3=dhw; -1 otherwise.
             $norm = [0 => 1, 1 => 3, 2 => 2, 5 => 0][$operation] ?? -1;
-            $out['BetriebsartNorm'] = ['value' => $norm, 'type' => 'integer', 'profile' => 'WPHUB.BetriebsartNorm', 'label' => 'Operating mode (normalized)', 'source' => 'main.ModbusReg[2001]'];
+            $out['BetriebsartNorm'] = ['value' => $norm, 'type' => 'integer', 'profile' => 'WPHUB.BetriebsartNorm', 'label' => WPHUB_Text::quelle('Operating mode (normalized)'), 'source' => 'main.ModbusReg[2001]'];
         }
         $regime = self::integer($r(2007));
         if ($regime !== null && $regime >= 0 && $regime <= 2) {
-            $integer('KTBetriebsrichtung', 'Kronoterm operation direction (raw)', 'main.ModbusReg[2007]', $regime);
+            $integer('KTBetriebsrichtung', WPHUB_Text::quelle('Kronoterm operation direction (raw)'), 'main.ModbusReg[2007]', $regime);
         }
         foreach (['loop1', 'loop2', 'loop3', 'loop4'] as $key) {
             $n = (int) substr($key, 4);
@@ -113,24 +114,24 @@ final class WPHUB_KronotermDataMapper
                 continue;
             }
             $page = $pages[$key];
-            $boolean('KTKreis' . $n . 'Pumpe', 'Kronoterm loop %d circulation pump',
+            $boolean('KTKreis' . $n . 'Pumpe', WPHUB_Text::quelle('Kronoterm loop %d circulation pump'),
                 'main.ModbusReg[' . (2035 + 10 * $n) . ']', $r(2035 + 10 * $n));
-            $float('KTKreis' . $n . 'Raumtemperatur', 'Kronoterm loop %d thermostat temperature',
+            $float('KTKreis' . $n . 'Raumtemperatur', WPHUB_Text::quelle('Kronoterm loop %d thermostat temperature'),
                 'main.ModbusReg[' . (2159 + $n) . ']', $r(2159 + $n), 'NRG.Celsius', -40, 70);
-            $float('KTKreis' . $n . 'Temperatur', 'Kronoterm loop %d current temperature', $key . '.TemperaturesAndConfig.heating_circle_' . $n . '_temp', self::path($page, ['TemperaturesAndConfig', 'heating_circle_' . $n . '_temp']), 'NRG.Celsius', -60, 150);
-            $float('KTKreis' . $n . 'Soll', 'Kronoterm loop %d target temperature', $key . '.HeatingCircleData.circle_temp', self::path($page, ['HeatingCircleData', 'circle_temp']), 'NRG.Celsius', -60, 150);
+            $float('KTKreis' . $n . 'Temperatur', WPHUB_Text::quelle('Kronoterm loop %d current temperature'), $key . '.TemperaturesAndConfig.heating_circle_' . $n . '_temp', self::path($page, ['TemperaturesAndConfig', 'heating_circle_' . $n . '_temp']), 'NRG.Celsius', -60, 150);
+            $float('KTKreis' . $n . 'Soll', WPHUB_Text::quelle('Kronoterm loop %d target temperature'), $key . '.HeatingCircleData.circle_temp', self::path($page, ['HeatingCircleData', 'circle_temp']), 'NRG.Celsius', -60, 150);
             // This Cloud field is not proven to be the water temperature used by zNWaterTempID.
         }
         if (($inventory['dhw'] ?? null) !== false && is_array($pages['dhw'] ?? null)) {
             $page = $pages['dhw'];
-            $float('Warmwasser', 'Hot water temperature', 'dhw.TemperaturesAndConfig.tap_water_temp', self::path($page, ['TemperaturesAndConfig', 'tap_water_temp']), 'NRG.Celsius', 0, 100);
-            $float('WarmwasserSoll', 'Hot water target temperature', 'dhw.HeatingCircleData.circle_temp', self::path($page, ['HeatingCircleData', 'circle_temp']), 'NRG.Celsius', 0, 100);
+            $float('Warmwasser', WPHUB_Text::quelle('Hot water temperature'), 'dhw.TemperaturesAndConfig.tap_water_temp', self::path($page, ['TemperaturesAndConfig', 'tap_water_temp']), 'NRG.Celsius', 0, 100);
+            $float('WarmwasserSoll', WPHUB_Text::quelle('Hot water target temperature'), 'dhw.HeatingCircleData.circle_temp', self::path($page, ['HeatingCircleData', 'circle_temp']), 'NRG.Celsius', 0, 100);
         }
         if (($inventory['pool_active'] ?? null) === true && is_array($pages['pool'] ?? null)) {
-            $float('KTPoolTemperatur', 'Kronoterm pool temperature', 'pool.TemperaturesAndConfig.pool_temp', self::path($pages['pool'], ['TemperaturesAndConfig', 'pool_temp']), 'NRG.Celsius', 1, 50);
+            $float('KTPoolTemperatur', WPHUB_Text::quelle('Kronoterm pool temperature'), 'pool.TemperaturesAndConfig.pool_temp', self::path($pages['pool'], ['TemperaturesAndConfig', 'pool_temp']), 'NRG.Celsius', 1, 50);
         }
         if (($inventory['alternative_source_sensor_visible'] ?? null) !== false) {
-            $float('KTAlternativeQuelleTemperatur', 'Kronoterm alternative source temperature', 'main.ModbusReg[2107]', $r(2107), 'NRG.Celsius', -60, 150);
+            $float('KTAlternativeQuelleTemperatur', WPHUB_Text::quelle('Kronoterm alternative source temperature'), 'main.ModbusReg[2107]', $r(2107), 'NRG.Celsius', -60, 150);
         }
         // Do not infer reservoir measurement from circle_calc_temp or register 2101.
         // Do not attach calculated power or unconfirmed cumulative registers to PowerID/EnergyID.

@@ -1222,3 +1222,14 @@ Remote. Frühere Kopien dieses Dokuments wurden zusätzlich aus der Historie
 aller Modul-Repos entfernt (`git filter-repo` + Force-Push). Kein
 Fallback-Link mehr — ohne lokalen Zugriff auf Dietmars Maschine ist SUITE.md
 nicht einsehbar.
+
+## Kronoterm-Cloud (0.18.0, 13.11.2026)
+
+Dirk Allard (Forum: dallard) lieferte am 13.11.2026 eine Kronoterm-Cloud-Anbindung als Gesamtpatch gegen 0.17.1 (Paket `NRGWPHub_Original_zu_Kronoterm_v5_Gesamtpaket.zip`, Prüfsumme des Patches 7cf6a6ce…). Dietmar („Ja, so vorgehen, beide Wege bauen“): Patch als **Vorlage**, nicht 1:1; er steht unverändert als erster Commit im Zweig `kronoterm` (Commit 55ab16f), darauf die Überarbeitung. Beschreibung und Änderungsliste: `KRONOTERM.md`.
+
+- Eigener Zweig im Modul: Trait `WPHub/libs/WPHUB_KronotermTrait.php` (Login `WPHUB_KronotermLogin`, Abruf, Zusatzwerte, Profile), Klassen `Kronoterm*.php`, Testnaht `$GLOBALS['ips']['kronotermClientFactory']`. Panasonic-/Vaillant-Pfade unberührt.
+- **Passwort als Attribut `KR_Credentials`** (Ausnahme von „nur Token“, weil die Cloud keins hat); Property `KR_Password` ist nur Eingabe und wird nach der Anmeldung geleert. Cookies nur im Speicher (curl-Share).
+- Texte: Tabellenbezeichnungen mit `WPHUB_Text::quelle('…')` markieren, später mit `ausFormular()` übersetzen; der Prüfstand zählt `quelle()` wie `t()`.
+- BMS-Registertabelle (`KronotermModbusDefinitions.php`) mit **eigenen** englischen Formulierungen: das Kronoterm-Handbuch trägt einen Urheberrechtshinweis, Registernummern/Faktoren/Codes sind Fakten, Texte nicht wörtlich übernehmen.
+- Lokaler Weg: Kronoterm-Karte im WPModbusHub (RS485/Modbus, liefert Leistung/Energie). Elektrische Leistung/Energie kommen hier nur aus `Ext_PowerVariable`/`Ext_EnergyVariable`.
+- Offen: Test an weiteren Anlagen; Abfragegrenzen der Cloud unbekannt (Sperrfrist bei 403/429 wie bei Vaillant bisher nicht eingebaut, falls Dirk Grenzen meldet nachziehen).

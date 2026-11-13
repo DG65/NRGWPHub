@@ -1,6 +1,11 @@
 # Changelog — NRG-Stack WPHub
 
 
+## 0.18.0 (Build 100) — 13.11.2026
+
+- **Neu: Kronoterm-Wärmepumpen über die Kronoterm-Cloud (nur lesend).** Grundlage ist die Anbindung von **Dirk Allard** (Forum: dallard), deren Gesamtpatch als Vorlage in die Historie übernommen und nach den NRG-Stack-Konventionen überarbeitet wurde: Zugangsdaten als Attribut statt Property (die Cloud kennt kein Token), Cookies nur im Speicher statt in einer Temp-Datei, englische Quelltexte mit deutscher Übersetzung, keine geratenen Feldbeschreibungen, eigene englische Formulierungen der BMS-Register, Archivierung nur über den Knopf, keine Eingriffe in Sichtbarkeit oder Logging, Codes als Integer-Variablen (Stolperstein 29), Kronoterm-Code als Trait. Messwerte, Heizkreise, Warmwasser, Pool, Pufferfühler, Tagesenergie und **auswählbare Zusatzwerte**; elektrische Leistung und Energie nur über externe Zähler-Variablen. Mindestintervall 300 s. Bisher an einer Anlage (VERSI-X) getestet, die Schnittstelle ist von Kronoterm nicht dokumentiert. Beschreibung: `KRONOTERM.md`.
+- Prüfstand: neuer Block 13 (Kronoterm), Klassentests in `.tools/kronoterm/`.
+
 ## 0.17.1 (Build 99) — 06.11.2026
 
 - **Store-Prüfung (Punkt 25): Formulartexte nicht mehr selbst übersetzt.** `WPHUB_Text::formular()` entfällt; die Konsole übersetzt die statischen Texte der `form.json` aus `locale.json` selbst. Variablennamen, Meldungen, Statuszeilen mit eingesetzten Werten und dynamisch gebaute Abschnitte übersetzt das Modul weiter (mit Merkliste). Die Zeilen des Panels „Formular: Aufbau“ (Listenwerte, keine Beschriftungen) übersetzt das Modul weiter, über `WPHUB_Text::ausFormular()`. Der Prüfstand sichert, dass jeder statische Formulartext in `locale.json` steht. Keine Änderung für Anwender.

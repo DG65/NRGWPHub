@@ -10,6 +10,7 @@ require_once __DIR__ . '/libs/KronotermEnergyMapper.php';
 require_once __DIR__ . '/libs/KronotermMeasurementCatalog.php';
 require_once __DIR__ . '/libs/KronotermExtraCatalog.php';
 require_once __DIR__ . '/libs/KronotermModbusProfiles.php';
+require_once __DIR__ . '/libs/WPHUB_KronotermTrait.php';
 
 // NRG-Stack WPHub -- Waermepumpen-Cloud-Anbindungen, Start mit Panasonic
 // Comfort Cloud (Cloud-Alternative zu HeishaMon fuer Nutzer ohne HeishaMon-
@@ -38,6 +39,8 @@ require_once __DIR__ . '/libs/KronotermModbusProfiles.php';
 
 class WPHub extends IPSModule
 {
+    use WPHUB_KronotermTrait;
+
     public function __construct($InstanceID)
     {
         parent::__construct($InstanceID);
@@ -50,7 +53,7 @@ class WPHub extends IPSModule
 
     // Stand des "Neu in Version"-Panels; bei jeder Version mit Neuigkeiten
     // hochziehen, dann erscheint das Panel wieder (pro Version dismissible).
-    const NEWS_VERSION = '0.17.0';
+    const NEWS_VERSION = '0.18.0';
 
     // Wählbare Fachpanels (SUITE.md 3a "Formular: Aufbau"): stabiler Schlüssel => Panel-Name in form.json.
     // Reihenfolge = Standardreihenfolge. 'managedby' wird nur gebaut, sobald ein Gerät bekannt ist.
@@ -61,8 +64,6 @@ class WPHub extends IPSModule
         'panasonic'    => 'PanasonicPanel',
         'vaillant'     => 'VaillantPanel',
         'kronoterm'    => 'KronotermPanel',
-        'kronoterm_buffer' => 'KronotermBufferPanel',
-        'kronoterm_values' => 'KronotermValuesPanel',
         'ext'          => 'ExtSensorsPanel',
     ];
 
@@ -153,10 +154,12 @@ class WPHub extends IPSModule
         $this->RegisterPropertyString('VAI_Email', '');
         $this->RegisterPropertyString('VAI_Password', '');
         $this->RegisterPropertyString('VAI_Country', 'germany');
-        // Kronoterm: wiederverwendbare Zugangsdaten sind fuer jeden neuen
-        // Cloud-Client-Aufbau erforderlich (Basic Auth bzw. Websession).
+        // Kronoterm: die Cloud kennt kein Token, jede Anfrage braucht Benutzername und Passwort
+        // (Basic Auth bzw. Websession). Die Eingabefelder sind nur Eingabe: nach erfolgreicher Anmeldung
+        // landen beide im Attribut KR_Credentials, das Passwort-Feld wird geleert (wie bei CC_/VAI_).
         $this->RegisterPropertyString('KR_Username', '');
         $this->RegisterPropertyString('KR_Password', '');
+        $this->RegisterAttributeString('KR_Credentials', '');
         $this->RegisterPropertyInteger('KR_EnergyIntervalMinutes', 60);
         // Optional buffer inventory and independent measured-temperature sources.
         $this->RegisterPropertyString('KR_ExtraValues', '[]');
@@ -341,6 +344,7 @@ class WPHub extends IPSModule
                 'caption'  => WPHUB_Text::t('🆕 New in version %s', self::NEWS_VERSION),
                 'expanded' => true,
                 'items'    => [
+                    ['type' => 'Label', 'caption' => WPHUB_Text::t('• 🌡️ New: Kronoterm heat pumps via the Kronoterm Cloud (read only). Choose "Kronoterm" in the panel "🏭 Manufacturer", log in, and pick any additional Cloud values you want as variables. Built on a contribution by Dirk Allard; tested so far on one system.')],
                     ['type' => 'Label', 'caption' => WPHUB_Text::t('• 🌐 The module is now bilingual (German/English): form, messages, notes and the names of new variables follow the Symcon language.')],
                     ['type' => 'Label', 'caption' => WPHUB_Text::t('• 📈 Logging in the Symcon archive is no longer switched on automatically. In the "General" section there is the button "Enable logging for the measured values", so you enable it deliberately (Symcon review). Logging that is already enabled stays untouched.')],
                     ['type' => 'Label', 'caption' => WPHUB_Text::t('• 🪟 New: choose the form layout yourself -- in the collapsed panel "Form: layout" you decide per section whether it is expanded, collapsed or hidden on opening and at which position it stands. Symcon does not remember expanding and collapsing itself.')],
@@ -393,10 +397,9 @@ class WPHub extends IPSModule
             $name = 'KR_' . $sensor . 'CloudPath';
             $this->updateFormElement($form['elements'], $name, [
                 'options' => WPHUB_KronotermMeasurementCatalog::temperatureOptions(
-                    $cloudReport, $this->ReadPropertyString($name), static fn(string $s): string => WPHUB_Text::t($s)),
+                    $cloudReport, $this->ReadPropertyString($name), static fn(string $s): string => WPHUB_Text::ausFormular($s)),
             ]);
         }
-        $this->updateFormElement($form['elements'], 'KronotermValuesPanel', ['visible' => ($manufacturer === 'kronoterm')]);
         $this->updateFormElement($form['elements'], 'KR_CloudCatalogSummary', [
             'caption' => $this->kronotermCloudReportSummary(),
         ]);
@@ -404,7 +407,6 @@ class WPHub extends IPSModule
             'values' => WPHUB_KronotermExtraCatalog::displayRows(
                 $cloudReport, WPHUB_KronotermExtraCatalog::savedRows($this->ReadPropertyString('KR_ExtraValues'))),
         ]);
-        $this->updateFormElement($form['elements'], 'KronotermBufferPanel', ['visible' => ($manufacturer === 'kronoterm')]);
         // WP inlet/outlet and verified upper buffer are always read from Kronoterm.
         // Hide the redundant inputs ONLY for this manufacturer.
         foreach (['Ext_MainInletTempVariable', 'Ext_MainOutletTempVariable', 'Ext_BufferTempVariable'] as $field) {
@@ -732,11 +734,6 @@ class WPHub extends IPSModule
     private function isKronoterm(): bool
     {
         return $this->ReadPropertyString('Manufacturer') === 'kronoterm';
-    }
-    private function kronotermCredentialsPresent(): bool
-    {
-        return trim($this->ReadPropertyString('KR_Username')) !== ''
-            && $this->ReadPropertyString('KR_Password') !== '';
     }
 
     /**
@@ -1748,480 +1745,6 @@ class WPHub extends IPSModule
         } else {
             $this->LogMessage(WPHUB_Text::t('Control command (%s) failed: %s', $field, $client->getLastError()), KL_WARNING);
         }
-    }
-
-    // ------------------------------------------------------------------
-    // Kronoterm Cloud
-    // ------------------------------------------------------------------
-    /** Manual connectivity/inventory test, called from the config panel. */
-    public function TestKronoterm(): void
-    {
-        if (!$this->isKronoterm()) {
-            return;
-        }
-        try {
-            $this->fetchKronoterm();
-            $this->UpdateFormField('KR_TestResult', 'caption', WPHUB_Text::t('Kronoterm Cloud connection successful.'));
-            $this->UpdateFormField('KR_LastSuccess', 'caption', WPHUB_Text::t('Last successful Kronoterm update: %s', date('d.m.Y H:i:s', $this->ReadAttributeInteger('KR_LastSuccessTs'))));
-            $this->UpdateFormField('KR_InventorySummary', 'caption', $this->kronotermInventorySummary());
-            $this->UpdateFormField('KR_BufferCandidates', 'caption', $this->kronotermBufferCandidateSummary());
-            $this->refreshKronotermCloudForm();
-            $this->UpdateFormField('KR_EnergyStatus', 'caption', WPHUB_Text::t('Kronoterm energy: %s (day: %s)', $this->ReadAttributeString('KR_EnergyLastStatus'), $this->ReadAttributeString('KR_EnergyLastSuccessDay') ?: '?'));
-            $this->refreshDiscoverySummary();
-            if ($this->ReadPropertyBoolean('WPHUB_Active')) {
-                $this->SetTimerInterval('WPHUB_UpdateTimer', max(300, $this->ReadPropertyInteger('WPHUB_Interval')) * 1000);
-                $this->SetStatus(102);
-            }
-        } catch (\Throwable $e) {
-            $this->UpdateFormField('KR_TestResult', 'caption', WPHUB_Text::t('Kronoterm Cloud connection failed.'));
-            if ($this->ReadPropertyBoolean('WPHUB_Active')) {
-                $this->SetStatus(201);
-            }
-        }
-    }
-
-    private function updateKronoterm(): void
-    {
-        try {
-            $this->fetchKronoterm();
-            $this->SetStatus(102);
-        } catch (\Throwable $e) {
-            $oldStatus = $this->GetStatus();
-            $this->markAllUnreachable();
-            $this->updateKronotermExternalBuffers();
-            $this->SetStatus(201);
-            if ($oldStatus !== 201) {
-                $this->LogMessage(WPHUB_Text::t('Kronoterm Cloud connection failed.'), KL_WARNING);
-            }
-        }
-    }
-
-    /** The snapshot is transient; only non-sensitive inventory metadata is retained. */
-    private function fetchKronoterm(): void
-    {
-        if (!$this->kronotermCredentialsPresent()) {
-            throw new \RuntimeException('Kronoterm credentials missing.');
-        }
-        $client = new WPHUB_KronotermClient(
-            trim($this->ReadPropertyString('KR_Username')),
-            $this->ReadPropertyString('KR_Password')
-        );
-        $snapshot = $client->readSnapshot();
-        $id = $snapshot['hp_id'] ?? null;
-        if (!is_scalar($id) || trim((string)$id) === '') {
-            throw new \RuntimeException('Kronoterm heat pump ID missing.');
-        }
-        $guid = 'kronoterm:' . trim((string)$id);
-        $prefix = $this->devicePrefix($guid);
-        $name = 'Kronoterm ' . trim((string)$id);
-        $this->MaintainVariable($prefix . 'Erreichbar', $name . ': ' . WPHUB_Text::t('Reachable'), VARIABLETYPE_BOOLEAN, '~Alert.Reversed', 0, true);
-        $this->SetValue($prefix . 'Erreichbar', true);
-        $measurements = WPHUB_KronotermDataMapper::mapSnapshot($snapshot);
-        $bufferMeasurements = WPHUB_KronotermBufferMapper::mapSnapshot(
-            $snapshot,
-            $this->kronotermBufferConfiguration(),
-            function (int $id): ?float { return $this->kronotermExternalTemperature($id); }
-        );
-        // The upper buffer sensor has a verified, direct Cloud mapping.
-        // Do not create it a second time via the old manual buffer selector.
-        unset($bufferMeasurements['KTHeizpufferOben'], $bufferMeasurements['KTKombipufferOben']);
-        $measurements = array_merge($measurements, $bufferMeasurements);
-        // Daily electricity is a separate read-only POST request. No energy
-        // value is mapped to EnergyID (only real cumulative meters qualify).
-        $now = time();
-        $today = date('Y-m-d', $now);
-        $lastAttempt = $this->ReadAttributeInteger('KR_EnergyLastAttemptTs');
-        $lastDay = $this->ReadAttributeString('KR_EnergyLastSuccessDay');
-        $minSeconds = max(15, min(1440, $this->ReadPropertyInteger('KR_EnergyIntervalMinutes'))) * 60;
-        if ($lastDay !== $today || $lastAttempt === 0 || ($now - $lastAttempt) >= $minSeconds) {
-            $this->WriteAttributeInteger('KR_EnergyLastAttemptTs', $now);
-            try {
-                $consumptionResponse = $client->getDailyConsumption();
-                $snapshot['pages']['consumption'] = $consumptionResponse;
-                $snapshot['page_status']['consumption'] = 'available';
-                $energy = WPHUB_KronotermEnergyMapper::mapDaily($consumptionResponse);
-                if ($energy === []) {
-                    $this->WriteAttributeString('KR_EnergyLastStatus', 'no usable values');
-                } else {
-                    $measurements = array_merge($measurements, $energy);
-                    $measurements['KTEnergieDatum'] = [
-                        'value' => $today,
-                        'type' => 'string',
-                        'profile' => '',
-                        'label' => 'Kronoterm daily energy date',
-                        'source' => 'date of consumption request',
-                    ];
-                    $this->WriteAttributeString('KR_EnergyLastSuccessDay', $today);
-                    $this->WriteAttributeString('KR_EnergyLastStatus',
-                        isset($energy['EnergieGesamtHeute']) ? 'complete' : 'partial');
-                }
-            } catch (\Throwable $e) {
-                $snapshot['page_status']['consumption'] = 'unavailable';
-                // Energy endpoint is optional; do not downgrade valid main status.
-                $this->WriteAttributeString('KR_EnergyLastStatus', 'unavailable');
-            }
-        }
-        if (!isset($snapshot['page_status']['consumption'])) {
-            $snapshot['page_status']['consumption'] = 'not_queried_this_cycle';
-        }
-        $this->maintainKronotermMeasurements($prefix, $name, $measurements);
-        $this->writeDeviceList([[
-            'guid' => $guid,
-            'name' => $name,
-            'prefix' => $prefix,
-            'reachable' => true,
-            'operationMode' => $measurements['BetriebsartNorm']['value'] ?? null,
-            'lastSeenAt' => time(),
-        ]]);
-        // Inventory every received scalar field. Mark fields as mapped, selected
-        // buffer sources, used for configuration, or still unused in WPHub.
-        $lastReport = $this->kronotermCloudReport();
-        $this->WriteAttributeString('KR_CloudCatalog', json_encode(
-            WPHUB_KronotermMeasurementCatalog::report($snapshot, $measurements, $lastReport),
-            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
-        ));
-        // Active optional values become typed instance variables; archive logging
-        // follows solely the explicit per-row checkbox.
-        $this->synchronizeKronotermExtra(true);
-        // Read-only diagnostic catalog for manual mapping; never infer which
-        // physically installed buffer sensor a field represents.
-        $infoData = $snapshot['pages']['info']['InfoData'] ?? [];
-        $catalog = $this->kronotermCloudReport();
-        $candidates = array_keys(array_filter(
-            WPHUB_KronotermMeasurementCatalog::temperatures($catalog),
-            static fn($entry) => str_starts_with((string)($entry['path'] ?? ''), 'reservoir.')
-        ));
-        $this->WriteAttributeString('KR_Inventory', json_encode([
-            'hp_id' => (string)$id,
-            'model' => is_array($infoData) ? ($infoData['pumpModel'] ?? null) : null,
-            'firmware' => is_array($infoData) ? ($infoData['firmware'] ?? null) : null,
-            'inventory' => $snapshot['inventory'],
-            'page_status' => $snapshot['page_status'],
-            'reservoir_candidates' => $candidates,
-        ], JSON_UNESCAPED_UNICODE));
-        $this->WriteAttributeInteger('KR_LastSuccessTs', time());
-        $this->WriteAttributeInteger('LastDiscoveryTs', time());
-    }
-
-    /** Create/update only documented, valid Cloud measurements; never delete old archive values. */
-    private function maintainKronotermMeasurements(string $prefix, string $name, array $measurements): void
-    {
-        $position = 10;
-        foreach ($measurements as $ident => $point) {
-            if (!is_array($point) || !isset($point['type'], $point['label']) || !array_key_exists('value', $point)) {
-                continue;
-            }
-            $types = [
-                'boolean' => VARIABLETYPE_BOOLEAN,
-                'integer' => VARIABLETYPE_INTEGER,
-                'float'   => VARIABLETYPE_FLOAT,
-                'string'  => VARIABLETYPE_STRING,
-            ];
-            $type = $types[$point['type']] ?? null;
-            if ($type === null) {
-                continue;
-            }
-            $label = WPHUB_Text::t($point['label']);
-            if (strpos($label, '%d') !== false && preg_match('/^KTKreis([1-4])/', $ident, $match)) {
-                $label = sprintf($label, (int)$match[1]);
-            }
-            $profile = (string)($point['profile'] ?? '');
-            $source = (string)($point['source'] ?? '');
-            if ($type === VARIABLETYPE_INTEGER) {
-                $documented = WPHUB_KronotermModbusProfiles::definition($source);
-                if ($documented !== null && ($documented['kind'] ?? '') === 'code'
-                    && !empty($documented['choices'])) {
-                    $profile = $this->ensureKronotermMappedIntegerProfile($source);
-                }
-            }
-            $this->MaintainVariable(
-                $prefix . $ident,
-                $name . ': ' . $label,
-                $type,
-                $profile,
-                $position++,
-                true
-            );
-            $this->SetValue($prefix . $ident, $point['value']);
-        }
-    }
-
-    /**
-     * Create and update only explicitly selected additional Cloud variables.
-     * Deactivation preserves prior variables and historical data but hides them;
-     * it stops updates and disables their archive logging.
-     * Cached reports during ApplyChanges are used for schema only, not SetValue.
-     */
-    private function synchronizeKronotermExtra(bool $isFreshPoll): void
-    {
-        $saved = WPHUB_KronotermExtraCatalog::savedRows($this->ReadPropertyString('KR_ExtraValues'));
-        if ($saved === []) return;
-        $report = $this->kronotermCloudReport();
-        $entries = is_array($report['entries'] ?? null) ? $report['entries'] : [];
-        $permitted = [];
-        foreach (WPHUB_KronotermExtraCatalog::displayRows($report, $saved) as $row) {
-            $permitted[(string)$row['Path']] = true;
-        }
-        $points = $isFreshPoll ? WPHUB_KronotermExtraCatalog::livePoints($report, $saved) : [];
-        $archiveID = $this->archiveInstanceID();
-        $archiveChanged = false;
-        foreach ($saved as $path => $config) {
-            $ident = WPHUB_KronotermExtraCatalog::ident($path);
-            $id = @$this->GetIDForIdent($ident);
-            $active = $config['Active'] && isset($permitted[$path]);
-            if (!$active) {
-                if ($id !== false && $id > 0 && IPS_VariableExists($id)) {
-                    IPS_SetHidden($id, true);
-                    if ($archiveID > 0 && AC_GetLoggingStatus($archiveID, $id)) {
-                        AC_SetLoggingStatus($archiveID, $id, false);
-                        $archiveChanged = true;
-                    }
-                }
-                $meaningID = @$this->GetIDForIdent($ident . 'Bedeutung');
-                if ($meaningID !== false && $meaningID > 0 && IPS_VariableExists($meaningID)) {
-                    IPS_SetHidden($meaningID, true);
-                }
-                continue;
-            }
-            $entry = $entries[$path] ?? null;
-            if (!is_array($entry)) continue; // Retain a saved, temporarily absent field.
-            $interpreted = WPHUB_KronotermModbusProfiles::interpret($path, $entry);
-            $type = $interpreted['type'];
-            if ($type === null) continue;
-            $ipsType = ['float' => VARIABLETYPE_FLOAT, 'boolean' => VARIABLETYPE_BOOLEAN, 'string' => VARIABLETYPE_STRING][$type];
-            $unit = WPHUB_KronotermModbusProfiles::effectiveUnit($path, $config['Unit']);
-            $profile = '';
-            if ($type === 'float' && WPHUB_KronotermModbusProfiles::definition($path) !== null) {
-                // Register definition includes a verified unit, factor and/or
-                // value associations from the BMS manual, even without a
-                // manual choice in the extra-values table.
-                $profile = $this->ensureKronotermModbusProfile($path, $unit);
-            } elseif ($type === 'float' && $unit !== '') {
-                $profile = $this->ensureKronotermExtraProfile($unit);
-            } elseif ($type === 'boolean') {
-                $profile = '~Switch';
-            }
-            $this->MaintainVariable($ident, WPHUB_KronotermModbusProfiles::variableLabel($path), $ipsType, $profile, 500, true);
-            // A bitmask can contain several statuses at once; an enum profile
-            // would be misleading. Preserve the original numeric variable and
-            // maintain an independent readable companion for documented masks.
-            $meaningIdent = $ident . 'Bedeutung';
-            $definition = WPHUB_KronotermModbusProfiles::definition($path);
-            $isBitmask = ($definition['kind'] ?? '') === 'bits' && !empty($definition['bits']);
-            if ($isBitmask) {
-                $this->MaintainVariable($meaningIdent,
-                    WPHUB_KronotermModbusProfiles::variableLabel($path) . ': gesetzte Bits',
-                    VARIABLETYPE_STRING, '', 501, true);
-                $meaningID = @$this->GetIDForIdent($meaningIdent);
-                if ($meaningID !== false && $meaningID > 0 && IPS_VariableExists($meaningID)) {
-                    IPS_SetHidden($meaningID, false);
-                }
-                if ($isFreshPoll && isset($points[$path])) {
-                    $message = WPHUB_KronotermModbusProfiles::bitfieldText($path, $points[$path]['value']);
-                    if ($message !== null) $this->SetValue($meaningIdent, $message);
-                }
-            } else {
-                $oldMeaningID = @$this->GetIDForIdent($meaningIdent);
-                if ($oldMeaningID !== false && $oldMeaningID > 0 && IPS_VariableExists($oldMeaningID)) {
-                    IPS_SetHidden($oldMeaningID, true);
-                }
-            }
-            $id = @$this->GetIDForIdent($ident);
-            if ($id === false || $id <= 0 || !IPS_VariableExists($id)) continue;
-            IPS_SetHidden($id, false);
-            if ($isFreshPoll && isset($points[$path])) {
-                $this->SetValue($ident, $points[$path]['value']);
-            }
-            if ($archiveID > 0) {
-                $wanted = (bool)$config['Archive'];
-                if ((bool)AC_GetLoggingStatus($archiveID, $id) !== $wanted) {
-                    AC_SetLoggingStatus($archiveID, $id, $wanted);
-                    $archiveChanged = true;
-                }
-            } elseif ($config['Archive']) {
-                $this->LogMessage('Kronoterm-Zusatzwerte: kein Archiv vorhanden für ' . $path, KL_WARNING);
-            }
-        }
-        if ($archiveChanged) IPS_ApplyChanges($archiveID);
-    }
-
-    /** Read-only integer status profile for already mapped WPHub variables.
-     * Never alter NRG shared profiles or the variable's own Ident/archive.
-     */
-    private function ensureKronotermMappedIntegerProfile(string $path): string
-    {
-        $definition = WPHUB_KronotermModbusProfiles::definition($path);
-        if ($definition === null || ($definition['kind'] ?? '') !== 'code') return '';
-        $profile = WPHUB_KronotermModbusProfiles::profileName($path, '') . '.Integer';
-        if (!IPS_VariableProfileExists($profile)) {
-            IPS_CreateVariableProfile($profile, VARIABLETYPE_INTEGER);
-            foreach (($definition['choices'] ?? []) as $code => $meaning) {
-                IPS_SetVariableProfileAssociation($profile, (int)$code, (string)$meaning, '', -1);
-            }
-        }
-        return $profile;
-    }
-
-    /** Kronoterm BMS register profiles: physical units plus documented codes. */
-    private function ensureKronotermModbusProfile(string $path, string $unit): string
-    {
-        $definition = WPHUB_KronotermModbusProfiles::definition($path);
-        if ($definition === null) return '';
-        $profile = WPHUB_KronotermModbusProfiles::profileName($path, $unit)
-            . ((($definition['kind'] ?? '') === 'bits') ? '.Mask' : '');
-        if (!IPS_VariableProfileExists($profile)) {
-            IPS_CreateVariableProfile($profile, VARIABLETYPE_FLOAT);
-            IPS_SetVariableProfileText($profile, '', $unit === '' ? '' : ' ' . $unit);
-            IPS_SetVariableProfileDigits($profile, WPHUB_KronotermModbusProfiles::digits($definition, $unit));
-            if (($definition['kind'] ?? '') === 'code') {
-                foreach (($definition['choices'] ?? []) as $code => $meaning) {
-                    IPS_SetVariableProfileAssociation($profile, (float)$code, (string)$meaning, '', -1);
-                }
-            }
-        }
-        return $profile;
-    }
-
-    /** Local read-only display profiles; never modify global NRG profiles. */
-    private function ensureKronotermExtraProfile(string $unit): string
-    {
-        $profile = WPHUB_KronotermExtraCatalog::profileName($unit);
-        if (!IPS_VariableProfileExists($profile)) {
-            IPS_CreateVariableProfile($profile, VARIABLETYPE_FLOAT);
-            IPS_SetVariableProfileText($profile, '', ' ' . $unit);
-            IPS_SetVariableProfileDigits($profile, WPHUB_KronotermExtraCatalog::formatDigits($unit));
-        }
-        return $profile;
-    }
-
-    /** The physical buffer layout is user-selected unless the API has explicit reliable flags. */
-    private function kronotermBufferConfiguration(): array
-    {
-        $channels = [];
-        foreach (['HeatTop' => 'heat_top', 'HeatBottom' => 'heat_bottom',
-                  'CoolTop' => 'cool_top', 'CoolBottom' => 'cool_bottom'] as $property => $key) {
-            $channels[$key] = [
-                'source' => $this->ReadPropertyString('KR_' . $property . 'Source'),
-                'external_id' => $this->ReadPropertyInteger('KR_' . $property . 'External'),
-                'cloud_path' => $this->ReadPropertyString('KR_' . $property . 'CloudPath'),
-            ];
-        }
-        return ['layout' => $this->ReadPropertyString('KR_BufferLayout'), 'channels' => $channels];
-    }
-
-    /** A source variable is only usable when its value is a numerical measurement. */
-    private function kronotermExternalTemperature(int $id): ?float
-    {
-        if ($id <= 0 || !IPS_VariableExists($id)) {
-            return null;
-        }
-        $variable = IPS_GetVariable($id);
-        $type = (int)($variable['VariableType'] ?? -1);
-        if ($type !== VARIABLETYPE_INTEGER && $type !== VARIABLETYPE_FLOAT) {
-            return null;
-        }
-        $value = GetValue($id);
-        return is_numeric($value) ? (float)$value : null;
-    }
-
-    /** Only the explicitly configured heating/combined upper sensor can act as bufferTempID. */
-    private function kronotermContractBufferID(string $prefix): int
-    {
-        if (!$this->isKronoterm()) return 0;
-        $layout = $this->ReadPropertyString('KR_BufferLayout');
-        if (!in_array($layout, ['heating','separate','combined'], true)) return 0;
-        if (!in_array($this->ReadPropertyString('KR_HeatTopSource'), ['cloud','external'], true)) return 0;
-        $ident = $layout === 'combined' ? 'KTKombipufferOben' : 'KTHeizpufferOben';
-        return $this->contractFieldID($prefix, $ident);
-    }
-
-    /** External sensor values still update when the Kronoterm Cloud is unreachable. */
-    private function updateKronotermExternalBuffers(): void
-    {
-        $config = $this->kronotermBufferConfiguration();
-        foreach ($this->readDeviceList() as $device) {
-            $prefix = (string)($device['prefix'] ?? '');
-            if ($prefix === '') {
-                continue;
-            }
-            $points = WPHUB_KronotermBufferMapper::mapSnapshot([], $config,
-                function (int $id): ?float { return $this->kronotermExternalTemperature($id); });
-            $this->maintainKronotermMeasurements($prefix, (string)($device['name'] ?? 'Kronoterm'), $points);
-        }
-    }
-
-    /** Safe public diagnostic API: only sanitized values, no raw cloud payloads. */
-    public function GetKronotermCloudInventory(): string
-    {
-        return json_encode($this->kronotermCloudReport(), JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-    }
-
-    private function kronotermCloudReport(): array
-    {
-        $data = json_decode($this->ReadAttributeString('KR_CloudCatalog'), true);
-        return is_array($data) ? $data : [];
-    }
-
-    private function kronotermCloudReportSummary(): string
-    {
-        $report = $this->kronotermCloudReport();
-        $counts = is_array($report['counts'] ?? null) ? $report['counts'] : [];
-        $n = count(is_array($report['entries'] ?? null) ? $report['entries'] : []);
-        if ($n === 0) return WPHUB_Text::t('No Cloud field inventory available yet; read the installation inventory first.');
-        $timestamp = (int)($report['timestamp'] ?? 0);
-        $message = WPHUB_Text::t('Cloud fields: %d total, %d mapped, %d buffer, %d controller configuration, %d unused. Last scan: %s.',
-            $n, (int)($counts['mapped'] ?? 0), (int)($counts['buffer'] ?? 0),
-            (int)($counts['configuration'] ?? 0), (int)($counts['unused'] ?? 0),
-            $timestamp > 0 ? date('d.m.Y H:i:s', $timestamp) : '?');
-        if (($report['truncated'] ?? false) === true) $message .= ' ' . WPHUB_Text::t('Inventory limit reached; report may be incomplete.');
-        $pageStatus = is_array($report['page_status'] ?? null) ? $report['page_status'] : [];
-        $unavailable = [];
-        foreach ($pageStatus as $page => $status) {
-            if ($status === 'unavailable') $unavailable[] = (string)$page;
-        }
-        if ($unavailable !== []) {
-            $message .= ' ' . WPHUB_Text::t('Cloud pages unavailable: %s', implode(', ', $unavailable));
-        }
-        return $message;
-    }
-
-    private function refreshKronotermCloudForm(): void
-    {
-        $report = $this->kronotermCloudReport();
-        $this->UpdateFormField('KR_CloudCatalogSummary', 'caption', $this->kronotermCloudReportSummary());
-        $this->UpdateFormField('KR_ExtraValues', 'values', json_encode(
-            WPHUB_KronotermExtraCatalog::displayRows($report,
-                WPHUB_KronotermExtraCatalog::savedRows($this->ReadPropertyString('KR_ExtraValues'))),
-            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
-        foreach (['HeatTop', 'HeatBottom', 'CoolTop', 'CoolBottom'] as $sensor) {
-            $property = 'KR_' . $sensor . 'CloudPath';
-            $this->UpdateFormField($property, 'options', json_encode(
-                WPHUB_KronotermMeasurementCatalog::temperatureOptions($report, $this->ReadPropertyString($property), static fn(string $s): string => WPHUB_Text::t($s)),
-                JSON_UNESCAPED_UNICODE));
-        }
-    }
-
-    private function kronotermBufferCandidateSummary(): string
-    {
-        $raw = json_decode($this->ReadAttributeString('KR_Inventory'), true);
-        $candidates = is_array($raw['reservoir_candidates'] ?? null) ? $raw['reservoir_candidates'] : [];
-        return WPHUB_Text::t('Potential Cloud reservoir temperature fields (verify sensor assignment): %s',
-            $candidates === [] ? '-' : implode(', ', array_slice($candidates, 0, 15)));
-    }
-
-    private function kronotermInventorySummary(): string
-    {
-        $data = json_decode($this->ReadAttributeString('KR_Inventory'), true);
-        $flags = is_array($data['inventory'] ?? null) ? $data['inventory'] : [];
-        if ($flags === []) {
-            return WPHUB_Text::t('No Kronoterm installation inventory available.');
-        }
-        $parts = [];
-        foreach (['loop1', 'loop2', 'loop3', 'loop4', 'dhw', 'pool_active', 'heating_buffer', 'cooling_buffer'] as $key) {
-            $value = $flags[$key] ?? null;
-            $parts[] = $key . ': ' . ($value === null ? '?' : ($value ? 'yes' : 'no'));
-        }
-        return WPHUB_Text::t('Kronoterm controller inventory: %s', implode(', ', $parts));
     }
 
     // ------------------------------------------------------------------

@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/WPHUB_Text.php';
 /**
  * Kronoterm Cloud daily electricity consumption, read-only, in kWh.
  * Source schema: trend_consumption in Favio25/Kronoterm-homeassistant.
@@ -7,12 +8,16 @@
  */
 final class WPHUB_KronotermEnergyMapper
 {
-    private const KEYS = [
-        'CompHeating'  => ['EnergieHeizenHeute', 'Electrical energy heating today'],
-        'CompTapWater' => ['EnergieWarmwasserHeute', 'Electrical energy hot water today'],
-        'CPLoops'      => ['KTPumpenEnergieHeute', 'Kronoterm circulation pump energy today'],
-        'CPAddSource'  => ['KTZusatzEnergieHeute', 'Kronoterm auxiliary source energy today'],
-    ];
+    /** Tabellenwerte rufen quelle() auf, daher Methode statt Konstante. */
+    private static function keys(): array
+    {
+        return [
+        'CompHeating'  => ['EnergieHeizenHeute', WPHUB_Text::quelle('Electrical energy heating today')],
+        'CompTapWater' => ['EnergieWarmwasserHeute', WPHUB_Text::quelle('Electrical energy hot water today')],
+        'CPLoops'      => ['KTPumpenEnergieHeute', WPHUB_Text::quelle('Kronoterm circulation pump energy today')],
+        'CPAddSource'  => ['KTZusatzEnergieHeute', WPHUB_Text::quelle('Kronoterm auxiliary source energy today')],
+        ];
+    }
 
     /** @return array<string,array{value:float,type:string,profile:string,label:string,source:string}> */
     public static function mapDaily(array $response): array
@@ -23,7 +28,7 @@ final class WPHUB_KronotermEnergyMapper
         }
         $result = [];
         $values = [];
-        foreach (self::KEYS as $field => [$ident, $caption]) {
+        foreach (self::keys() as $field => [$ident, $caption]) {
             $series = $trend[$field] ?? null;
             if (!is_array($series) || $series === []) {
                 continue;
@@ -38,9 +43,9 @@ final class WPHUB_KronotermEnergyMapper
             $values[$field] = $value;
             $result[$ident] = self::point($value, $caption, 'consumption.trend_consumption.' . $field);
         }
-        if (count($values) === count(self::KEYS)) {
+        if (count($values) === count(self::keys())) {
             $result['EnergieGesamtHeute'] = self::point(
-                array_sum($values), 'Electrical energy total today', 'sum(trend_consumption:4 components)'
+                array_sum($values), WPHUB_Text::quelle('Electrical energy total today'), 'sum(trend_consumption:4 components)'
             );
         }
         return $result;

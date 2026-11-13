@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/WPHUB_Text.php';
 /**
  * Sanitized, read-only inventory of scalar values actually received from the
  * Kronoterm Cloud. Never store whole API replies, credentials or device IDs.
@@ -93,17 +94,17 @@ final class WPHUB_KronotermMeasurementCatalog
     public static function temperatureOptions(array $report, string $selected = '', ?callable $translate = null): array
     {
         $t = $translate ?? static fn(string $caption): string => $caption;
-        $options = [['caption' => $t('— Select Cloud measurement —'), 'value' => '']];
+        $options = [['caption' => $t(WPHUB_Text::quelle('— Select Cloud measurement —')), 'value' => '']];
         $entries = is_array($report['entries'] ?? null) ? $report['entries'] : [];
         foreach ($entries as $path => $entry) {
             if (!is_string($path) || !is_array($entry) || ($entry['selectable'] ?? false) !== true) continue;
             $value = $entry['value'];
             $caption = $path . ' · ' . $entry['label'] . ': ' . self::displayValue($value) . ' ' . $entry['unit'];
-            if (($entry['fresh'] ?? true) === false) $caption .= ' ' . $t('(last received)');
+            if (($entry['fresh'] ?? true) === false) $caption .= ' ' . $t(WPHUB_Text::quelle('(last received)'));
             $options[] = ['caption' => substr($caption, 0, 300), 'value' => $path];
         }
         if ($selected !== '' && !array_filter($options, static fn($item) => $item['value'] === $selected)) {
-            $options[] = ['caption' => $selected . ' ' . $t('(currently unavailable)'), 'value' => $selected];
+            $options[] = ['caption' => $selected . ' ' . $t(WPHUB_Text::quelle('(currently unavailable)')), 'value' => $selected];
         }
         return $options;
     }

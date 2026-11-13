@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/WPHUB_Text.php';
 /**
  * Read-only interpretations of Kronoterm Modbus values received through the
  * Cloud inventory. Source: Kronoterm BMS manual 17-20-28-4023-04,
@@ -16,10 +17,7 @@ final class WPHUB_KronotermModbusProfiles
         }
         static $definitions = null;
         if ($definitions === null) {
-            $definitions = json_decode((string)file_get_contents(__DIR__ . '/KronotermModbusDefinitions.json'), true);
-            if (!is_array($definitions)) {
-                $definitions = [];
-            }
+            $definitions = require __DIR__ . '/KronotermModbusDefinitions.php';
         }
         return $definitions[$match[1]] ?? null;
     }
@@ -56,10 +54,12 @@ final class WPHUB_KronotermModbusProfiles
         if (!$alreadyFormatted && $factor !== 1.0) {
             $value = (float)$value * $factor;
         }
-        // The module historically created Float variables for all numeric
-        // extras. Keep Float type to retain existing data and archive IDs.
-        $value = (float)$value;
-        return ['value' => $value, 'type' => 'float'];
+        // Codes, bit masks and raw words are whole numbers: Integer variables (a Float variable with fixed
+        // value associations would break Symcon's presentation check, Stolperstein 29). Everything else is Float.
+        if (in_array($definition['kind'] ?? '', ['code', 'bits', 'word'], true)) {
+            return ['value' => (int)round((float)$value), 'type' => 'integer'];
+        }
+        return ['value' => (float)$value, 'type' => 'float'];
     }
 
     public static function profileName(string $path, string $unit): string
@@ -94,14 +94,14 @@ final class WPHUB_KronotermModbusProfiles
     {
         $definition = self::definition($path);
         if ($definition === null) {
-            return 'Kronoterm Zusatzwert: ' . $path;
+            return WPHUB_Text::t('Kronoterm additional value: %s', $path);
         }
         $number = (string)substr($path, strlen('main.ModbusReg['), -1);
         $description = (string)$definition['label'];
         if (strlen($description) > 90) {
             $description = substr($description, 0, 87) . '...';
         }
-        return 'Kronoterm: ' . $description . ' (R' . $number . ')';
+        return WPHUB_Text::t('Kronoterm: %s (R%s)', $description, $number);
     }
 
     /** Bit fields are masks, never a single exclusive status code.
@@ -114,7 +114,7 @@ final class WPHUB_KronotermModbusProfiles
         if (!is_numeric($value) || (float)$value < 0 || (float)$value > 65535
             || floor((float)$value) !== (float)$value) return null;
         $bits = (int)$value;
-        if ($bits === 0) return 'Keine Bits gesetzt';
+        if ($bits === 0) return WPHUB_Text::t('No bits set');
         $labels = [];
         $known = 0;
         foreach (($def['bits'] ?? []) as $index => $description) {
@@ -126,7 +126,7 @@ final class WPHUB_KronotermModbusProfiles
         }
         for ($index = 0; $index < 16; $index++) {
             if (($bits & (1 << $index)) !== 0 && ($known & (1 << $index)) === 0) {
-                $labels[] = 'b' . $index . ': Bedeutung nicht dokumentiert';
+                $labels[] = 'b' . $index . ': ' . WPHUB_Text::t('meaning not documented');
             }
         }
         return implode('; ', $labels);
@@ -139,7 +139,7 @@ final class WPHUB_KronotermModbusProfiles
         if ($def === null || ($def['kind'] ?? '') !== 'code') return null;
         if (!is_numeric($value) || floor((float)$value) !== (float)$value) return null;
         $key = (string)(int)$value;
-        return isset($def['choices'][$key]) ? (string)$def['choices'][$key] : 'Nicht dokumentierter Code ' . $key;
+        return isset($def['choices'][$key]) ? (string)$def['choices'][$key] : WPHUB_Text::t('Undocumented code %s', $key);
     }
 
     public static function displayValue(string $path, array $entry): string
@@ -149,7 +149,8 @@ final class WPHUB_KronotermModbusProfiles
         if ($value === null) return 'null';
         if (is_bool($value)) return $value ? 'true' : 'false';
         if (is_array($value)) return '-';
-        if (is_float($value) && is_finite($value)) {
+        if ((is_float($value) && is_finite($value)) || is_int($value)) {
+            $value = (float)$value;
             // Use the profile's intended precision without sacrificing raw
             // fraction digits where metadata has no defined precision.
             $def = self::definition($path);

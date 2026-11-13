@@ -1,9 +1,9 @@
 <?php
 /** Pure offline checks for Cloud field inventory, unused-data reporting and buffer selection. */
-require_once __DIR__ . '/../WPHub/libs/KronotermMeasurementCatalog.php';
-require_once __DIR__ . '/../WPHub/libs/KronotermBufferMapper.php';
-require_once __DIR__ . '/../WPHub/libs/KronotermDataMapper.php';
-require_once __DIR__ . '/../WPHub/libs/KronotermEnergyMapper.php';
+require_once __DIR__ . '/../../WPHub/libs/KronotermMeasurementCatalog.php';
+require_once __DIR__ . '/../../WPHub/libs/KronotermBufferMapper.php';
+require_once __DIR__ . '/../../WPHub/libs/KronotermDataMapper.php';
+require_once __DIR__ . '/../../WPHub/libs/KronotermEnergyMapper.php';
 
 function verify(bool $condition, string $name): void
 {
@@ -73,7 +73,7 @@ $report = WPHUB_KronotermMeasurementCatalog::report($snapshot, array_merge($maps
 $r = $report['entries'];
 verify(($r['main.ModbusReg[2103]']['status'] ?? null) === 'mapped', 'Actual outdoor register classified mapped');
 verify(($r['main.ModbusReg[2028]']['status'] ?? null) === 'mapped', 'Bitfield source classified mapped');
-verify(($r['main.ModbusReg[2361]']['status'] ?? null) === 'mapped' && ($r['main.ModbusReg[2362]']['status'] ?? null) === 'mapped', 'Paired counter source expanded');
+verify(($r['main.ModbusReg[2361]']['status'] ?? null) === 'unused' && ($r['main.ModbusReg[2362]']['status'] ?? null) === 'unused', 'Cloud electric counter words stay selectable extras (not mapped)');
 verify(($r['main.ModbusReg[2500]']['status'] ?? null) === 'unused', 'Unmapped register reported');
 verify(($r['main.extraCloud']['status'] ?? null) === 'unused', 'Unused JSON value reported');
 verify(($r['info.TemperaturesAndConfig.circle_1_installed']['status'] ?? null) === 'configuration', 'Inventory field classified internal use');
@@ -97,7 +97,7 @@ verify(($after['entries']['consumption.trend_consumption.CompHeating[1]']['statu
 verify(($after['entries']['main.extraCloud']['fresh'] ?? false) === true, 'Current non-energy measurement marked fresh');
 
 // Contract and UI wiring checks without an IP-Symcon runtime.
-$form = json_decode((string)file_get_contents(__DIR__ . '/../WPHub/form.json'), true, 512, JSON_THROW_ON_ERROR);
+$form = json_decode((string)file_get_contents(__DIR__ . '/../../WPHub/form.json'), true, 512, JSON_THROW_ON_ERROR);
 $search = function (array $nodes, string $name) use (&$search) {
     foreach ($nodes as $node) {
         if (($node['name'] ?? null) === $name) return $node;
@@ -111,14 +111,10 @@ $search = function (array $nodes, string $name) use (&$search) {
 foreach (['KR_HeatTopCloudPath', 'KR_HeatBottomCloudPath', 'KR_CoolTopCloudPath', 'KR_CoolBottomCloudPath'] as $name) {
     verify(($search($form['elements'], $name)['type'] ?? null) === 'Select', $name . ' uses a dropdown');
 }
-foreach (['KR_CloudAllValues', 'KR_CloudUnusedValues'] as $name) {
-    $node = $search($form['elements'], $name);
-    verify(($node['type'] ?? null) === 'List' && ($node['loadValuesFromConfiguration'] ?? true) === false, $name . ' is a runtime list');
-}
 verify(($search($form['elements'], 'KronotermValuesPanel')['type'] ?? null) === 'ExpansionPanel', 'Cloud field inventory panel registered');
-$module = (string)file_get_contents(__DIR__ . '/../WPHub/module.php');
+$module = (string)file_get_contents(__DIR__ . '/../../WPHub/libs/WPHUB_KronotermTrait.php');
 verify(str_contains($module, "WriteAttributeString('KR_CloudCatalog'"), 'Module persists sanitized catalog');
-verify(str_contains($module, "GetKronotermCloudInventory()"), 'Module exposes diagnostic report');
+verify(str_contains($module, 'function GetKronotermCloudInventory'), 'Module exposes diagnostic report');
 verify(str_contains($module, 'refreshKronotermCloudForm()'), 'Live form refresh integrated');
 
 echo "All Kronoterm-cloud-inventory tests passed.\n";

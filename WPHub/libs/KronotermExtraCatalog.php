@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/WPHUB_Text.php';
 /**
  * Optional Kronoterm diagnostic variables, independent of WPHub's mapped data.
  * This class is pure (no IPS dependencies). Never deduplicate by equal scalar
@@ -7,12 +8,12 @@
 final class WPHUB_KronotermExtraCatalog
 {
     public const UNITS = [
-        '' => 'Ohne Einheit / unbekannt', '°C' => '°C', 'K' => 'K',
+        '' => 'No unit / unknown', '°C' => '°C', 'K' => 'K',
         '%' => '%', 'W' => 'W', 'kW' => 'kW', 'Wh' => 'Wh', 'kWh' => 'kWh',
-        'bar' => 'bar', 'Pa' => 'Pa', 'Hz' => 'Hz', 'rpm' => 'U/min',
+        'bar' => 'bar', 'Pa' => 'Pa', 'Hz' => 'Hz', 'rpm' => 'rpm',
         'A' => 'A', 'V' => 'V', 'h' => 'h', 'min' => 'min', 's' => 's',
         'd' => 'd', 'm³' => 'm³', 'm³/h' => 'm³/h', 'l/min' => 'l/min',
-        'count' => 'Anzahl',
+        'count' => 'Count',
     ];
 
     /** Config values stay separate from the received Cloud report. */
@@ -30,7 +31,6 @@ final class WPHUB_KronotermExtraCatalog
                 'Path' => $path,
                 'Unit' => array_key_exists($unit, self::UNITS) ? $unit : '',
                 'Active' => ($row['Active'] ?? false) === true,
-                'Archive' => ($row['Archive'] ?? false) === true,
             ];
         }
         return $out;
@@ -116,17 +116,15 @@ final class WPHUB_KronotermExtraCatalog
             if (isset($reserved[$reg])) $reserved[$otherCanonical] = true;
             if (isset($reserved[$other]) || isset($reserved[$otherCanonical])) $reserved[$reg] = true;
         }
-        $descriptions = self::descriptions();
         $rows = [];
         foreach ($entries as $path => $entry) {
             if (!is_string($path) || !is_array($entry) || isset($alias[$path]) || isset($reserved[$path])) continue;
             if (!in_array(($entry['status'] ?? 'unused'), ['unused'], true)) continue;
             $existing = $saved[$path] ?? null;
-            $hint = $descriptions[$path] ?? ['', ''];
-            [$purpose, $evidence] = self::documentedPurpose($path, $hint);
+            [$purpose, $evidence] = self::documentedPurpose($path);
             $selectedUnit = is_array($existing) ? (string)($existing['Unit'] ?? '') : '';
             $unit = WPHUB_KronotermModbusProfiles::effectiveUnit(
-                $path, $selectedUnit !== '' ? $selectedUnit : self::suggestUnit($entry, (string)($hint[1] ?? '')));
+                $path, $selectedUnit !== '' ? $selectedUnit : self::suggestUnit($entry));
             $rows[] = [
                 'Path' => $path,
                 'Name' => $path,
@@ -134,21 +132,19 @@ final class WPHUB_KronotermExtraCatalog
                 'Evidence' => $evidence,
                 'Unit' => array_key_exists($unit, self::UNITS) ? $unit : '',
                 'Active' => (bool)($existing['Active'] ?? false),
-                'Archive' => (bool)($existing['Archive'] ?? false),
                 'LastValue' => WPHUB_KronotermModbusProfiles::displayValue($path, $entry),
-                'LastReceived' => (($entry['seen_at'] ?? 0) > 0) ? (new DateTimeImmutable('@' . (int)$entry['seen_at']))->setTimezone(new DateTimeZone('Europe/Berlin'))->format('d.m.Y H:i:s') : '-',
+                'LastReceived' => (($entry['seen_at'] ?? 0) > 0) ? date(WPHUB_Text::t('Y-m-d H:i:s'), (int)$entry['seen_at']) : '-',
             ];
         }
         // Preserve saved configuration of intermittently missing fields without
         // making stale Cloud values appear current. Mapped/redundant are excluded.
         foreach ($saved as $path => $config) {
             if (isset($entries[$path]) || isset($reserved[$path]) || isset($alias[$path])) continue;
-            $hint = $descriptions[$path] ?? ['', ''];
-            [$purpose, $evidence] = self::documentedPurpose($path, $hint);
+            [$purpose, $evidence] = self::documentedPurpose($path);
             $rows[] = [
                 'Path' => $path, 'Name' => $path,
-                'Purpose' => $purpose . ' (aktuell nicht empfangen)', 'Evidence' => $evidence,
-                'Unit' => $config['Unit'], 'Active' => $config['Active'], 'Archive' => $config['Archive'],
+                'Purpose' => $purpose . ' ' . WPHUB_Text::t('(currently not received)'), 'Evidence' => $evidence,
+                'Unit' => $config['Unit'], 'Active' => $config['Active'],
                 'LastValue' => '-', 'LastReceived' => '-',
             ];
         }
@@ -173,7 +169,7 @@ final class WPHUB_KronotermExtraCatalog
             $type = $interpreted['type'];
             if ($type === null) continue;
             $unit = WPHUB_KronotermModbusProfiles::effectiveUnit($path, (string)($config['Unit'] ?? ''));
-            $points[$path] = ['value' => $value, 'type' => $type, 'unit' => $unit, 'archive' => !empty($config['Archive'])];
+            $points[$path] = ['value' => $value, 'type' => $type, 'unit' => $unit];
         }
         return $points;
     }
@@ -222,51 +218,41 @@ final class WPHUB_KronotermExtraCatalog
     }
 
     /**
-     * A published BMS register description is verifiable. Cloud JSON key
-     * interpretations are NOT equivalent to an official API field definition.
-     * Never present these inferred labels as a confirmed sensor assignment.
+     * A published BMS register description is verifiable. A Cloud JSON key is NOT an official API field
+     * definition: its name alone never counts as a confirmed sensor assignment.
+     * @return array{0:string,1:string} meaning, evidence
      */
-    public static function documentedPurpose(string $path, array $hint = []): array
+    public static function documentedPurpose(string $path): array
     {
         $bms = WPHUB_KronotermModbusProfiles::definition($path);
         if ($bms !== null) {
             $number = substr($path, strlen('main.ModbusReg['), -1);
             $page = (int)($bms['page'] ?? 0);
-            $source = 'KRONOTERM BMS 17-20-28-4023-04, Register ' . $number . ', S. ' . $page;
-            $meaning = (string)($hint[0] ?? '');
-            if ($meaning === '' || str_starts_with($meaning, 'Technische API-Angabe:')) {
-                $meaning = (string)($bms['label'] ?? 'Register ' . $number);
-            }
-            $meaning .= ' (BMS-Bezeichnung: ' . (string)$bms['label'] . ')';
+            $source = WPHUB_Text::t('Kronoterm BMS manual 17-20-4023-04, register %s, page %d', $number, $page);
+            $meaning = (string)($bms['label'] ?? '');
             if (!empty($bms['bits'])) {
-                $source .= '; Bits beschrieben auf S. ' . (int)($bms['bit_page'] ?? $page);
-                $meaning .= '; Bitfeld mit ' . count($bms['bits']) . ' dokumentierten Einzelbedeutungen';
+                $source .= '; ' . WPHUB_Text::t('bits described on page %d', (int)($bms['bit_page'] ?? $page));
+                $meaning .= '; ' . WPHUB_Text::t('bit field with %d documented meanings', count($bms['bits']));
             }
-            if (!empty($bms['note'])) $meaning .= '; ' . (string)$bms['note'];
+            if (!empty($bms['note'])) {
+                $meaning .= '; ' . (string)$bms['note'];
+            }
             return [$meaning, $source];
         }
         if (preg_match('/^main\.ModbusReg\[(\d+)\]$/D', $path, $match)) {
             return [
-                'Register ' . $match[1] . ': Bedeutung im vorliegenden BMS-Handbuch nicht belegt; Rohwert nicht als physikalische Messgröße interpretieren',
-                'Cloud-Rohinventar: ' . $path . '; BMS-Tabelle S. 6–9 ohne Definition für dieses Register'
+                WPHUB_Text::t('Register %s: meaning not documented in the BMS manual; do not read the raw value as a physical quantity', $match[1]),
+                WPHUB_Text::t('Cloud raw inventory: %s; no definition for this register in the BMS table', $path),
             ];
         }
-        $meaning = trim((string)($hint[0] ?? ''));
-        if ($meaning === '') {
-            return ['Feld ' . $path . ': Funktion nicht dokumentiert',
-                'Cloud-Rohinventar: Feldname; keine verifizierte API-Felddefinition'];
-        }
         return [
-            $meaning . ' – Interpretation anhand des Cloud-Feldnamens; nicht durch BMS-Handbuch als Messpunkt bestätigt',
-            'Cloud-Rohinventar: Feldname ' . $path . '; keine offizielle API-Felddefinition'
+            WPHUB_Text::t('Field %s: function not documented', $path),
+            WPHUB_Text::t('Cloud raw inventory: field name only, no verified API definition'),
         ];
     }
 
-    private static function suggestUnit(array $entry, string $documented): string
+    private static function suggestUnit(array $entry): string
     {
-        if ($documented === 'Anzahl') return 'count';
-        if ($documented === 'W (elektrisch)' || $documented === 'W (thermisch)') return 'W';
-        if (array_key_exists($documented, self::UNITS)) return $documented;
         $unit = (string)($entry['unit'] ?? '');
         return ($unit !== '°C?' && array_key_exists($unit, self::UNITS)) ? $unit : '';
     }
@@ -285,19 +271,7 @@ final class WPHUB_KronotermExtraCatalog
     {
         static $items = null;
         if ($items === null) {
-            $items = json_decode((string)@file_get_contents(__DIR__ . '/KronotermVerifiedAliases.json'), true);
-            if (!is_array($items)) $items = [];
-        }
-        return $items;
-    }
-
-    private static function descriptions(): array
-    {
-        static $items = null;
-        if ($items === null) {
-            $raw = @file_get_contents(__DIR__ . '/KronotermFieldDescriptions.json');
-            $items = json_decode((string)$raw, true);
-            if (!is_array($items)) $items = [];
+            $items = require __DIR__ . '/KronotermVerifiedAliases.php';
         }
         return $items;
     }

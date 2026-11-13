@@ -65,8 +65,17 @@ final class WPHUB_Text
     }
 
     /**
-     * Ein Text aus der form.json als DATENWERT (z. B. Zeile einer Liste): die Konsole uebersetzt nur Beschriftungen
-     * (caption/label), keine Zellen. Der Quelltext steht in form.json und wird von dort geprueft.
+     * Kennzeichnet einen englischen Quelltext, der erst spaeter (ausFormular()) uebersetzt wird, z. B. die
+     * Bezeichnungen in Tabellen. Liefert den Text unveraendert; der Pruefstand zaehlt ihn wie einen t()-Text.
+     */
+    public static function quelle(string $text): string
+    {
+        return $text;
+    }
+
+    /**
+     * Ein Text als DATENWERT (z. B. Zeile einer Liste): die Konsole uebersetzt nur Beschriftungen
+     * (caption/label), keine Zellen. Der Quelltext steht in form.json oder als quelle()-Literal und wird von dort geprueft.
      */
     public static function ausFormular(string $text): string
     {

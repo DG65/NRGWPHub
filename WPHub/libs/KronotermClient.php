@@ -33,15 +33,16 @@ final class WPHUB_KronotermClient
     private string $username;
     private string $password;
     private ?string $authMode = null;
-    private ?string $cookieFile = null;
     /** @var callable|null A request adapter for isolated offline tests. */
     private $transport;
     private int $timeoutSeconds;
+    /** @var resource|\CurlShareHandle|null Gemeinsamer Cookie-Speicher aller Anfragen dieses Clients (nur im Speicher). */
+    private $cookieShare = null;
 
     public function __construct(string $username, string $password, ?callable $transport = null, int $timeoutSeconds = 10)
     {
         if ($username === '' || $password === '') {
-            throw new InvalidArgumentException('Kronoterm-Zugangsdaten fehlen.');
+            throw new InvalidArgumentException('Kronoterm credentials missing.');
         }
         $this->username = $username;
         $this->password = $password;
@@ -51,8 +52,8 @@ final class WPHUB_KronotermClient
 
     public function __destruct()
     {
-        if ($this->cookieFile !== null && is_file($this->cookieFile)) {
-            @unlink($this->cookieFile);
+        if ($this->cookieShare !== null) {
+            @curl_share_close($this->cookieShare);
         }
     }
 
@@ -70,7 +71,7 @@ final class WPHUB_KronotermClient
         ], 'web-login');
         if (!in_array($login['status'], [200, 302], true) ||
             !$this->validMenu($this->request('GET', 'menu', null, 'web'))) {
-            throw new RuntimeException('Kronoterm-Cloud-Anmeldung nicht bestaetigt.');
+            throw new RuntimeException('Kronoterm Cloud login not confirmed.');
         }
         $this->authMode = 'web';
         return 'web';
@@ -100,18 +101,18 @@ final class WPHUB_KronotermClient
                     $this->login();
                     continue;
                 }
-                throw new RuntimeException('Kronoterm-Cloud-Sitzung abgelaufen.');
+                throw new RuntimeException('Kronoterm Cloud session expired.');
             }
             if ($response['status'] !== 200) {
-                throw new RuntimeException('Kronoterm-Cloud: HTTP ' . $response['status'] . ' (' . $name . ').');
+                throw new RuntimeException('Kronoterm Cloud: HTTP ' . $response['status'] . ' (' . $name . ').');
             }
             $json = json_decode($response['body'], true);
             if (!is_array($json)) {
-                throw new RuntimeException('Kronoterm-Cloud: ungueltiges JSON (' . $name . ').');
+                throw new RuntimeException('Kronoterm Cloud: invalid JSON (' . $name . ').');
             }
             return $json;
         }
-        throw new RuntimeException('Kronoterm-Cloud: keine gueltige Sitzung.');
+        throw new RuntimeException('Kronoterm Cloud: no valid session.');
     }
 
     /**
@@ -135,16 +136,16 @@ final class WPHUB_KronotermClient
             $response = $this->request('POST', 'consumption', $form, (string)$this->authMode);
             if (in_array($response['status'], [401,403], true) || $this->sessionRedirect($response)) {
                 if ($attempt === 0) { $this->login(); continue; }
-                throw new RuntimeException('Kronoterm-Cloud: Energieabfrage nicht authentifiziert.');
+                throw new RuntimeException('Kronoterm Cloud: energy request not authenticated.');
             }
             if ($response['status'] !== 200) {
-                throw new RuntimeException('Kronoterm-Cloud: Energieabfrage HTTP ' . $response['status']);
+                throw new RuntimeException('Kronoterm Cloud: energy request HTTP ' . $response['status']);
             }
             $json = json_decode($response['body'], true);
-            if (!is_array($json)) throw new RuntimeException('Kronoterm-Cloud: Energieantwort kein JSON.');
+            if (!is_array($json)) throw new RuntimeException('Kronoterm Cloud: energy answer is not JSON.');
             return $json;
         }
-        throw new RuntimeException('Kronoterm-Cloud: Energieabfrage fehlgeschlagen.');
+        throw new RuntimeException('Kronoterm Cloud: energy request failed.');
     }
 
     /**
@@ -177,7 +178,7 @@ final class WPHUB_KronotermClient
     {
         $menu = $this->getPage('menu');
         if (!array_key_exists('hp_id', $menu) || $menu['hp_id'] === null) {
-            throw new RuntimeException('Kronoterm-Cloud: keine eindeutig ausgewaehlte Waermepumpe.');
+            throw new RuntimeException('Kronoterm Cloud: no clearly selected heat pump.');
         }
         $info = $this->getPage('info');
         $inventory = self::extractInventory($info);
@@ -288,7 +289,7 @@ final class WPHUB_KronotermClient
         }
         if (!is_array($response) || !isset($response['status']) || !is_int($response['status']) ||
             !isset($response['body']) || !is_string($response['body'])) {
-            throw new RuntimeException('Kronoterm-Client: ungueltige HTTP-Antwort.');
+            throw new RuntimeException('Kronoterm client: invalid HTTP answer.');
         }
         return $response;
     }
@@ -313,19 +314,15 @@ final class WPHUB_KronotermClient
     private function curlRequest(array $o): array
     {
         if (!function_exists('curl_init')) {
-            throw new RuntimeException('PHP-cURL-Erweiterung fehlt.');
+            throw new RuntimeException('PHP cURL extension missing.');
         }
-        if ($this->cookieFile === null) {
-            $path = tempnam(sys_get_temp_dir(), 'wphub-kr-');
-            if ($path === false) {
-                throw new RuntimeException('Keine temporaere Kronoterm-Cookie-Datei moeglich.');
-            }
-            @chmod($path, 0600);
-            $this->cookieFile = $path;
+        if ($this->cookieShare === null) {
+            $this->cookieShare = curl_share_init();
+            curl_share_setopt($this->cookieShare, CURLSHOPT_SHARE, CURL_LOCK_DATA_COOKIE);
         }
         $ch = curl_init();
         if ($ch === false) {
-            throw new RuntimeException('Kronoterm-HTTP-Client konnte nicht initialisiert werden.');
+            throw new RuntimeException('Kronoterm HTTP client could not be initialised.');
         }
         $headers = $o['headers'];
         if ($o['method'] === 'POST') {
@@ -337,8 +334,8 @@ final class WPHUB_KronotermClient
             CURLOPT_CONNECTTIMEOUT => $this->timeoutSeconds,
             CURLOPT_TIMEOUT => $this->timeoutSeconds,
             CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_COOKIEFILE => $this->cookieFile,
-            CURLOPT_COOKIEJAR => $this->cookieFile,
+            CURLOPT_COOKIEFILE => '', // leerer Name: Cookie-Engine nur im Speicher, keine Datei
+            CURLOPT_SHARE => $this->cookieShare, // Sitzungscookies bleiben zwischen den Anfragen erhalten
             CURLOPT_COOKIE => $o['cookieHeader'],
             CURLOPT_FOLLOWLOCATION => $o['followRedirects'],
             CURLOPT_MAXREDIRS => 3,
@@ -365,7 +362,7 @@ final class WPHUB_KronotermClient
         curl_close($ch);
         if (!is_string($body)) {
             // Do not include cURL error strings: URLs and credentials must not leak.
-            throw new RuntimeException('Kronoterm-Cloud: HTTP-Verbindungsfehler.');
+            throw new RuntimeException('Kronoterm Cloud: HTTP connection error.');
         }
         return ['status' => $status, 'body' => $body];
     }
