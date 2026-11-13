@@ -15,6 +15,10 @@ WPHub connects Symcon to heat pump manufacturer clouds and makes the devices it 
 
 **Supported manufacturers:** a "Manufacturer" property selects per instance between **Panasonic Comfort Cloud** (Aquarea) and **Vaillant myVAILLANT** (aroTHERM/aroTHERM plus) — a cloud alternative to HeishaMon for users without the HeishaMon board. Further manufacturer clouds (Mitsubishi MELCloud, Viessmann, ...) will follow through the community as soon as users with matching hardware are found for testing — unlike Modbus meters (MeterHub), practically every manufacturer cloud has its own, mostly undocumented authentication/API scheme, hence "one manufacturer at a time" instead of one common driver. Local connections without a cloud: [WPModbusHub](https://github.com/DG65/NRGWPModbusHub) (Modbus), [HeishaMon](https://github.com/DG65/NRGHeishaMon) (MQTT).
 
+## Requirement
+
+**Symcon 9.0 or newer.** With older versions (e.g. 8.1) the Module Store does not show the module and the search reports “No modules found”. Update to Symcon 9.0 first, then search the store for the exact name “NRG-Stack WPHub”.
+
 ## Status
 
 Panasonic has been running on a real account for several builds (Aquarea, standard adapter STD_ADP-TAW1). Vaillant is confirmed on two real systems by testers (tli controller and vrc700 controller).
