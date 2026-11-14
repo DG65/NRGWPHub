@@ -358,6 +358,10 @@
                     "caption": "The Kronoterm Cloud has no access token: every request needs the username and password. After a successful login the module keeps both in a hidden internal field (not encrypted, but not visible in the form or the log) and clears the password field here."
                 },
                 {
+                    "type": "Label",
+                    "caption": "Update interval: the Kronoterm Cloud is queried at the interval set in the section \"General\" (at least 60 seconds). Kronoterm does not document any limits for this unofficial interface, so a shorter interval is at your own risk. Please report problems."
+                },
+                {
                     "type": "ValidationTextBox",
                     "name": "KR_Username",
                     "caption": "Kronoterm username"

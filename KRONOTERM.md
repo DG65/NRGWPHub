@@ -6,7 +6,7 @@ Stand 0.18.0, 13.11.2026. Grundlage: die Kronoterm-Anbindung von **Dirk Allard**
 
 - **Nur lesend.** Es gibt keine Stellbefehle. Die Cloud-Anfragen sind GET-Seiten; ein POST dient nur dem Anmeldeformular und der Verbrauchsabfrage (die Schnittstelle verlangt dort POST).
 - **Inoffizielle Schnittstelle.** Kronoterm dokumentiert die Cloud-API (`cloud.kronoterm.com/jsoncgi.php`) nicht. Sie ist nach der öffentlichen Home-Assistant-Integration Favio25/Kronoterm-homeassistant nachgebaut (ohne Code zu übernehmen) und kann sich jederzeit ändern.
-- Eine Instanz = die im Kronoterm-Konto ausgewählte Wärmepumpe. Hersteller-Auswahl „Kronoterm“, Mindest-Abfrageintervall **300 s**.
+- Eine Instanz = die im Kronoterm-Konto ausgewählte Wärmepumpe. Hersteller-Auswahl „Kronoterm“, Abfrageintervall = Formularwert „Aktualisierungsintervall“, mindestens **60 s** (bis 0.18.0 stillschweigend 300 s, übernommen aus der Home-Assistant-Referenz; Kronoterm nennt keine Grenzen).
 - Der **lokale Weg** (Modbus RS485 über das Symcon-ModBus-Gateway) ist der Kronoterm-Karte im WPModbusHub vorbehalten; die liefert auch Leistung und Energie. Siehe dort.
 
 ## Messwerte

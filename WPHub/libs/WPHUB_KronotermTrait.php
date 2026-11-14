@@ -15,6 +15,17 @@ trait WPHUB_KronotermTrait
      * Gespeicherte Zugangsdaten (Attribut, nie Property): [Benutzername, Passwort] oder null.
      * IPS verschluesselt Attribute nicht: "sicher" heisst nur "nicht im Formular/Log sichtbar".
      */
+    /**
+     * Abfrageintervall der Kronoterm-Cloud in Sekunden: der im Formular
+     * eingestellte Wert, mindestens 60 s. Kronoterm nennt keine Grenzen; die
+     * 300 s der ersten Fassung stammten aus der Home-Assistant-Referenz und
+     * wurden dem Nutzer verschwiegen angehoben (0.18.1: Formularwert gilt).
+     */
+    private function kronotermPollSeconds(): int
+    {
+        return max(60, $this->ReadPropertyInteger('WPHUB_Interval'));
+    }
+
     private function kronotermCredentials(): ?array
     {
         $data = json_decode($this->ReadAttributeString('KR_Credentials'), true);
@@ -88,7 +99,7 @@ trait WPHUB_KronotermTrait
             $this->UpdateFormField('KR_EnergyStatus', 'caption', WPHUB_Text::t('Kronoterm energy: %s (day: %s)', $this->ReadAttributeString('KR_EnergyLastStatus'), $this->ReadAttributeString('KR_EnergyLastSuccessDay') ?: '?'));
             $this->refreshDiscoverySummary();
             if ($this->ReadPropertyBoolean('WPHUB_Active')) {
-                $this->SetTimerInterval('WPHUB_UpdateTimer', max(300, $this->ReadPropertyInteger('WPHUB_Interval')) * 1000);
+                $this->SetTimerInterval('WPHUB_UpdateTimer', $this->kronotermPollSeconds() * 1000);
                 $this->SetStatus(102);
             }
         } catch (\Throwable $e) {

@@ -62,6 +62,7 @@
             "Temperature source": "Quelle der Temperatur",
             "Disabled": "Deaktiviert",
             "Kronoterm Cloud": "Kronoterm-Cloud",
+            "Update interval: the Kronoterm Cloud is queried at the interval set in the section \"General\" (at least 60 seconds). Kronoterm does not document any limits for this unofficial interface, so a shorter interval is at your own risk. Please report problems.": "Abfrageintervall: Die Kronoterm-Cloud wird im Intervall abgefragt, das im Bereich „Allgemein“ steht (mindestens 60 Sekunden). Kronoterm nennt für diese inoffizielle Schnittstelle keine Grenzen, ein kürzeres Intervall geschieht deshalb auf eigene Gefahr. Bitte meldet Probleme.",
             "External Symcon variable": "Externe Symcon-Variable",
             "External temperature variable (°C)": "Externe Temperaturvariable (°C)",
             "Cloud measurement (identify sensor before assigning)": "Cloud-Messwert (Sensor vor Zuordnung identifizieren)",

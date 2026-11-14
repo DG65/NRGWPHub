@@ -2992,7 +2992,14 @@ check('Kronoterm: nur lesende Anfragen (GET; POST nur Anmeldeformular und Verbra
 $krFn = $mod->GetFunctions();
 check('Kronoterm: Vertrag nennt WP-Eintritt, WP-Austritt und Puffer, PowerID/EnergyID bleiben ohne externe Zaehler 0', ($krFn[0]['mainInletTempID'] ?? 0) > 0 && ($krFn[0]['mainOutletTempID'] ?? 0) > 0
     && ($krFn[0]['bufferTempID'] ?? 0) > 0 && ($krFn[0]['PowerID'] ?? -1) === 0 && ($krFn[0]['EnergyID'] ?? -1) === 0, json_encode($krFn[0] ?? null));
-check('Kronoterm: Abfrageintervall im Vertrag mindestens 300 s', ($krFn[0]['pollInterval'] ?? 0) >= 300);
+$krIntervalVorher = $GLOBALS['ips']['properties']['WPHUB_Interval'];
+$krIntervale = [];
+foreach ([30, 60, 120, 600] as $krI) {
+    $GLOBALS['ips']['properties']['WPHUB_Interval'] = $krI;
+    $krIntervale[$krI] = $mod->GetFunctions()[0]['pollInterval'] ?? null;
+}
+$GLOBALS['ips']['properties']['WPHUB_Interval'] = $krIntervalVorher;
+check('Kronoterm: Abfrageintervall gilt wie eingestellt, Boden 60 s (30 -> 60, 120 -> 120, 600 -> 600)', $krIntervale === [30 => 60, 60 => 60, 120 => 120, 600 => 600], json_encode($krIntervale));
 
 // Ausfall der Cloud: nicht erreichbar, Status 201, alte Werte bleiben
 $krState['mode'] = 'down';

@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.18.1 (Build 101) — 14.11.2026
+
+- **Kronoterm: Das eingestellte Abfrageintervall gilt jetzt.** Bis 0.18.0 hob das Modul den Wert im Formular (30 bis 600 s) bei Kronoterm stillschweigend auf mindestens 300 s an. Die 300 s stammten aus der Home-Assistant-Referenz der ursprünglichen Anbindung und waren nicht durch Messung an der Kronoterm-Cloud belegt. Jetzt gilt der Formularwert mit einer Untergrenze von 60 s, und ein Hinweis im Kronoterm-Bereich nennt, dass Kronoterm für die inoffizielle Schnittstelle keine Grenzen veröffentlicht. Auch der Vertrag (`pollInterval`) meldet den tatsächlichen Wert. Anregung von Dirk Allard (dallard) beim Beta-Test.
+
 
 ## 0.18.0 (Build 100) — 13.11.2026
 

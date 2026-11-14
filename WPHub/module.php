@@ -295,7 +295,7 @@ class WPHub extends IPSModule
         }
 
         $active   = $this->ReadPropertyBoolean('WPHUB_Active');
-        $interval = max($this->isKronoterm() ? 300 : 30, $this->ReadPropertyInteger('WPHUB_Interval'));
+        $interval = ($this->isKronoterm() ? $this->kronotermPollSeconds() : max(30, $this->ReadPropertyInteger('WPHUB_Interval')));
         $hasToken = $this->isKronoterm()
             ? ($this->kronotermCredentialsPresent() && $this->ReadAttributeInteger('KR_LastSuccessTs') > 0)
             : ($this->isVaillant() ? ($this->vaillantTokenBundle() !== null) : ($this->tokenBundle() !== null));
@@ -1221,7 +1221,7 @@ class WPHub extends IPSModule
                 // MeterHub-Vertrag ("pollInterval"). Derselbe max(30, ...)-
                 // Boden wie in ApplyChanges(), damit der gemeldete Wert immer
                 // dem tatsaechlich gesetzten Timer-Intervall entspricht.
-                'pollInterval'         => max($this->isKronoterm() ? 300 : 30, $this->ReadPropertyInteger('WPHUB_Interval')),
+                'pollInterval'         => ($this->isKronoterm() ? $this->kronotermPollSeconds() : max(30, $this->ReadPropertyInteger('WPHUB_Interval'))),
                 // contractVersion 1.15 (mit EMS abgestimmt 13.09.2026, Muster
                 // ChargerHubs managedBy -- bewusst NICHT InverterHubs
                 // controlAuthority, da das EMS nie an die Waermepumpe

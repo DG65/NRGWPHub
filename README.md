@@ -3,7 +3,7 @@
 # WPHub — Wärmepumpen-Cloud-Anbindung für Symcon
 
 ![Symcon](https://img.shields.io/badge/Symcon-PHPModul-blue)
-![Modul Version](https://img.shields.io/badge/Modul_Version-0.18.0-blue)
+![Modul Version](https://img.shields.io/badge/Modul_Version-0.18.1-blue)
 ![Symcon Version](https://img.shields.io/badge/Symcon_Version-9.0%2B-blue)
 ![License](https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0.0-lightgrey)
 [![Check Style](https://github.com/DG65/NRGWPHub/actions/workflows/check-style.yml/badge.svg)](https://github.com/DG65/NRGWPHub/actions/workflows/check-style.yml)
