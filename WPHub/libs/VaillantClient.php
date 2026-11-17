@@ -59,6 +59,12 @@ class WPHUB_VaillantClient
     // ohne das haette jeder weitere Fehlversuch das Kontingent nur laenger
     // blockiert.
     public ?int $quotaRetryAfterSeconds = null;
+    // Fund 17.11.2026 (cbeham, Forum): HTTP 403 bei der Token-Erneuerung mit einer
+    // ganzen HTML-Seite ("Vaillant Group | Ooops. Something went wrong", Web-Firewall) wurde
+    // bisher als "Kontingent aufgebraucht" gemeldet. Echte Kontingent-Fehler tragen die
+    // Wartezeit im Text ("Quota will be replenished in ..."). TRUE = HTTP 403 OHNE Kontingent-
+    // Wortlaut (vermutlich Firewall). Die Sperrfrist bleibt gleich, nur die Meldung aendert sich.
+    public bool $blockIsFirewall = false;
 
     public function __construct(string $country, ?callable $debug = null)
     {
@@ -603,11 +609,39 @@ class WPHUB_VaillantClient
             $this->lastError = WPHUB_Text::t('%s failed (%s)', $what, $this->lastError);
             return;
         }
-        $this->lastError = WPHUB_Text::t('%s failed (HTTP %d): %s', $what, $r['status'], substr((string)$r['body'], 0, 300));
+        $this->lastError = WPHUB_Text::t('%s failed (HTTP %d): %s', $what, $r['status'], self::compactBody((string)$r['body']));
         $this->dbg('fehler', $this->lastError);
         if ((int)$r['status'] === 403) {
             $this->quotaRetryAfterSeconds = self::parseQuotaRetrySeconds((string)$r['body']);
+            $this->blockIsFirewall = !self::bodyMentionsQuota((string)$r['body']);
         }
+    }
+
+    /** Enthaelt die Antwort Vaillants Kontingent-Wortlaut? Oeffentlich fuer den Pruefstand. */
+    public static function bodyMentionsQuota(string $body): bool
+    {
+        return preg_match('/call volume quota|replenished in/i', $body) === 1;
+    }
+
+    /**
+     * Antworttext fuers Protokoll kuerzen. Eine HTML-Seite (Web-Firewall) wird auf ihren Titel
+     * oder den Text ohne Tags reduziert statt als Tag-Suppe in die Meldung zu geraten.
+     * Oeffentlich fuer den Pruefstand.
+     */
+    public static function compactBody(string $body): string
+    {
+        $trim = ltrim($body);
+        if ($trim !== '' && ($trim[0] === '<')) {
+            if (preg_match('/<title[^>]*>(.*?)<\/title>/is', $trim, $m)) {
+                $text = $m[1];
+            } else {
+                $text = preg_replace('/<(script|style)\b.*?<\/\1>/is', ' ', $trim);
+                $text = strip_tags((string)$text);
+            }
+            $text = trim((string)preg_replace('/\s+/', ' ', html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+            return substr($text !== '' ? $text : 'HTML', 0, 200);
+        }
+        return substr($body, 0, 300);
     }
 
     /**

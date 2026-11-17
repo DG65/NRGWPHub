@@ -2482,6 +2482,16 @@ $failApi->invoke($realVaiClient, 'Testaufruf', ['status' => 500, 'body' => 'Serv
 check('failApi(): HTTP 500 setzt quotaRetryAfterSeconds NICHT', $realVaiClient->quotaRetryAfterSeconds === null);
 $failApi->invoke($realVaiClient, 'Testaufruf', ['status' => 403, 'body' => 'Out of call volume quota. Quota will be replenished in 00:00:30.']);
 check('failApi(): HTTP 403 setzt quotaRetryAfterSeconds aus dem Antworttext', $realVaiClient->quotaRetryAfterSeconds === 40, (string)$realVaiClient->quotaRetryAfterSeconds);
+check('failApi(): HTTP 403 MIT Kontingent-Wortlaut ist keine Firewall-Meldung', $realVaiClient->blockIsFirewall === false);
+// Fund 17.11.2026 (cbeham): ganze HTML-Seite der Vaillant-Web-Firewall statt Kontingent-Meldung
+$firewallPage = "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <title>Vaillant Group | Ooops. Something went wrong.</title>\n  <meta name=\"author\" content=\"Team Trixie\">\n<link rel=\"stylesheet\" href=\"https://dspwaf.blob.c";
+$realVaiFw = new WPHUB_VaillantClient('germany');
+$failApi->invoke($realVaiFw, 'Token renewal', ['status' => 403, 'body' => $firewallPage]);
+check('failApi(): HTTP 403 mit HTML-Seite ohne Kontingent-Wortlaut gilt als Firewall-Sperre', $realVaiFw->blockIsFirewall === true);
+check('failApi(): auch die Firewall-Sperre behaelt die sichere Pause (300 s)', $realVaiFw->quotaRetryAfterSeconds === 300, (string)$realVaiFw->quotaRetryAfterSeconds);
+check('failApi(): die Fehlerzeile zeigt den Seitentitel statt der HTML-Tags', strpos($realVaiFw->getLastError(), 'Ooops. Something went wrong.') !== false && strpos($realVaiFw->getLastError(), '<') === false && strpos($realVaiFw->getLastError(), 'doctype') === false, $realVaiFw->getLastError());
+check('compactBody(): Text ohne HTML bleibt unveraendert (bis 300 Zeichen)', WPHUB_VaillantClient::compactBody('Serverfehler') === 'Serverfehler');
+check('compactBody(): HTML ohne <title> wird auf den Text ohne Tags reduziert', WPHUB_VaillantClient::compactBody('<html><body><h1>Gesperrt</h1><script>x()</script></body></html>') === 'Gesperrt');
 
 // Token-Attribut ist eigenstaendig (VAI_Token, nicht CC_Token).
 check('vaillantTokenBundle() ohne Token: null', $vaillantTokenBundle->invoke($mod) === null);
@@ -2560,6 +2570,25 @@ check('vaillantEnsureToken(): Kontingent-Fehler bei der Erneuerung setzt eine Sp
 check('vaillantEnsureToken(): der Aktualisierungstimer bleibt AN (nicht wie bei einem echten Login-Fehler abgeschaltet)', $mod->GetTimerInterval('WPHUB_UpdateTimer') === 600000);
 $lastLog2 = end($GLOBALS['ips']['log']);
 check('vaillantEnsureToken(): Protokollzeile nennt "Kontingent", nicht "bitte neu anmelden"', strpos($lastLog2, 'Kontingent') !== false && strpos($lastLog2, 'neu anmelden') === false, $lastLog2);
+
+// Fund 17.11.2026 (cbeham): dieselbe Erneuerung scheitert an einer Firewall-Seite -- die Meldung darf NICHT
+// "Kontingent aufgebraucht" sagen, die Pause und der laufende Timer bleiben wie beim Kontingent.
+$writeRetry->invoke($mod, 'VAI_RetryNotBefore', 0);
+$setAttr->invoke($mod, 'VAI_Token', json_encode(['accessToken' => 'alt', 'refreshToken' => 'ref', 'expiresAt' => time() - 10]));
+$fakeVaiRefreshFw = new FakeVaillant('germany');
+$fakeVaiRefreshFw->refreshResult = null;
+$fakeVaiRefreshFw->quotaRetryAfterSeconds = 300;
+$fakeVaiRefreshFw->blockIsFirewall = true;
+$GLOBALS['ips']['vaillantClientFactory'] = function () use ($fakeVaiRefreshFw) {
+    return $fakeVaiRefreshFw;
+};
+$setTimerInterval->invoke($mod, 'WPHUB_UpdateTimer', 600000);
+$beforeFw = time();
+$updateVaillant->invoke($mod);
+$logFw = end($GLOBALS['ips']['log']);
+check('Firewall-Sperre bei der Token-Erneuerung: Protokoll nennt die Firewall und NICHT "Kontingent aufgebraucht"', strpos($logFw, 'Firewall') !== false && strpos($logFw, 'Kontingent aufgebraucht') === false, $logFw);
+check('Firewall-Sperre bei der Token-Erneuerung: Pause gesetzt und Timer bleibt an', $readRetry->invoke($mod, 'VAI_RetryNotBefore') >= $beforeFw + 300 && $mod->GetTimerInterval('WPHUB_UpdateTimer') === 600000);
+$writeRetry->invoke($mod, 'VAI_RetryNotBefore', 0);
 
 // Gegenprobe: eine ECHTE Erneuerungs-Fehlermeldung (kein Kontingent-Muster)
 // schaltet den Timer weiterhin ab, wie vor diesem Fix -- keine Regression.

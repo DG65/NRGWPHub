@@ -2000,7 +2000,9 @@ class WPHub extends IPSModule
             // Jetzt: gleiche Sperrfrist wie beim Datenabruf, Timer bleibt an.
             if ($client->quotaRetryAfterSeconds !== null) {
                 $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
-                $this->LogMessage(WPHUB_Text::t('Vaillant API quota used up (access key renewal) -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError()), KL_WARNING);
+                $this->LogMessage($client->blockIsFirewall
+                    ? WPHUB_Text::t('Vaillant rejected the request (HTTP 403 without a quota message, probably its web firewall; access key renewal) -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError())
+                    : WPHUB_Text::t('Vaillant API quota used up (access key renewal) -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError()), KL_WARNING);
                 return null;
             }
             $this->LogMessage(WPHUB_Text::t('myVAILLANT access key expired and renewal failed (%s) — please log in again in the form.', $client->getLastError()), KL_WARNING);
@@ -2454,7 +2456,9 @@ class WPHub extends IPSModule
             $this->markAllUnreachable();
             if ($client->quotaRetryAfterSeconds !== null) {
                 $this->WriteAttributeInteger('VAI_RetryNotBefore', time() + $client->quotaRetryAfterSeconds);
-                $this->LogMessage(WPHUB_Text::t('Vaillant API quota used up -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError()), KL_WARNING);
+                $this->LogMessage($client->blockIsFirewall
+                    ? WPHUB_Text::t('Vaillant rejected the request (HTTP 403 without a quota message, probably its web firewall) -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError())
+                    : WPHUB_Text::t('Vaillant API quota used up -- next attempt in %d s (%s).', $client->quotaRetryAfterSeconds, $client->getLastError()), KL_WARNING);
             } else {
                 $this->LogMessage(WPHUB_Text::t('Update failed: %s', $client->getLastError()), KL_WARNING);
             }
@@ -2498,6 +2502,7 @@ class WPHub extends IPSModule
             return;
         }
         $client->quotaRetryAfterSeconds = null; // klebt am Client-Objekt, hier nur Energie-Fehler zaehlen
+        $client->blockIsFirewall = false;
         $devices = $this->readDeviceList();
         $anySuccess = false;
         foreach ($devices as $d) {
@@ -2520,7 +2525,9 @@ class WPHub extends IPSModule
                 // trotzdem alle 13 Buckets weiter abgefragt) -- nur die Energie
                 // pausiert, der Haupt-Takt laeuft weiter.
                 $this->WriteAttributeInteger('VAI_EnergyRetryNotBefore', time() + $quotaSeconds);
-                $this->LogMessage(WPHUB_Text::t('Vaillant API quota used up during the energy request -- energy values pause for %d s, the normal values continue (%s).', $quotaSeconds, $client->getLastError()), KL_WARNING);
+                $this->LogMessage($client->blockIsFirewall
+                    ? WPHUB_Text::t('Vaillant rejected the energy request (HTTP 403 without a quota message, probably its web firewall) -- energy values pause for %d s, the normal values continue (%s).', $quotaSeconds, $client->getLastError())
+                    : WPHUB_Text::t('Vaillant API quota used up during the energy request -- energy values pause for %d s, the normal values continue (%s).', $quotaSeconds, $client->getLastError()), KL_WARNING);
                 return;
             }
             if ($emf === null) {

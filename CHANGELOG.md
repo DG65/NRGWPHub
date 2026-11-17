@@ -1,5 +1,11 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.18.2 (Build 102) — 17.11.2026
+
+- **Vaillant: Eine Firewall-Sperre wird nicht mehr als „Kontingent aufgebraucht“ gemeldet.** Fund von cbeham (Forum, 17.11.2026): Bei der Erneuerung des Zugangsschlüssels kam HTTP 403 mit einer ganzen Webseite („Vaillant Group | Ooops. Something went wrong“, Web-Firewall von Vaillant), und das Modul schrieb „API-Kontingent aufgebraucht“. Ein echter Kontingent-Fehler trägt Vaillants Wartezeit im Text („Quota will be replenished in …“). Jetzt unterscheidet das Modul beides: ohne diesen Wortlaut heißt die Meldung „Vaillant hat die Anfrage abgelehnt (HTTP 403 ohne Kontingent-Meldung, vermutlich die Web-Firewall)“. Die Pause von 5 Minuten und der laufende Timer bleiben gleich. Das gilt für die Erneuerung des Zugangsschlüssels, den normalen Abruf und die Energiedaten.
+- Eine HTML-Antwort wird im Protokoll auf ihren Seitentitel gekürzt statt als Tag-Text ausgegeben.
+- An der Vaillant-Anbindung selbst (Anmeldung, Abrufe, Werte) hat sich nichts geändert.
+
 ## 0.18.1 (Build 101) — 14.11.2026
 
 - **Kronoterm: Das eingestellte Abfrageintervall gilt jetzt.** Bis 0.18.0 hob das Modul den Wert im Formular (30 bis 600 s) bei Kronoterm stillschweigend auf mindestens 300 s an. Die 300 s stammten aus der Home-Assistant-Referenz der ursprünglichen Anbindung und waren nicht durch Messung an der Kronoterm-Cloud belegt. Jetzt gilt der Formularwert mit einer Untergrenze von 60 s, und ein Hinweis im Kronoterm-Bereich nennt, dass Kronoterm für die inoffizielle Schnittstelle keine Grenzen veröffentlicht. Auch der Vertrag (`pollInterval`) meldet den tatsächlichen Wert. Anregung von Dirk Allard (dallard) beim Beta-Test.
