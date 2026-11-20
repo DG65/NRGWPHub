@@ -759,7 +759,8 @@ $functions = $mod->GetFunctions();
 check('Ein Vertragseintrag', count($functions) === 1);
 $f = $functions[0] ?? [];
 check('Type = heatpump', ($f['Type'] ?? '') === 'heatpump');
-check('contractVersion = 1.15', ($f['contractVersion'] ?? '') === '1.15');
+check('contractVersion = 1.19', ($f['contractVersion'] ?? '') === '1.19');
+check('contractType = heatpump (1.19, Fremdanbindung) und Alias Type unveraendert', ($f['contractType'] ?? '') === 'heatpump' && ($f['Type'] ?? '') === 'heatpump');
 check('Caption = Geraetename', ($f['Caption'] ?? '') === 'Heizung');
 check('PowerID = 0 (Cloud liefert keine Leistung)', ($f['PowerID'] ?? -1) === 0);
 check('EnergyID = 0 (keine kumulative Energie)', ($f['EnergyID'] ?? -1) === 0);
@@ -1308,7 +1309,7 @@ $GLOBALS['ips']['heishaMonInstances'] = [];
 $GLOBALS['ips']['heishaMonInstanceStatus'] = [];
 
 // ---------------------------------------------------------------------------
-echo "Block 4g: Steuerhoheit je Geraet (managedBy, contractVersion 1.15)\n";
+echo "Block 4g: Steuerhoheit je Geraet (managedBy, contractVersion 1.19)\n";
 // ---------------------------------------------------------------------------
 
 $deviceManagedBy = new ReflectionMethod(WPHub::class, 'deviceManagedBy');
@@ -1332,10 +1333,10 @@ check('SetManagedBy() ruft ApplyChanges auf', ($GLOBALS['ips']['applied'] ?? fal
 $mod->SetManagedBy($prefix, 'quatsch');
 check('SetManagedBy() mit ungueltigem Wert: faellt auf Standard zurueck', $deviceManagedBy->invoke($mod, $prefix) === 'wphub');
 
-// GetFunctions() liefert managedBy je Geraet, contractVersion 1.15.
+// GetFunctions() liefert managedBy je Geraet, contractVersion 1.19.
 $mod->SetManagedBy($prefix, 'heishamon');
 $fManaged = $mod->GetFunctions()[0] ?? [];
-check('contractVersion = 1.15', ($fManaged['contractVersion'] ?? '') === '1.15');
+check('contractVersion = 1.19', ($fManaged['contractVersion'] ?? '') === '1.19');
 check('GetFunctions() liefert managedBy=heishamon', ($fManaged['managedBy'] ?? '') === 'heishamon');
 $mod->SetManagedBy($prefix, 'wphub');
 $fDefault = $mod->GetFunctions()[0] ?? [];
@@ -1849,7 +1850,7 @@ if (is_array($functionsVai) && count($functionsVai) === 1) {
     check('GetFunctions(): dhwTargetTempID zeigt auf die neue WarmwasserSoll-Variable', ($functionsVai[0]['dhwTargetTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_WarmwasserSoll']['id']);
     check('GetFunctions(): z1WaterTempID zeigt auf die neue Zone1Ist-Variable (Heizkreis-Vorlauf)', ($functionsVai[0]['z1WaterTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Zone1Ist']['id']);
     check('GetFunctions(): z1WaterTargetTempID zeigt auf die neue Zone1Soll-Variable', ($functionsVai[0]['z1WaterTargetTempID'] ?? 0) === $GLOBALS['ips']['variables']['HPVAITST_Zone1Soll']['id']);
-    check('GetFunctions(): contractVersion bleibt 1.15', ($functionsVai[0]['contractVersion'] ?? null) === '1.15');
+    check('GetFunctions(): contractVersion ist 1.19', ($functionsVai[0]['contractVersion'] ?? null) === '1.19');
 }
 
 // refreshDevicesVaillant(): "tli" UND "vrc700" werden verarbeitet (Fund

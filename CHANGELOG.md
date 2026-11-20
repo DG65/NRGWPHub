@@ -1,5 +1,9 @@
 # Changelog — NRG-Stack WPHub
 
+## 0.18.3 — unveröffentlicht (vorbereitet 20.11.2026)
+
+- **Vertrag `heatpump` 1.19: `contractType` (Fremdanbindung, SUITE.md).** `GetFunctions()` liefert zusätzlich `contractType => 'heatpump'` (Selbstbeschreibung des Vertrags für fremde Konsumenten wie das EMS), `Type` bleibt als Alias, `contractVersion` ist 1.19. Es ändert sich sonst nichts: dieselben Felder, keine Steuerfelder (kein `failsafeSec`, weil das Modul dem EMS keinen Steuerpunkt anbietet). Prüfstand: neue Prüfung, eine Mutation bestätigt.
+
 ## 0.18.2 (Build 102) — 17.11.2026
 
 - **Vaillant: Eine Firewall-Sperre wird nicht mehr als „Kontingent aufgebraucht“ gemeldet.** Fund von cbeham (Forum, 17.11.2026): Bei der Erneuerung des Zugangsschlüssels kam HTTP 403 mit einer ganzen Webseite („Vaillant Group | Ooops. Something went wrong“, Web-Firewall von Vaillant), und das Modul schrieb „API-Kontingent aufgebraucht“. Ein echter Kontingent-Fehler trägt Vaillants Wartezeit im Text („Quota will be replenished in …“). Jetzt unterscheidet das Modul beides: ohne diesen Wortlaut heißt die Meldung „Vaillant hat die Anfrage abgelehnt (HTTP 403 ohne Kontingent-Meldung, vermutlich die Web-Firewall)“. Die Pause von 5 Minuten und der laufende Timer bleiben gleich. Das gilt für die Erneuerung des Zugangsschlüssels, den normalen Abruf und die Energiedaten.
