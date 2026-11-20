@@ -1,6 +1,6 @@
 # Changelog — NRG-Stack WPHub
 
-## 0.18.3 — unveröffentlicht (vorbereitet 20.11.2026)
+## 0.18.3 (Build 103) — 20.11.2026
 
 - **Vertrag `heatpump` 1.19: `contractType` (Fremdanbindung, SUITE.md).** `GetFunctions()` liefert zusätzlich `contractType => 'heatpump'` (Selbstbeschreibung des Vertrags für fremde Konsumenten wie das EMS), `Type` bleibt als Alias, `contractVersion` ist 1.19. Es ändert sich sonst nichts: dieselben Felder, keine Steuerfelder (kein `failsafeSec`, weil das Modul dem EMS keinen Steuerpunkt anbietet). Prüfstand: neue Prüfung, eine Mutation bestätigt.
 
